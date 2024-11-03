@@ -37,7 +37,9 @@ jobs:
       - name: Restore initialized setup
         uses: actions/cache/restore@v4
         with:
-          path: apicize-lib
+          path: |
+            ./*
+            $HOME/.cargo/*
           key: ${{ runner.os }}-apicize-lib
           fail-on-cache-miss: true
       - name: line lib-rust
@@ -51,7 +53,9 @@ jobs:
       - name: Restore initialized setup
         uses: actions/cache/restore@v4
         with:
-          path: apicize-lib
+          path: |
+            ./*
+            $HOME/.cargo/*
           key: ${{ runner.os }}-apicize-lib
           fail-on-cache-miss: true
       - name: line lib-rust
@@ -70,7 +74,9 @@ jobs:
       - name: Restore initialized setup
         uses: actions/cache/restore@v4
         with:
-          path: apicize-lib
+          path: |
+            ./*
+            $HOME/.cargo/*
           key: ${{ runner.os }}-apicize-lib
           fail-on-cache-miss: true
       - name: Build the project
