@@ -15,9 +15,7 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
 use crate::apicize::{
-    ApicizeBody, ApicizeExecutionGroup, ApicizeExecutionGroupRun,
-    ApicizeExecutionItem, ApicizeExecutionRequest, ApicizeExecutionRequestRun, ApicizeRequest,
-    ApicizeTestResponse, ExecutionTotals, ExecutionTotalsSource,
+    ApicizeBody, ApicizeExecution, ApicizeExecutionGroup, ApicizeExecutionGroupRun, ApicizeExecutionItem, ApicizeExecutionRequest, ApicizeExecutionRequestRun, ApicizeRequest, ApicizeTestResponse, ExecutionTotals, ExecutionTotalsSource
 };
 use crate::{apicize::ApicizeHttpResponse, WorkbookRequest};
 use crate::{
@@ -32,6 +30,72 @@ use crate::oauth2_client_tokens::tests::MockOAuth2ClientTokens as oauth2;
 use crate::oauth2_client_tokens as oauth2;
 
 static V8_INIT: Once = Once::new();
+
+/// Dispatch requests/groups in the specified workspace, optionally forcing the number of runs
+pub async fn run(
+    workspace: Arc<Workspace>,
+    request_ids: Option<Vec<String>>,
+    cancellation_token: Option<CancellationToken>,
+    tests_started: Arc<Instant>,
+    override_runs: Option<usize>,
+) -> Result<ApicizeExecution, String> {
+    // Ensure V8 is initialized
+    V8_INIT.call_once(|| {
+        let platform = v8::new_unprotected_default_platform(0, false).make_shared();
+        v8::V8::initialize_platform(platform);
+        v8::V8::initialize();
+    });
+
+    let cancellation = match cancellation_token {
+        Some(t) => t,
+        None => CancellationToken::new(),
+    };
+
+    let request_ids_to_execute = request_ids.unwrap_or(workspace.requests.top_level_ids.clone());
+
+    let mut executing_items: JoinSet<Option<ApicizeExecutionItem>> = JoinSet::new();
+    for request_id in request_ids_to_execute {
+        let cloned_workspace = workspace.clone();
+        let cloned_tests_started = tests_started.clone();
+        let cloned_token = cancellation.clone();
+
+        executing_items.spawn(async move {
+            select! {
+                _ = cloned_token.cancelled() => None,
+                result = run_request_item(
+                    cloned_workspace,
+                    cloned_token.clone(),
+                    cloned_tests_started,
+                    request_id,
+                    Arc::new(HashMap::new()),
+                ) => {
+                    Some(result)
+                }
+            }
+        });
+    }
+
+    let completed_items = executing_items.join_all().await;
+    let items: Vec<ApicizeExecutionItem> = completed_items.into_iter().flatten().collect();
+
+    let mut result = ApicizeExecution {
+        duration: tests_started.elapsed().as_millis(),
+        items: vec![],
+        success: true,
+        requests_with_passed_tests_count: 0,
+        requests_with_failed_tests_count: 0,
+        requests_with_errors: 0,
+        passed_test_count: 0,
+        failed_test_count: 0,
+    };
+
+    for item in &items {
+        result.add_totals(item);
+    }
+
+    result.items = items;
+    Ok(result)
+}
 
 #[allow(clippy::too_many_arguments)]
 #[async_recursion]
