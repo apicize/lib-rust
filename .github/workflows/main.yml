@@ -42,7 +42,9 @@ jobs:
             $HOME/.cargo/*
           key: ${{ runner.os }}-apicize-lib
           fail-on-cache-miss: true
-      - name: line lib-rust
+      - name: Add Rust to path
+        run: . "$HOME/.cargo/env"
+      - name: Run lint
         run: cargo clippy
 
   test:
@@ -58,8 +60,10 @@ jobs:
             $HOME/.cargo/*
           key: ${{ runner.os }}-apicize-lib
           fail-on-cache-miss: true
-      - name: line lib-rust
-        run: cargo clippy
+      - name: Add Rust to path
+        run: . "$HOME/.cargo/env"
+      - name: Run unit test
+        run: cargo test
       
 
   publish-crate:
@@ -79,6 +83,8 @@ jobs:
             $HOME/.cargo/*
           key: ${{ runner.os }}-apicize-lib
           fail-on-cache-miss: true
+      - name: Add Rust to path
+        run: . "$HOME/.cargo/env"
       - name: Build the project
         run: cargo build --release
       - name: Publish to crates.io
