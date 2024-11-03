@@ -1,7 +1,6 @@
 //! Apicize test execution.
 //!
 //! This library supports dispatching Apicize functional web tests
-
 use std::collections::HashMap;
 use std::sync::{Arc, Once};
 use std::time::{Duration, Instant};
@@ -20,14 +19,82 @@ use crate::apicize::{
     ApicizeExecutionItem, ApicizeExecutionRequest, ApicizeExecutionRequestRun, ApicizeRequest,
     ApicizeTestResponse, ExecutionTotals, ExecutionTotalsSource,
 };
-use crate::oauth2_client_tokens::get_oauth2_client_credentials;
 use crate::{apicize::ApicizeHttpResponse, WorkbookRequest};
 use crate::{
     ExecutionError, WorkbookAuthorization, WorkbookCertificate, WorkbookExecution, WorkbookProxy,
     WorkbookRequestBody, WorkbookRequestEntry, WorkbookRequestMethod, Workspace,
 };
 
+#[cfg(test)]
+use crate::oauth2_client_tokens::mock_functions::get_oauth2_client_credentials;
+
+#[cfg(not(test))]
+use crate::oauth2_client_tokens::functions::get_oauth2_client_credentials;
+
 static V8_INIT: Once = Once::new();
+
+/// Dispatch requests/groups in the specified workspace, optionally forcing the number of runs
+pub async fn run(
+    workspace: Arc<Workspace>,
+    request_ids: Option<Vec<String>>,
+    cancellation_token: Option<CancellationToken>,
+    tests_started: Arc<Instant>,
+) -> Result<ApicizeExecution, String> {
+    // Ensure V8 is initialized
+    V8_INIT.call_once(|| {
+        let platform = v8::new_unprotected_default_platform(0, false).make_shared();
+        v8::V8::initialize_platform(platform);
+        v8::V8::initialize();
+    });
+
+    let cancellation = match cancellation_token {
+        Some(t) => t,
+        None => CancellationToken::new(),
+    };
+
+    let request_ids_to_execute = request_ids.unwrap_or(workspace.requests.top_level_ids.clone());
+
+    let mut executing_items: JoinSet<Option<ApicizeExecutionItem>> = JoinSet::new();
+    for request_id in request_ids_to_execute {
+        let cloned_cancellation = cancellation.clone();
+        let executed_item = run_request_item(
+            workspace.clone(),
+            cancellation.clone(),
+            tests_started.clone(),
+            request_id.clone(),
+            Arc::new(HashMap::new()),
+        );
+        executing_items.spawn(async move {
+            select! {
+                _ = cloned_cancellation.cancelled() => None,
+                result = executed_item => {
+                    Some(result)
+                }
+            }
+        });
+    }
+
+    let completed_items = executing_items.join_all().await;
+    let items: Vec<ApicizeExecutionItem> = completed_items.into_iter().flatten().collect();
+
+    let mut result = ApicizeExecution {
+        duration: tests_started.elapsed().as_millis(),
+        items: vec![],
+        success: true,
+        requests_with_passed_tests_count: 0,
+        requests_with_failed_tests_count: 0,
+        requests_with_errors: 0,
+        passed_test_count: 0,
+        failed_test_count: 0,
+    };
+
+    for item in &items {
+        result.add_totals(item);
+    }
+
+    result.items = items;
+    Ok(result)
+}
 
 #[allow(clippy::too_many_arguments)]
 #[async_recursion]
@@ -39,7 +106,6 @@ async fn run_request_group(
     group_child_ids: Vec<String>,
     run_number: usize,
     mut variables: Arc<HashMap<String, Value>>,
-    override_runs: Arc<Option<usize>>,
 ) -> ApicizeExecutionGroupRun {
     let mut items: Vec<ApicizeExecutionItem> = vec![];
     let number_of_children = group_child_ids.len();
@@ -48,40 +114,35 @@ async fn run_request_group(
 
     if execution == WorkbookExecution::Sequential || number_of_children < 2 {
         for child_id in group_child_ids {
-            let child_result = run_request_item(
+            let executed_child = run_request_item(
                 workspace.clone(),
                 cancellation_token.clone(),
                 tests_started.clone(),
-                &child_id,
+                child_id.clone(),
                 variables.clone(),
-                override_runs.clone(),
             )
             .await;
 
-            if let Some(updated_variables) = child_result.get_variables() {
+            if let Some(updated_variables) = executed_child.get_variables() {
                 variables = Arc::new(updated_variables.clone());
             }
-            items.push(child_result);
+            items.push(executed_child);
         }
     } else {
         let mut child_items: JoinSet<Option<ApicizeExecutionItem>> = JoinSet::new();
         for id in group_child_ids {
-            let cloned_token = cancellation_token.clone();
-            let cloned_workspace = workspace.clone();
-            let cloned_tests_started = tests_started.clone();
-            let cloned_variables = variables.clone();
-            let cloned_override_runs = override_runs.clone();
+            let cloned_cancellation = cancellation_token.clone();
+            let executed_item = run_request_item(
+                workspace.clone(),
+                cancellation_token.clone(),
+                tests_started.clone(),
+                id,
+                variables.clone(),
+            );
             child_items.spawn(async move {
                 select! {
-                    _ = cloned_token.cancelled() => None,
-                    result =  run_request_item(
-                        cloned_workspace,
-                        cloned_token.clone(),
-                        cloned_tests_started,
-                        &id,
-                        cloned_variables,
-                        cloned_override_runs,
-                    ) => {
+                    _ = cloned_cancellation.cancelled() => None,
+                    result =  executed_item => {
                         Some(result)
                     }
                 }
@@ -124,17 +185,16 @@ async fn run_request_item(
     workspace: Arc<Workspace>,
     cancellation_token: CancellationToken,
     tests_started: Arc<Instant>,
-    request_id: &String,
+    request_id: String,
     variables: Arc<HashMap<String, Value>>,
-    override_runs: Arc<Option<usize>>,
 ) -> ApicizeExecutionItem {
-    let entity = workspace.requests.entities.get(request_id).unwrap();
+    let entity = workspace.requests.entities.get(&request_id).unwrap();
     let params = workspace.retrieve_parameters(entity, &variables);
     let name = entity.get_name().as_str();
 
     let executed_at = tests_started.elapsed().as_millis();
     let start_instant = Instant::now();
-    let number_of_runs = override_runs.unwrap_or(entity.get_runs());
+    let number_of_runs = entity.get_runs();
 
     match entity {
         WorkbookRequestEntry::Info(request) => {
@@ -162,23 +222,19 @@ async fn run_request_item(
                 let mut child_runs: JoinSet<Option<ApicizeExecutionRequestRun>> = JoinSet::new();
 
                 for ctr in 0..number_of_runs {
-                    let cloned_cancellation_token = cancellation_token.clone();
-                    let cloned_workspace = workspace.clone();
-                    let cloned_test_started = tests_started.clone();
-                    let cloned_request = shared_request.clone();
-                    let cloned_entry = shared_entity.clone();
-                    let cloned_variables = shared_variables.clone();
+                    let cloned_cancellation = cancellation_token.clone();
+                    let executed_request_run = execute_request_run(
+                        workspace.clone(),
+                        tests_started.clone(),
+                        ctr + 1,
+                        shared_request.clone(),
+                        shared_entity.clone(),
+                        shared_variables.clone(),
+                    );
                     child_runs.spawn(async move {
                         select! {
-                            _ = cloned_cancellation_token.cancelled() => None,
-                            result =  execute_request_run(
-                                cloned_workspace,
-                                cloned_test_started,
-                                ctr + 1,
-                                cloned_request,
-                                cloned_entry,
-                                cloned_variables,
-                            ) => {
+                            _ = cloned_cancellation.cancelled() => None,
+                            result =  executed_request_run => {
                                 Some(result)
                             }
                         }
@@ -192,7 +248,7 @@ async fn run_request_item(
             }
 
             let mut executed_request = ApicizeExecutionRequest {
-                id: String::from(request_id),
+                id: request_id,
                 name: String::from(name),
                 executed_at,
                 duration: start_instant.elapsed().as_millis(),
@@ -239,7 +295,6 @@ async fn run_request_item(
                                 group_child_ids.clone(),
                                 ctr + 1,
                                 variables.clone(),
-                                override_runs.clone(),
                             )
                             .await,
                         )
@@ -249,27 +304,20 @@ async fn run_request_item(
                     let mut executing_runs: JoinSet<Option<ApicizeExecutionGroupRun>> =
                         JoinSet::new();
                     for ctr in 0..number_of_runs {
-                        let cloned_workspace = workspace.clone();
-                        let cloned_token = cancellation_token.clone();
-                        let cloned_tests_started = tests_started.clone();
-                        let cloned_execution = group.execution.clone();
-                        let cloned_group_child_ids = group_child_ids.clone();
-                        let cloned_variables = variables.clone();
-                        let cloned_override_runs = override_runs.clone();
-
+                        let cloned_cancellation = cancellation_token.clone();
+                        let executed_group = run_request_group(
+                            workspace.clone(),
+                            cancellation_token.clone(),
+                            tests_started.clone(),
+                            group.execution.clone(),
+                            group_child_ids.clone(),
+                            ctr + 1,
+                            variables.clone(),
+                        );
                         executing_runs.spawn(async move {
                             select! {
-                                _ = cloned_token.cancelled() => None,
-                                result = run_request_group(
-                                    cloned_workspace,
-                                    cloned_token.clone(),
-                                    cloned_tests_started,
-                                    cloned_execution,
-                                    cloned_group_child_ids,
-                                    ctr + 1,
-                                    cloned_variables,
-                                    cloned_override_runs,
-                                ) => {
+                                _ = cloned_cancellation.cancelled() => None,
+                                result = executed_group => {
                                     Some(result)
                                 }
                             }
@@ -285,7 +333,7 @@ async fn run_request_item(
             }
 
             let mut executed_group = ApicizeExecutionGroup {
-                id: String::from(request_id),
+                id: request_id,
                 name: String::from(name),
                 executed_at,
                 duration: start_instant.elapsed().as_millis(),
@@ -308,77 +356,8 @@ async fn run_request_item(
     }
 }
 
-/// Dispatch requests/groups in the specified workspace, optionally forcing the number of runs
-pub async fn run(
-    workspace: Arc<Workspace>,
-    request_ids: Option<Vec<String>>,
-    cancellation_token: Option<CancellationToken>,
-    tests_started: Arc<Instant>,
-    override_runs: Option<usize>,
-) -> Result<ApicizeExecution, String> {
-    // Ensure V8 is initialized
-    V8_INIT.call_once(|| {
-        let platform = v8::new_unprotected_default_platform(0, false).make_shared();
-        v8::V8::initialize_platform(platform);
-        v8::V8::initialize();
-    });
-
-    let cancellation = match cancellation_token {
-        Some(t) => t,
-        None => CancellationToken::new(),
-    };
-
-    let request_ids_to_execute = request_ids.unwrap_or(workspace.requests.top_level_ids.clone());
-    let shared_override_runs = Arc::new(override_runs);
-
-    let mut executing_items: JoinSet<Option<ApicizeExecutionItem>> = JoinSet::new();
-    for request_id in request_ids_to_execute {
-        let cloned_workspace = workspace.clone();
-        let cloned_tests_started = tests_started.clone();
-        let cloned_token = cancellation.clone();
-        let cloned_override_runs = shared_override_runs.clone();
-
-        executing_items.spawn(async move {
-            select! {
-                _ = cloned_token.cancelled() => None,
-                result = run_request_item(
-                    cloned_workspace,
-                    cloned_token.clone(),
-                    cloned_tests_started,
-                    &request_id,
-                    Arc::new(HashMap::new()),
-                    cloned_override_runs,
-                ) => {
-                    Some(result)
-                }
-            }
-        });
-    }
-
-    let completed_items = executing_items.join_all().await;
-    let items: Vec<ApicizeExecutionItem> = completed_items.into_iter().flatten().collect();
-
-    let mut result = ApicizeExecution {
-        duration: tests_started.elapsed().as_millis(),
-        items: vec![],
-        success: true,
-        requests_with_passed_tests_count: 0,
-        requests_with_failed_tests_count: 0,
-        requests_with_errors: 0,
-        passed_test_count: 0,
-        failed_test_count: 0,
-    };
-
-    for item in &items {
-        result.add_totals(item);
-    }
-
-    result.items = items;
-    Ok(result)
-}
-
 /// Execute the specified request's tests
-pub fn execute_request_test(
+fn execute_request_test(
     request: &WorkbookRequest,
     response: &ApicizeHttpResponse,
     variables: &HashMap<String, Value>,
@@ -444,7 +423,7 @@ pub fn execute_request_test(
 }
 
 /// Dispatch the specified request and execute its tests
-pub async fn execute_request_run(
+async fn execute_request_run(
     workspace: Arc<Workspace>,
     tests_started: Arc<Instant>,
     run_number: usize,
@@ -564,7 +543,6 @@ pub async fn execute_request_run(
 async fn dispatch_request(
     request: &WorkbookRequest,
     variables: &HashMap<String, Value>,
-    // scenario: Option<&WorkbookScenario>,
     authorization: Option<&WorkbookAuthorization>,
     certificate: Option<&WorkbookCertificate>,
     proxy: Option<&WorkbookProxy>,
@@ -604,8 +582,6 @@ async fn dispatch_request(
             } else {
                 format!("{}", value)
             };
-
-            // (pair.name.as_str(), pair.value.as_str())
             (format!("{{{{{}}}}}", name), v)
         })
         .collect();
@@ -632,6 +608,7 @@ async fn dispatch_request(
     }
 
     let builder_result = reqwest_builder.build();
+
     match builder_result {
         Ok(client) => {
             let mut request_builder = client.request(
@@ -891,4 +868,304 @@ pub fn cleanup_v8() {
         v8::V8::dispose();
     }
     v8::V8::dispose_platform();
+}
+
+#[cfg(test)]
+mod tests {
+    use mockito::Matcher;
+    use serde_json::Value;
+    use std::{collections::HashMap, sync::Arc, time::Instant};
+
+    use crate::{
+        apicize::ApicizeHttpResponse, oauth2_client_tokens::mock_functions, test_runner::{dispatch_request, execute_request_test}, WorkbookCertificate, WorkbookNameValuePair, WorkbookProxy, WorkbookRequest, WorkbookRequestMethod
+    };
+
+    #[tokio::test]
+    async fn dispatch_requests_with_substituted_variables() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/test")
+            .match_query(Matcher::AllOf(vec![Matcher::UrlEncoded(
+                "abc".into(),
+                "123".into(),
+            )]))
+            .match_header("xxx", "zzz")
+            .match_body("foo")
+            .with_status(200)
+            .with_header("Content-Type", "text/plain")
+            .with_body("ok")
+            .create();
+
+        let request = WorkbookRequest {
+            id: String::from(""),
+            name: String::from("test"),
+            url: server.url() + "/{{page}}",
+            method: Some(WorkbookRequestMethod::Post),
+            multi_run_execution: crate::WorkbookExecution::Sequential,
+            timeout: None,
+            keep_alive: None,
+            runs: 1,
+            headers: Some(vec![WorkbookNameValuePair {
+                name: String::from("xxx"),
+                value: String::from("{{xxx}}"),
+                disabled: None,
+            }]),
+            query_string_params: Some(vec![WorkbookNameValuePair {
+                name: String::from("abc"),
+                value: String::from("{{abc}}"),
+                disabled: None,
+            }]),
+            body: Some(crate::WorkbookRequestBody::Text {
+                data: String::from("{{stuff}}"),
+            }),
+            test: None,
+            selected_scenario: None,
+            selected_authorization: None,
+            selected_certificate: None,
+            selected_proxy: None,
+            warnings: None,
+        };
+
+        let variables = HashMap::from([
+            (String::from("page"), Value::from("test")),
+            (String::from("abc"), Value::from("123")),
+            (String::from("xxx"), Value::from("zzz")),
+            (String::from("stuff"), Value::from("foo")),
+        ]);
+        let response = dispatch_request(&request, &variables, None, None, None, None, None).await;
+        mock.assert();
+        assert_eq!(response.unwrap().1.status, 200);
+    }
+
+    #[tokio::test]
+    async fn dispatch_requests_with_basic_auth() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/test")
+            .match_header("Authorization", "Basic bmFtZTpzaGho")
+            .with_status(200)
+            .with_header("Content-Type", "text/plain")
+            .with_body("ok")
+            .create();
+
+        let request = WorkbookRequest {
+            id: String::from(""),
+            name: String::from("test"),
+            url: server.url() + "/test",
+            method: Some(WorkbookRequestMethod::Post),
+            multi_run_execution: crate::WorkbookExecution::Sequential,
+            timeout: None,
+            keep_alive: None,
+            runs: 1,
+            headers: None,
+            query_string_params: None,
+            body: None,
+            test: None,
+            selected_scenario: None,
+            selected_authorization: None,
+            selected_certificate: None,
+            selected_proxy: None,
+            warnings: None,
+        };
+
+        let response = dispatch_request(
+            &request,
+            &HashMap::new(),
+            Some(&crate::WorkbookAuthorization::Basic {
+                id: String::from(""),
+                name: String::from(""),
+                persistence: None,
+                username: String::from("name"),
+                password: String::from("shhh"),
+            }),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await;
+        mock.assert();
+        assert_eq!(response.unwrap().1.status, 200);
+    }
+
+    #[tokio::test]
+    async fn dispatch_requests_with_api_key_auth() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/test")
+            .match_header("x-api-key", "abc")
+            .with_status(200)
+            .with_header("Content-Type", "text/plain")
+            .with_body("ok")
+            .create();
+
+        let request = WorkbookRequest {
+            id: String::from(""),
+            name: String::from("test"),
+            url: server.url() + "/test",
+            method: Some(WorkbookRequestMethod::Post),
+            multi_run_execution: crate::WorkbookExecution::Sequential,
+            timeout: None,
+            keep_alive: None,
+            runs: 1,
+            headers: None,
+            query_string_params: None,
+            body: None,
+            test: None,
+            selected_scenario: None,
+            selected_authorization: None,
+            selected_certificate: None,
+            selected_proxy: None,
+            warnings: None,
+        };
+
+        let response = dispatch_request(
+            &request,
+            &HashMap::new(),
+            Some(&crate::WorkbookAuthorization::ApiKey {
+                id: String::from(""),
+                name: String::from(""),
+                persistence: None,
+                header: String::from("x-api-key"),
+                value: String::from("abc"),
+            }),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await;
+        mock.assert();
+        assert_eq!(response.unwrap().1.status, 200);
+    }
+
+    #[tokio::test]
+    async fn dispatch_requests_with_oauth2_auth() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/test")
+            .match_header("authorization", "Bearer ***TOKEN***")
+            .with_status(200)
+            .with_header("Content-Type", "text/plain")
+            .with_body("ok")
+            .create();
+
+        let request = WorkbookRequest {
+            id: String::from(""),
+            name: String::from("test"),
+            url: server.url() + "/test",
+            method: Some(WorkbookRequestMethod::Post),
+            multi_run_execution: crate::WorkbookExecution::Sequential,
+            timeout: None,
+            keep_alive: None,
+            runs: 1,
+            headers: None,
+            query_string_params: None,
+            body: None,
+            test: None,
+            selected_scenario: None,
+            selected_authorization: None,
+            selected_certificate: None,
+            selected_proxy: None,
+            warnings: None,
+        };
+
+        let oauth2_context = mock_functions::get_oauth2_client_credentials_context();
+        oauth2_context
+            .expect()
+            .withf(
+                |id, url, _client_id, _client_secret, _scope, _certificaite, _proxy| {
+                    id == String::from("11111") && url == String::from("https://server")
+                },
+            )
+            .returning(
+                |_id: &str,
+                 _token_url: &str,
+                 _client_id: &str,
+                 _client_secret: &str,
+                 _scope: &Option<String>,
+                 _certificate: Option<&WorkbookCertificate>,
+                 _proxy: Option<&WorkbookProxy>| {
+                    Ok((String::from("***TOKEN***"), false))
+                },
+            );
+
+        let response = dispatch_request(
+            &request,
+            &HashMap::new(),
+            Some(&crate::WorkbookAuthorization::OAuth2Client {
+                id: String::from("11111"),
+                name: String::from("My Token"),
+                persistence: None,
+                access_token_url: String::from("https://server"),
+                client_id: String::from("me"),
+                client_secret: String::from("shhh"),
+                scope: Some(String::from("x")),
+                selected_certificate: None,
+                selected_proxy: None,
+            }),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await;
+        mock.assert();
+        assert_eq!(response.unwrap().1.status, 200);
+    }
+
+    #[tokio::test]
+    async fn execute_request_test_runs_test() {
+        // Ensure V8 is initialized
+        let platform = v8::new_unprotected_default_platform(0, false).make_shared();
+        v8::V8::initialize_platform(platform);
+        v8::V8::initialize();
+
+        let request = WorkbookRequest {
+            id: String::from("xxx"),
+            name: String::from("xxx"),
+            test: Some(String::from("describe('test', () => { it('runs', () => { expect(response.status).to.equal(200) }) })")),
+            url: String::from("http://foo"),
+            method: Some(WorkbookRequestMethod::Get),
+            timeout: Some(5000),
+            headers: None,
+            query_string_params: None,
+            body: None,
+            keep_alive: None,
+            runs: 1,
+            multi_run_execution: crate::WorkbookExecution::Sequential,
+            selected_scenario: None,
+            selected_authorization: None,
+            selected_certificate: None,
+            selected_proxy: None,
+            warnings: None,
+        };
+
+        let response = ApicizeHttpResponse {
+            status: 200,
+            status_text: String::from("Ok"),
+            headers: None,
+            body: None,
+            auth_token_cached: None,
+        };
+
+        let variables: HashMap<String, Value> = HashMap::new();
+
+        let tests_started = Arc::new(Instant::now());
+
+        let result = execute_request_test(&request, &response, &variables, &tests_started);
+
+        let mut successes = 0;
+        let mut failures = 0;
+        for test_result in result.unwrap().unwrap().results.unwrap().iter() {
+            if test_result.success {
+                successes += 1;
+            } else {
+                failures += 1;
+            }
+        }
+
+        assert_eq!(successes, 1);
+        assert_eq!(failures, 0);
+    }
 }

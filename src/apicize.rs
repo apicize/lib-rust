@@ -1,6 +1,6 @@
 //! Apicize models submodule
 //!
-//! This submodule defines models used to execute Apicize tests
+//! This submodule defines models used to execute Apicize tests and report their results
 
 use std::collections::HashMap;
 

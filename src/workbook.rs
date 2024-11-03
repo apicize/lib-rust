@@ -313,9 +313,6 @@ pub enum WorkbookAuthorization {
         header: String,
         /// Value of key to include as header value
         value: String,
-        /// Selected certificate, if applicable
-        #[serde(skip_serializing_if = "Option::is_none")]
-        selected_certificate: Option<Selection>,
     },
 }
 
