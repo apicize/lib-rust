@@ -5,6 +5,9 @@ on:
     tags:
       - '*'
 
+env:
+  HOME: $HOME:$HOME/.cargo/bin
+
 jobs:
   init:
     name: Initialize project and build environment
@@ -13,14 +16,15 @@ jobs:
       - name: Checkout project
         uses: actions/checkout@v4
       - name: Install Rust and dependencies
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       - name: Cache initialized setup
-        uses: actions/cache@v4
+        uses: actions/cache/save@v4
         with:
-          path: apicize-lib
+          path: |
+            .
+            $HOME/.cargo
           key: ${{ runner.os }}-apicize-lib
 
   lint:
