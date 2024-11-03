@@ -2,14 +2,22 @@
 //!
 //! This submodule defines modules used to manage workspaces
 
-use super::{open_data_file, workbook::*, Identifable, Parameters, SelectableOptions, SerializationFailure, SerializationSaveSuccess};
+
+use crate::{apicize::{ApicizeExecution, ApicizeExecutionItem, ExecutionTotals}, run_request_item};
+
+use super::{
+    open_data_file, workbook::*, Identifable, Parameters, SelectableOptions, SerializationFailure,
+    SerializationSaveSuccess,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{collections::{HashMap, HashSet}, path::{Path, PathBuf}};
+use tokio::{select, task::JoinSet};
+use tokio_util::sync::CancellationToken;
+use std::{
+    collections::{HashMap, HashSet}, path::{Path, PathBuf}, sync::Arc, time::Instant
+};
 
 const NO_SELECTION_ID: &str = "\tNONE\t";
-
-
 
 /// Trait representing parameter entity with a unique identifier
 pub trait WorkspaceParameter<T> {
@@ -628,6 +636,65 @@ impl Workspace {
         Ok(successes)
     }
 
+    // /// Dispatch requests/groups in the specified workspace, optionally forcing the number of runs.
+    pub async fn run(
+        self,
+        request_ids: Option<Vec<String>>,
+        cancellation_token: Option<CancellationToken>,
+        tests_started: Arc<Instant>,
+    ) -> Result<ApicizeExecution, String> {
+        let cancellation = match cancellation_token {
+            Some(t) => t,
+            None => CancellationToken::new(),
+        };
+
+        let request_ids_to_execute =
+            request_ids.unwrap_or(self.requests.top_level_ids.clone());
+
+        let shard_workspace = Arc::new(self);
+
+        let mut executing_items: JoinSet<Option<ApicizeExecutionItem>> = JoinSet::new();
+        for request_id in request_ids_to_execute {
+            let cloned_cancellation = cancellation.clone();
+            let executed_item = run_request_item(
+                shard_workspace.clone(),
+                cancellation.clone(),
+                tests_started.clone(),
+                request_id.clone(),
+                Arc::new(HashMap::new()),
+            );
+            executing_items.spawn(async move {
+                select! {
+                    _ = cloned_cancellation.cancelled() => None,
+                    result = executed_item => {
+                        Some(result)
+                    }
+                }
+            });
+        }
+
+        let completed_items = executing_items.join_all().await;
+        let items: Vec<ApicizeExecutionItem> = completed_items.into_iter().flatten().collect();
+
+        let mut result = ApicizeExecution {
+            duration: tests_started.elapsed().as_millis(),
+            items: vec![],
+            success: true,
+            requests_with_passed_tests_count: 0,
+            requests_with_failed_tests_count: 0,
+            requests_with_errors: 0,
+            passed_test_count: 0,
+            failed_test_count: 0,
+        };
+
+        for item in &items {
+            result.add_totals(item);
+        }
+
+        result.items = items;
+        Ok(result)
+    }
+
     /// Retrieve the parameters for the specified request, merging in the specified variables to scenario (if specified)
     pub fn retrieve_parameters(
         &self,
@@ -906,7 +973,6 @@ impl SelectableOptions for Workspace {
     }
 }
 
-
 impl Warnings for Workspace {
     fn get_warnings(&self) -> &Option<Vec<String>> {
         &self.warnings
@@ -915,7 +981,7 @@ impl Warnings for Workspace {
     fn add_warning(&mut self, warning: String) {
         match &mut self.warnings {
             Some(warnings) => warnings.push(warning),
-            None => self.warnings = Some(vec![warning])
+            None => self.warnings = Some(vec![warning]),
         }
     }
 }

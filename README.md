@@ -20,7 +20,7 @@ The function `Workspace::save` persists workspace information to workbook, priva
 are saved to a file with the same name as the workbook but with an `.apicize-priv` extension.  Global parameters are saved to the 
 user's OS configuration directory under `apicize/globals.json`.
 
-## Executing Tests
+## Executing Tests in a workbook
 
-Tests are executed via the `TestRunner::run` function, which takes a workspace, a list of request IDs to execute, an optional
+Tests are executed via the `Workspace::run` function, which takes a workspace, a list of request IDs to execute, an optional
 cancellation token, and the instant that testing was started.

@@ -15,7 +15,7 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
 use crate::apicize::{
-    ApicizeBody, ApicizeExecution, ApicizeExecutionGroup, ApicizeExecutionGroupRun,
+    ApicizeBody, ApicizeExecutionGroup, ApicizeExecutionGroupRun,
     ApicizeExecutionItem, ApicizeExecutionRequest, ApicizeExecutionRequestRun, ApicizeRequest,
     ApicizeTestResponse, ExecutionTotals, ExecutionTotalsSource,
 };
@@ -26,75 +26,12 @@ use crate::{
 };
 
 #[cfg(test)]
-use crate::oauth2_client_tokens::mock_functions::get_oauth2_client_credentials;
+use crate::oauth2_client_tokens::tests::MockOAuth2ClientTokens as oauth2;
 
 #[cfg(not(test))]
-use crate::oauth2_client_tokens::functions::get_oauth2_client_credentials;
+use crate::oauth2_client_tokens as oauth2;
 
 static V8_INIT: Once = Once::new();
-
-/// Dispatch requests/groups in the specified workspace, optionally forcing the number of runs
-pub async fn run(
-    workspace: Arc<Workspace>,
-    request_ids: Option<Vec<String>>,
-    cancellation_token: Option<CancellationToken>,
-    tests_started: Arc<Instant>,
-) -> Result<ApicizeExecution, String> {
-    // Ensure V8 is initialized
-    V8_INIT.call_once(|| {
-        let platform = v8::new_unprotected_default_platform(0, false).make_shared();
-        v8::V8::initialize_platform(platform);
-        v8::V8::initialize();
-    });
-
-    let cancellation = match cancellation_token {
-        Some(t) => t,
-        None => CancellationToken::new(),
-    };
-
-    let request_ids_to_execute = request_ids.unwrap_or(workspace.requests.top_level_ids.clone());
-
-    let mut executing_items: JoinSet<Option<ApicizeExecutionItem>> = JoinSet::new();
-    for request_id in request_ids_to_execute {
-        let cloned_cancellation = cancellation.clone();
-        let executed_item = run_request_item(
-            workspace.clone(),
-            cancellation.clone(),
-            tests_started.clone(),
-            request_id.clone(),
-            Arc::new(HashMap::new()),
-        );
-        executing_items.spawn(async move {
-            select! {
-                _ = cloned_cancellation.cancelled() => None,
-                result = executed_item => {
-                    Some(result)
-                }
-            }
-        });
-    }
-
-    let completed_items = executing_items.join_all().await;
-    let items: Vec<ApicizeExecutionItem> = completed_items.into_iter().flatten().collect();
-
-    let mut result = ApicizeExecution {
-        duration: tests_started.elapsed().as_millis(),
-        items: vec![],
-        success: true,
-        requests_with_passed_tests_count: 0,
-        requests_with_failed_tests_count: 0,
-        requests_with_errors: 0,
-        passed_test_count: 0,
-        failed_test_count: 0,
-    };
-
-    for item in &items {
-        result.add_totals(item);
-    }
-
-    result.items = items;
-    Ok(result)
-}
 
 #[allow(clippy::too_many_arguments)]
 #[async_recursion]
@@ -181,7 +118,7 @@ async fn run_request_group(
 /// Run the specified request entry recursively.  We are marking everything
 /// static since this is being launched in a spawn
 #[async_recursion]
-async fn run_request_item(
+pub async fn run_request_item(
     workspace: Arc<Workspace>,
     cancellation_token: CancellationToken,
     tests_started: Arc<Instant>,
@@ -367,6 +304,12 @@ fn execute_request_test(
     if request.test.is_none() {
         return Ok(None);
     }
+    // Ensure V8 is initialized
+    V8_INIT.call_once(|| {
+        let platform = v8::new_unprotected_default_platform(0, false).make_shared();
+        v8::V8::initialize_platform(platform);
+        v8::V8::initialize();
+    });
 
     // Create a new Isolate and make it the current one.
     let isolate = &mut v8::Isolate::new(v8::CreateParams::default());
@@ -656,7 +599,7 @@ async fn dispatch_request(
                     scope, // send_credentials_in_body: _,
                     ..
                 }) => {
-                    match get_oauth2_client_credentials(
+                    match oauth2::get_oauth2_client_credentials(
                         id,
                         access_token_url,
                         client_id,
@@ -877,8 +820,10 @@ mod tests {
     use std::{collections::HashMap, sync::Arc, time::Instant};
 
     use crate::{
-        apicize::ApicizeHttpResponse, oauth2_client_tokens::mock_functions, test_runner::{dispatch_request, execute_request_test}, WorkbookCertificate, WorkbookNameValuePair, WorkbookProxy, WorkbookRequest, WorkbookRequestMethod
+        apicize::ApicizeHttpResponse, test_runner::{dispatch_request, execute_request_test}, WorkbookCertificate, WorkbookNameValuePair, WorkbookProxy, WorkbookRequest, WorkbookRequestMethod
     };
+
+    use crate::oauth2_client_tokens::tests::MockOAuth2ClientTokens;
 
     #[tokio::test]
     async fn dispatch_requests_with_substituted_variables() {
@@ -1070,7 +1015,7 @@ mod tests {
             warnings: None,
         };
 
-        let oauth2_context = mock_functions::get_oauth2_client_credentials_context();
+        let oauth2_context = MockOAuth2ClientTokens::get_oauth2_client_credentials_context();
         oauth2_context
             .expect()
             .withf(
@@ -1116,11 +1061,6 @@ mod tests {
 
     #[tokio::test]
     async fn execute_request_test_runs_test() {
-        // Ensure V8 is initialized
-        let platform = v8::new_unprotected_default_platform(0, false).make_shared();
-        v8::V8::initialize_platform(platform);
-        v8::V8::initialize();
-
         let request = WorkbookRequest {
             id: String::from("xxx"),
             name: String::from("xxx"),
