@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.9.2
+
+* Move run back under TestRunner
+
 # 0.9.1
 
 * Move run to Workspace, restore orig oauth2 client tokens

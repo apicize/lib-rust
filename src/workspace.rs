@@ -636,9 +636,9 @@ impl Workspace {
         Ok(successes)
     }
 
-    // /// Dispatch requests/groups in the specified workspace, optionally forcing the number of runs.
+    /// Dispatch requests/groups in the specified workspace, optionally forcing the number of runs.
     pub async fn run(
-        self,
+        workspace: Arc<Workspace>,
         request_ids: Option<Vec<String>>,
         cancellation_token: Option<CancellationToken>,
         tests_started: Arc<Instant>,
@@ -649,15 +649,13 @@ impl Workspace {
         };
 
         let request_ids_to_execute =
-            request_ids.unwrap_or(self.requests.top_level_ids.clone());
-
-        let shard_workspace = Arc::new(self);
+            request_ids.unwrap_or(workspace.requests.top_level_ids.clone());
 
         let mut executing_items: JoinSet<Option<ApicizeExecutionItem>> = JoinSet::new();
         for request_id in request_ids_to_execute {
             let cloned_cancellation = cancellation.clone();
             let executed_item = run_request_item(
-                shard_workspace.clone(),
+                workspace.clone(),
                 cancellation.clone(),
                 tests_started.clone(),
                 request_id.clone(),
