@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.9.3
+
+* Bug Fixes
+
 # 0.9.2
 
 * Move run back under TestRunner
