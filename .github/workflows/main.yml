@@ -17,14 +17,21 @@ jobs:
         uses: actions/checkout@v4
       - name: Install Rust and dependencies
         run: |
+          curl https://sh.rustup.rs -sSf | sh -s -- -y
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: List Rust files
+        run: |
+           ls -l $HOME/.cargo
       - name: Cache initialized setup
         uses: actions/cache/save@v4
         with:
           path: |
-            .
-            $HOME/.cargo
+            ./*
+            ./**
+            /usr/lib/*
+            $HOME/.cargo/*
+            $HOME/.cargo/**
           key: ${{ runner.os }}-apicize-lib
 
   lint:
