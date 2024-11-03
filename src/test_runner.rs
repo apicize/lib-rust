@@ -37,7 +37,6 @@ pub async fn run(
     request_ids: Option<Vec<String>>,
     cancellation_token: Option<CancellationToken>,
     tests_started: Arc<Instant>,
-    override_runs: Option<usize>,
 ) -> Result<ApicizeExecution, String> {
     // Ensure V8 is initialized
     V8_INIT.call_once(|| {
