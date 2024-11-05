@@ -20,7 +20,28 @@ The function `Workspace::save` persists workspace information to workbook, priva
 are saved to a file with the same name as the workbook but with an `.apicize-priv` extension.  Global parameters are saved to the 
 user's OS configuration directory under `apicize/globals.json`.
 
-## Executing Tests in a workbook
+## Executing Tests in a Workspace
 
-Tests are executed via the `Workspace::run` function, which takes a workspace, a list of request IDs to execute, an optional
-cancellation token, and the instant that testing was started.
+Tests are executed via the `test_runner::run` function, which accepts an Arc to the workspace being tested, an optional list of request IDs to execute (defaults to all), an optional
+cancellation token, and an Arc to instant that testing was started.
+
+## JavaScript Testing
+
+This library leverages [V8](https://v2.dev) to execute tests to validate requests.  This sandboxed envioronment does not include NodeJS or Browser functionality, primarily to prevent arbitrary test code in a Workbook from doing anything harmful.
+
+The following variables and functions are available in the testing sandbox:
+
+* **request**:  A variable containing the submitted HTTP request
+* **response**:  A variable containing the HTTP response
+* **variables**:  A variable containing key-value pairs originally sourced from the assigned Scenario parameter, but can be updated to pass values to subsequent and child requests in a group
+* **assert**:  An exported function of [Chai's Node assertion style](https://www.chaijs.com/api/assert/)
+* **expect** / **should**:  Exported functions of [Chai's BDD assertion style](https://www.chaijs.com/api/bdd/)
+* **jsonpath**:  An exported function of [JSONPath Plus](https://www.npmjs.com/package/jsonpath-plus)
+* **xpath**:  An exported function of [XPath](https://www.npmjs.com/package/xpath)
+* **dom**:  An exported function of [xmldom](https://www.npmjs.com/package/@xmldom/xmldom)
+
+### Buliding JavaScript Dependencies
+
+The [build.rs](./build.rs) file triggers a Webpack build of the JavaScript dependencies defined in [./src/static](./src/static/src/index.js).  Adding new functionality involves adding depdencies to [package.json](./src/static/src/package.json) and then exposing variables/functions in [index.js](./src/static/src/index.js).  Note that when creating variables that are exposed to the test runner you should *not* use `const`, `var` or `let` to define them.  Also, you should add tests to [test_runner.rs](./src/test_runner.rs) to ensure any
+additions are working properly upon rebuild.
+

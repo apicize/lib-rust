@@ -37,7 +37,7 @@ pub async fn run(
     request_ids: Option<Vec<String>>,
     cancellation_token: Option<CancellationToken>,
     tests_started: Arc<Instant>,
-) -> Result<ApicizeExecution, String> {
+) -> Result<ApicizeExecution, ExecutionError> {
     // Ensure V8 is initialized
     V8_INIT.call_once(|| {
         let platform = v8::new_unprotected_default_platform(0, false).make_shared();
@@ -384,7 +384,6 @@ fn execute_request_test(
 
     let mut init_code = String::new();
     init_code.push_str(include_str!("./static/framework.min.js"));
-    init_code.push_str(include_str!("./static/routines.js"));
 
     // Compile the source code
     let v8_code = v8::String::new(scope, &init_code).unwrap();
@@ -1161,6 +1160,14 @@ mod tests {
         let mut successes = 0;
         let mut failures = 0;
         for test_result in result.unwrap().unwrap().results.unwrap().iter() {
+
+            // if let Some(logs) = &test_result.logs {
+            //     println!("Logs: {}", logs.join("; "));
+            // }
+            // if let Some(error) = &test_result.error {
+            //     println!("Error: {}", error);
+            // }
+    
             if test_result.success {
                 successes += 1;
             } else {
@@ -1171,4 +1178,120 @@ mod tests {
         assert_eq!(successes, 1);
         assert_eq!(failures, 0);
     }
+
+    #[tokio::test]
+    async fn execute_request_test_includes_jsonpath() {
+        let request = WorkbookRequest {
+            id: String::from("xxx"),
+            name: String::from("xxx"),
+            test: Some(String::from("describe('test', () => { it('works', () => { var foo = { \"abc\": 123 }; expect(jsonpath('$.abc', foo)[0]).to.equal(123) }) })")),
+            url: String::from("http://foo"),
+            method: Some(WorkbookRequestMethod::Get),
+            timeout: Some(5000),
+            headers: None,
+            query_string_params: None,
+            body: None,
+            keep_alive: None,
+            runs: 1,
+            multi_run_execution: crate::WorkbookExecution::Sequential,
+            selected_scenario: None,
+            selected_authorization: None,
+            selected_certificate: None,
+            selected_proxy: None,
+            warnings: None,
+        };
+
+        let response = ApicizeHttpResponse {
+            status: 200,
+            status_text: String::from("Ok"),
+            headers: None,
+            body: None,
+            auth_token_cached: None,
+        };
+
+        let variables: HashMap<String, Value> = HashMap::new();
+
+        let tests_started = Arc::new(Instant::now());
+
+        let result = execute_request_test(&request, &response, &variables, &tests_started);
+
+        let mut successes = 0;
+        let mut failures = 0;
+        for test_result in result.unwrap().unwrap().results.unwrap().iter() {
+            // if let Some(logs) = &test_result.logs {
+            //     println!("Logs: {}", logs.join("; "));
+            // }
+            // if let Some(error) = &test_result.error {
+            //     println!("Error: {}", error);
+            // }
+            if test_result.success {
+                successes += 1;
+            } else {
+                failures += 1;
+            }
+        }
+
+        assert_eq!(successes, 1);
+        assert_eq!(failures, 0);
+    }
+
+    #[tokio::test]
+    async fn execute_request_test_includes_xpath() {
+        let request = WorkbookRequest {
+            id: String::from("xxx"),
+            name: String::from("xxx"),
+            test: Some(String::from("describe('test', () => { it('works', () => { const xml = \"<foo><bar>test</bar></foo>\"; const doc = new dom().parseFromString(xml, 'text/xml'); expect(xpath.select('//bar', doc)[0].firstChild.data).to.equal('test') }) })")),
+            url: String::from("http://foo"),
+            method: Some(WorkbookRequestMethod::Get),
+            timeout: Some(5000),
+            headers: None,
+            query_string_params: None,
+            body: None,
+            keep_alive: None,
+            runs: 1,
+            multi_run_execution: crate::WorkbookExecution::Sequential,
+            selected_scenario: None,
+            selected_authorization: None,
+            selected_certificate: None,
+            selected_proxy: None,
+            warnings: None,
+        };
+
+        let response = ApicizeHttpResponse {
+            status: 200,
+            status_text: String::from("Ok"),
+            headers: None,
+            body: None,
+            auth_token_cached: None,
+        };
+
+        let variables: HashMap<String, Value> = HashMap::new();
+
+        let tests_started = Arc::new(Instant::now());
+
+        let result = execute_request_test(&request, &response, &variables, &tests_started);
+
+        let mut successes = 0;
+        let mut failures = 0;
+        for test_result in result.unwrap().unwrap().results.unwrap().iter() {
+            // if let Some(logs) = &test_result.logs {
+            //     println!("Logs: {}", logs.join("; "));
+            // }
+            // if let Some(error) = &test_result.error {
+            //     println!("Error: {}", error);
+            // }
+            if test_result.success {
+                successes += 1;
+            } else {
+                failures += 1;
+            }
+        }
+
+        assert_eq!(successes, 1);
+        assert_eq!(failures, 0);
+    }
+
+
+
+
 }

@@ -1,5 +1,10 @@
 # Change Log
 
+# 0.10.0
+
+* Add JSONPath and XPath libraries for Javascript testing
+* Trigger Webpack from Cargo build
+
 # 0.9.3
 
 * Bug Fixes
