@@ -1,11 +1,11 @@
 use std::{path::Path, process::Command};
 
 fn main() {
-    let node_modules = Path::new("./test-framework");
+    let node_modules = Path::new("./test-framework/node_modules");
     if !node_modules.exists() {
         let result_install = Command::new("npm")
             .current_dir("./test-framework")
-            .args(&["install"])
+            .args(["install"])
             .status();
 
         match result_install {
@@ -22,7 +22,7 @@ fn main() {
 
     let result_build = Command::new("npm")
         .current_dir("./test-framework")
-        .args(&["run", "build"])
+        .args(["run", "build"])
         .status();
 
     match result_build {
