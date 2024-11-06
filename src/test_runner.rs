@@ -383,7 +383,7 @@ fn execute_request_test(
     let scope = &mut v8::ContextScope::new(scope, context);
 
     let mut init_code = String::new();
-    init_code.push_str(include_str!("./static/framework.min.js"));
+    init_code.push_str(include_str!(concat!(env!("OUT_DIR"), "/framework.min.js")));
 
     // Compile the source code
     let v8_code = v8::String::new(scope, &init_code).unwrap();

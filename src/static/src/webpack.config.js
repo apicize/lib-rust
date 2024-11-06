@@ -1,21 +1,30 @@
+const path = require('path');
+const { stderr } = require('process');
 const TerserPlugin = require('terser-webpack-plugin');
 // const UglifyPlugin = require('uglifyjs-webpack-plugin');
 
-const PROD = JSON.parse(process.env.PROD_ENV || '0');
+const out_dir = process.env["OUT_DIR"];
+if ((out_dir?.length ?? 0) === 0) {
+    throw new Error("OUT_DIR must be defined")
+}
+
+const filename = path.relative(process.cwd(), path.join(out_dir, "framework.min.js")).substring(3);
+console.error("Writing framework file to " + filename + "\n");
+
 
 module.exports = {
 
     entry: './index.js',
     //   devtool: 'source-map',
     output: {
-        path: __dirname + '/..',
-        filename: 'framework.min.js'
+        path: path.join(__dirname , ".."),
+        filename
     },
     mode: 'production',
     performance: {
         maxAssetSize: 9999999,
         assetFilter: (asset) => {
-            return asset.match('framwork.min.js')
+            return asset.match(filename)
         }
     },
     optimization: {
