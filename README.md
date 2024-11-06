@@ -42,6 +42,6 @@ The following variables and functions are available in the testing sandbox:
 
 ### Buliding JavaScript Dependencies
 
-The [build.rs](./build.rs) file triggers a Webpack build of the JavaScript dependencies defined in [./src/static](./src/static/src/index.js).  Adding new functionality involves adding depdencies to [package.json](./src/static/src/package.json) and then exposing variables/functions in [index.js](./src/static/src/index.js).  Note that when creating variables that are exposed to the test runner you should *not* use `const`, `var` or `let` to define them.  Also, you should add tests to [test_runner.rs](./src/test_runner.rs) to ensure any
+The [build.rs](./build.rs) file triggers a Webpack build of the JavaScript dependencies defined in [./test-framework](./test-framework/index.js).  Adding new functionality involves adding depdencies to [./test-framework/package.json](./test-framework/package.json) and then exposing variables/functions in [./test-framework/index.js](./test-framework/index.js).  Note that when creating variables that are exposed to the test runner you should *not* use `const`, `var` or `let` to define them.  Also, you should add tests to [test_runner.rs](./src/test_runner.rs) to ensure any
 additions are working properly upon rebuild.
 

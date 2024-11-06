@@ -1,10 +1,10 @@
 use std::{path::Path, process::Command};
 
 fn main() {
-    let node_modules = Path::new("./src/static/src/node_modules");
+    let node_modules = Path::new("./test-framework");
     if !node_modules.exists() {
         let result_install = Command::new("npm")
-            .current_dir("./src/static/src")
+            .current_dir("./test-framework")
             .args(&["install"])
             .status();
 
@@ -21,20 +21,20 @@ fn main() {
     }
 
     let result_build = Command::new("npm")
-        .current_dir("./src/static/src")
+        .current_dir("./test-framework")
         .args(&["run", "build"])
         .status();
 
     match result_build {
         Ok(status) => {
             if !status.success() {
-                panic!("Unable to build framework JavaScript");
+                panic!("Unable to build test framework JavaScript");
             }
         }
         Err(err) => {
-            panic!("Error building framework JavaScript: {}", err);
+            panic!("Error building test framework JavaScript: {}", err);
         }
     }
 
-    println!("cargo::rerun-if-changed=src/static");
+    println!("cargo::rerun-if-changed=test-framework");
 }
