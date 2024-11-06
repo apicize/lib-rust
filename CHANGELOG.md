@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.10.1
+
+* Implement Serialize for ExecutionError
+
 # 0.10.0
 
 * Add JSONPath and XPath libraries for Javascript testing

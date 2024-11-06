@@ -1,5 +1,3 @@
-//! oauth2_client_tokens
-//!
 //! This module implements OAuth2 client flow support, including support for caching tokens
 use crate::{ExecutionError, WorkbookCertificate, WorkbookProxy};
 use oauth2::basic::BasicClient;
