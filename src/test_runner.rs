@@ -933,7 +933,7 @@ mod tests {
         let request = WorkbookRequest {
             id: String::from(""),
             name: String::from("test"),
-            url: String::from("http://zxdasdfasdfaawe.cz1"),
+            url: String::from("https://foofooxxxxxx/"),
             method: Some(WorkbookRequestMethod::Post),
             multi_run_execution: crate::WorkbookExecution::Sequential,
             timeout: None,

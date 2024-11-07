@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.11.1
+
+* Improved child error rendering
+
 # 0.11.0
 
 * Rework errors to be easier to serialize and format
