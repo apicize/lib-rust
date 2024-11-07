@@ -1,5 +1,5 @@
 //! This module implements OAuth2 client flow support, including support for caching tokens
-use crate::{ExecutionError, WorkbookCertificate, WorkbookProxy};
+use crate::{ApicizeError, WorkbookCertificate, WorkbookProxy};
 use oauth2::basic::BasicClient;
 use oauth2::reqwest;
 use oauth2::{ClientId, ClientSecret, Scope, TokenResponse, TokenUrl};
@@ -21,7 +21,7 @@ pub async fn get_oauth2_client_credentials<'a>(
     scope: &'a Option<String>,
     certificate: Option<&'a WorkbookCertificate>,
     proxy: Option<&'a WorkbookProxy>,
-) -> Result<(String, bool), ExecutionError> {
+) -> Result<(String, bool), ApicizeError> {
     let cloned_scope = scope.clone();
 
     // Check cache and return if token found and not expired
@@ -71,7 +71,7 @@ pub async fn get_oauth2_client_credentials<'a>(
     if let Some(active_proxy) = proxy {
         match active_proxy.append_to_builder(reqwest_builder) {
             Ok(updated_builder) => reqwest_builder = updated_builder,
-            Err(err) => return Err(ExecutionError::Reqwest(err)),
+            Err(err) => return Err(ApicizeError::from_reqwest(err)),
         }
     }
 
@@ -89,7 +89,7 @@ pub async fn get_oauth2_client_credentials<'a>(
             locked_cache.insert(String::from(id), (expiration, token.clone()));
             Ok((token, false))
         }
-        Err(err) => Err(ExecutionError::OAuth2(err)),
+        Err(err) => Err(ApicizeError::from_oauth2(err)),
     }
 }
 
@@ -130,7 +130,7 @@ pub mod tests {
             _scope: &'a Option<String>,
             _certificate: Option<&'a crate::WorkbookCertificate>,
             _proxy: Option<&'a crate::WorkbookProxy>,
-        ) -> Result<(String, bool), crate::ExecutionError> { Ok((String::from(""), false))}
+        ) -> Result<(String, bool), crate::ApicizeError> { Ok((String::from(""), false))}
         pub async fn clear_all_oauth2_tokens<'a>() -> usize { 1 }
         pub async fn clear_oauth2_token(_id: &str) -> bool { true }    
     }
@@ -310,10 +310,6 @@ pub mod tests {
     #[tokio::test()]
     #[parallel]
     async fn get_oauth2_client_credentials_parallel_1() {
-        {
-            let mut locked_cache = TOKEN_CACHE.lock().await;
-            locked_cache.clear();
-        }
         let mut server = mockito::Server::new_async().await;
         let oauth2_response = format!(
             "{{\"access_token\":\"{}\",\"expires_in\":86400,\"token_type\":\"Bearer\"}}",
@@ -347,10 +343,6 @@ pub mod tests {
     #[tokio::test()]
     #[parallel]
     async fn get_oauth2_client_credentials_parallel_2() {
-        {
-            let mut locked_cache = TOKEN_CACHE.lock().await;
-            locked_cache.clear();
-        }
         let mut server = mockito::Server::new_async().await;
         let oauth2_response = format!(
             "{{\"access_token\":\"{}\",\"expires_in\":86400,\"token_type\":\"Bearer\"}}",
@@ -384,10 +376,6 @@ pub mod tests {
     #[tokio::test()]
     #[parallel]
     async fn get_oauth2_client_credentials_parallel_3() {
-        {
-            let mut locked_cache = TOKEN_CACHE.lock().await;
-            locked_cache.clear();
-        }
         let mut server = mockito::Server::new_async().await;
         let oauth2_response = format!(
             "{{\"access_token\":\"{}\",\"expires_in\":86400,\"token_type\":\"Bearer\"}}",

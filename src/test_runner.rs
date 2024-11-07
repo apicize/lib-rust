@@ -15,11 +15,13 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
 use crate::apicize::{
-    ApicizeBody, ApicizeExecution, ApicizeExecutionGroup, ApicizeExecutionGroupRun, ApicizeExecutionItem, ApicizeExecutionRequest, ApicizeExecutionRequestRun, ApicizeRequest, ApicizeTestResponse, ExecutionTotals, ExecutionTotalsSource
+    ApicizeBody, ApicizeExecution, ApicizeExecutionGroup, ApicizeExecutionGroupRun,
+    ApicizeExecutionItem, ApicizeExecutionRequest, ApicizeExecutionRequestRun, ApicizeRequest,
+    ApicizeTestResponse, ExecutionTotals, ExecutionTotalsSource,
 };
 use crate::{apicize::ApicizeHttpResponse, WorkbookRequest};
 use crate::{
-    ExecutionError, WorkbookAuthorization, WorkbookCertificate, WorkbookExecution, WorkbookProxy,
+    ApicizeError, WorkbookAuthorization, WorkbookCertificate, WorkbookExecution, WorkbookProxy,
     WorkbookRequestBody, WorkbookRequestEntry, WorkbookRequestMethod, Workspace,
 };
 
@@ -37,7 +39,7 @@ pub async fn run(
     request_ids: Option<Vec<String>>,
     cancellation_token: Option<CancellationToken>,
     tests_started: Arc<Instant>,
-) -> Result<ApicizeExecution, ExecutionError> {
+) -> Result<ApicizeExecution, ApicizeError> {
     // Ensure V8 is initialized
     V8_INIT.call_once(|| {
         let platform = v8::new_unprotected_default_platform(0, false).make_shared();
@@ -52,7 +54,7 @@ pub async fn run(
 
     let request_ids_to_execute = request_ids.unwrap_or(workspace.requests.top_level_ids.clone());
 
-    let mut executing_items: JoinSet<Option<ApicizeExecutionItem>> = JoinSet::new();
+    let mut executing_items: JoinSet<Result<ApicizeExecutionItem, ApicizeError>> = JoinSet::new();
     for request_id in request_ids_to_execute {
         let cloned_workspace = workspace.clone();
         let cloned_tests_started = tests_started.clone();
@@ -60,7 +62,9 @@ pub async fn run(
 
         executing_items.spawn(async move {
             select! {
-                _ = cloned_token.cancelled() => None,
+                _ = cloned_token.cancelled() => Err(ApicizeError::Cancelled {
+                    description: String::from("Cancelled"), source: None
+                }),
                 result = run_request_item(
                     cloned_workspace,
                     cloned_token.clone(),
@@ -68,15 +72,15 @@ pub async fn run(
                     request_id,
                     Arc::new(HashMap::new()),
                 ) => {
-                    Some(result)
+                    Ok(result)
                 }
             }
         });
     }
 
     let completed_items = executing_items.join_all().await;
-    let items: Vec<ApicizeExecutionItem> = completed_items.into_iter().flatten().collect();
 
+    let mut error: Option<ApicizeError> = None;
     let mut result = ApicizeExecution {
         duration: tests_started.elapsed().as_millis(),
         items: vec![],
@@ -88,12 +92,23 @@ pub async fn run(
         failed_test_count: 0,
     };
 
-    for item in &items {
-        result.add_totals(item);
+    for completed_item in &completed_items {
+        match completed_item {
+            Ok(item) => {
+                result.add_totals(item);
+                result.items.push(item.to_owned());
+            }
+            Err(err) => {
+                error = Some(err.to_owned());
+                break;
+            }
+        }
     }
 
-    result.items = items;
-    Ok(result)
+    match error {
+        Some(err) => Err(err),
+        None => Ok(result),
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -362,7 +377,7 @@ fn execute_request_test(
     response: &ApicizeHttpResponse,
     variables: &HashMap<String, Value>,
     tests_started: &Arc<Instant>,
-) -> Result<Option<ApicizeTestResponse>, ExecutionError> {
+) -> Result<Option<ApicizeTestResponse>, ApicizeError> {
     // Return empty test results if no test
     if request.test.is_none() {
         return Ok(None);
@@ -411,13 +426,13 @@ fn execute_request_test(
     let Some(script) = v8::Script::compile(tc, v8_code, None) else {
         let message = tc.message().unwrap();
         let message = message.get(tc).to_rust_string_lossy(tc);
-        return Err(ExecutionError::FailedTest(message));
+        return Err(ApicizeError::from_failed_test(message));
     };
 
     let Some(value) = script.run(tc) else {
         let message = tc.message().unwrap();
         let message = message.get(tc).to_rust_string_lossy(tc);
-        return Err(ExecutionError::FailedTest(message));
+        return Err(ApicizeError::from_failed_test(message));
     };
 
     let result = value.to_string(tc);
@@ -514,7 +529,7 @@ async fn execute_request_run(
                     request: Some(packaged_request.clone()),
                     response: Some(response.clone()),
                     success: false,
-                    error: Some(err.to_string()),
+                    error: Some(err),
                     tests: None,
                     variables: None,
                     requests_with_passed_tests_count: 0,
@@ -532,7 +547,7 @@ async fn execute_request_run(
             request: None,
             response: None,
             success: false,
-            error: Some(err.to_string()),
+            error: Some(err),
             tests: None,
             variables: None,
             requests_with_passed_tests_count: 0,
@@ -553,7 +568,7 @@ async fn dispatch_request(
     proxy: Option<&WorkbookProxy>,
     auth_certificate: Option<&WorkbookCertificate>,
     auth_proxy: Option<&WorkbookProxy>,
-) -> Result<(ApicizeRequest, ApicizeHttpResponse), ExecutionError> {
+) -> Result<(ApicizeRequest, ApicizeHttpResponse), ApicizeError> {
     let method = match request.method {
         Some(WorkbookRequestMethod::Get) => reqwest::Method::GET,
         Some(WorkbookRequestMethod::Post) => reqwest::Method::POST,
@@ -608,7 +623,7 @@ async fn dispatch_request(
     if let Some(active_proxy) = proxy {
         match active_proxy.append_to_builder(reqwest_builder) {
             Ok(updated_builder) => reqwest_builder = updated_builder,
-            Err(err) => return Err(ExecutionError::Reqwest(err)),
+            Err(err) => return Err(ApicizeError::from_reqwest(err)),
         }
     }
 
@@ -735,135 +750,151 @@ async fn dispatch_request(
                 None => {}
             }
 
-            let mut web_request = request_builder.build()?;
-
-            // Copy value generated for the request so that we can include in the function results
-            let request_url = web_request.url().to_string();
-            let request_headers = web_request
-                .headers()
-                .iter()
-                .map(|(h, v)| {
-                    (
-                        String::from(h.as_str()),
-                        String::from(v.to_str().unwrap_or("(Header Contains Non-ASCII Data)")),
-                    )
-                })
-                .collect::<HashMap<String, String>>();
-            let ref_body = web_request.body_mut();
-            let request_body = match ref_body {
-                Some(data) => {
-                    let bytes = data.as_bytes().unwrap();
-                    if bytes.is_empty() {
-                        None
-                    } else {
-                        let request_encoding = UTF_8;
-
-                        let data = bytes.to_vec();
-                        let (decoded, _, malformed) = request_encoding.decode(&data);
-                        Some(ApicizeBody {
-                            data: Some(data.clone()),
-                            text: if malformed {
+            // let mut web_request = request_builder.build()?;
+            match request_builder.build() {
+                Ok(mut web_request) => {
+                    // Copy value generated for the request so that we can include in the function results
+                    let request_url = web_request.url().to_string();
+                    let request_headers = web_request
+                        .headers()
+                        .iter()
+                        .map(|(h, v)| {
+                            (
+                                String::from(h.as_str()),
+                                String::from(
+                                    v.to_str().unwrap_or("(Header Contains Non-ASCII Data)"),
+                                ),
+                            )
+                        })
+                        .collect::<HashMap<String, String>>();
+                    let ref_body = web_request.body_mut();
+                    let request_body = match ref_body {
+                        Some(data) => {
+                            let bytes = data.as_bytes().unwrap();
+                            if bytes.is_empty() {
                                 None
                             } else {
-                                Some(decoded.to_string())
-                            },
-                        })
+                                let request_encoding = UTF_8;
+
+                                let data = bytes.to_vec();
+                                let (decoded, _, malformed) = request_encoding.decode(&data);
+                                Some(ApicizeBody {
+                                    data: Some(data.clone()),
+                                    text: if malformed {
+                                        None
+                                    } else {
+                                        Some(decoded.to_string())
+                                    },
+                                })
+                            }
+                        }
+                        None => None,
+                    };
+
+                    // Execute the request
+                    let client_response = client.execute(web_request).await;
+                    match client_response {
+                        Err(error) => Err(ApicizeError::from_reqwest(error)),
+                        Ok(response) => {
+                            // Collect headers for response
+                            let response_headers = response.headers();
+                            let headers =
+                                if response_headers.is_empty() {
+                                    None
+                                } else {
+                                    Some(HashMap::from_iter(
+                                        response_headers
+                                            .iter()
+                                            .map(|(h, v)| {
+                                                (
+                                                    String::from(h.as_str()),
+                                                    String::from(v.to_str().unwrap_or(
+                                                        "(Header Contains Non-ASCII Data)",
+                                                    )),
+                                                )
+                                            })
+                                            .collect::<HashMap<String, String>>(),
+                                    ))
+                                };
+
+                            // Determine the default text encoding
+                            let response_content_type = response_headers
+                                .get(reqwest::header::CONTENT_TYPE)
+                                .and_then(|value| value.to_str().ok())
+                                .and_then(|value| value.parse::<Mime>().ok());
+
+                            let response_encoding_name = response_content_type
+                                .as_ref()
+                                .and_then(|mime| {
+                                    mime.get_param("charset").map(|charset| charset.as_str())
+                                })
+                                .unwrap_or("utf-8");
+
+                            let response_encoding =
+                                Encoding::for_label(response_encoding_name.as_bytes())
+                                    .unwrap_or(UTF_8);
+
+                            // Collect status for response
+                            let status = response.status();
+                            let status_text =
+                                String::from(status.canonical_reason().unwrap_or("Unknown"));
+
+                            // Retrieve response bytes and convert raw data to string
+                            match response.bytes().await {
+                                Ok(bytes) => {
+                                    let response_body = if bytes.is_empty() {
+                                        None
+                                    } else {
+                                        let data = Vec::from(bytes.as_ref());
+                                        let (decoded, _, malformed) =
+                                            response_encoding.decode(&data);
+                                        Some(ApicizeBody {
+                                            data: Some(data.clone()),
+                                            text: if malformed {
+                                                None
+                                            } else {
+                                                Some(decoded.to_string())
+                                            },
+                                        })
+                                    };
+
+                                    let response = (
+                                        ApicizeRequest {
+                                            url: request_url,
+                                            method: request
+                                                .method
+                                                .as_ref()
+                                                .unwrap()
+                                                .as_str()
+                                                .to_string(),
+                                            headers: request_headers,
+                                            body: request_body,
+                                            variables: if variables.is_empty() {
+                                                None
+                                            } else {
+                                                Some(variables.clone())
+                                            },
+                                        },
+                                        ApicizeHttpResponse {
+                                            status: status.as_u16(),
+                                            status_text,
+                                            headers,
+                                            body: response_body,
+                                            auth_token_cached,
+                                        },
+                                    );
+
+                                    Ok(response)
+                                }
+                                Err(err) => Err(ApicizeError::from_reqwest(err)),
+                            }
+                        }
                     }
                 }
-                None => None,
-            };
-
-            // Execute the request
-            let client_response = client.execute(web_request).await;
-            match client_response {
-                Err(error) => Err(ExecutionError::Reqwest(error)),
-                Ok(response) => {
-                    // Collect headers for response
-                    let response_headers = response.headers();
-                    let headers = if response_headers.is_empty() {
-                        None
-                    } else {
-                        Some(HashMap::from_iter(
-                            response_headers
-                                .iter()
-                                .map(|(h, v)| {
-                                    (
-                                        String::from(h.as_str()),
-                                        String::from(
-                                            v.to_str()
-                                                .unwrap_or("(Header Contains Non-ASCII Data)"),
-                                        ),
-                                    )
-                                })
-                                .collect::<HashMap<String, String>>(),
-                        ))
-                    };
-
-                    // Determine the default text encoding
-                    let response_content_type = response_headers
-                        .get(reqwest::header::CONTENT_TYPE)
-                        .and_then(|value| value.to_str().ok())
-                        .and_then(|value| value.parse::<Mime>().ok());
-
-                    let response_encoding_name = response_content_type
-                        .as_ref()
-                        .and_then(|mime| mime.get_param("charset").map(|charset| charset.as_str()))
-                        .unwrap_or("utf-8");
-
-                    let response_encoding =
-                        Encoding::for_label(response_encoding_name.as_bytes()).unwrap_or(UTF_8);
-
-                    // Collect status for response
-                    let status = response.status();
-                    let status_text = String::from(status.canonical_reason().unwrap_or("Unknown"));
-
-                    // Retrieve response bytes and convert raw data to string
-                    let bytes = response.bytes().await?;
-
-                    let response_body = if bytes.is_empty() {
-                        None
-                    } else {
-                        let data = Vec::from(bytes.as_ref());
-                        let (decoded, _, malformed) = response_encoding.decode(&data);
-                        Some(ApicizeBody {
-                            data: Some(data.clone()),
-                            text: if malformed {
-                                None
-                            } else {
-                                Some(decoded.to_string())
-                            },
-                        })
-                    };
-
-                    let response = (
-                        ApicizeRequest {
-                            url: request_url,
-                            method: request.method.as_ref().unwrap().as_str().to_string(),
-                            headers: request_headers,
-                            body: request_body,
-                            variables: if variables.is_empty() {
-                                None
-                            } else {
-                                Some(variables.clone())
-                            },
-                        },
-                        ApicizeHttpResponse {
-                            status: status.as_u16(),
-                            status_text,
-                            headers,
-                            body: response_body,
-                            auth_token_cached,
-                        },
-                    );
-
-                    Ok(response)
-                }
+                Err(err) => Err(ApicizeError::from_reqwest(err)),
             }
         }
-        Err(err) => {
-            println!("{}", &err);
-            Err(ExecutionError::Reqwest(err))
-        }
+        Err(err) => Err(ApicizeError::from_reqwest(err)),
     }
 }
 
@@ -879,13 +910,99 @@ pub fn cleanup_v8() {
 mod tests {
     use mockito::Matcher;
     use serde_json::Value;
-    use std::{collections::HashMap, sync::Arc, time::Instant};
+    use std::{
+        collections::HashMap,
+        sync::Arc,
+        thread::sleep,
+        time::{Duration, Instant},
+    };
+    use tokio::task::JoinSet;
+    use tokio_util::sync::CancellationToken;
 
     use crate::{
-        apicize::ApicizeHttpResponse, test_runner::{dispatch_request, execute_request_test}, WorkbookCertificate, WorkbookNameValuePair, WorkbookProxy, WorkbookRequest, WorkbookRequestMethod
+        apicize::{ApicizeExecution, ApicizeHttpResponse},
+        test_runner::{self, dispatch_request, execute_request_test},
+        ApicizeError, IndexedEntities, IndexedRequests, WorkbookCertificate, WorkbookNameValuePair,
+        WorkbookProxy, WorkbookRequest, WorkbookRequestEntry, WorkbookRequestMethod, Workspace,
     };
 
     use crate::oauth2_client_tokens::tests::MockOAuth2ClientTokens;
+
+    #[tokio::test]
+    async fn dispatch_requests_and_handles_bad_domain() {
+        let request = WorkbookRequest {
+            id: String::from(""),
+            name: String::from("test"),
+            url: String::from("http://zxdasdfasdfaawe.cz1"),
+            method: Some(WorkbookRequestMethod::Post),
+            multi_run_execution: crate::WorkbookExecution::Sequential,
+            timeout: None,
+            keep_alive: None,
+            runs: 1,
+            headers: None,
+            query_string_params: None,
+            body: None,
+            test: None,
+            selected_scenario: None,
+            selected_authorization: None,
+            selected_certificate: None,
+            selected_proxy: None,
+            warnings: None,
+        };
+        let response =
+            dispatch_request(&request, &HashMap::new(), None, None, None, None, None).await;
+        match &response {
+            Ok(_) => {}
+            Err(err) => {
+                println!("{}: {}", err.get_label(), err);
+            }
+        }
+        assert!(response.is_err());
+    }
+
+    #[tokio::test]
+    async fn dispatch_requests_and_handles_timeout() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/")
+            .with_status(200)
+            .with_header("Content-Type", "text/plain")
+            .with_chunked_body(|_| {
+                sleep(Duration::from_secs(1));
+                Ok({})
+            })
+            .create();
+
+        let request = WorkbookRequest {
+            id: String::from(""),
+            name: String::from("test"),
+            url: server.url(),
+            method: Some(WorkbookRequestMethod::Get),
+            multi_run_execution: crate::WorkbookExecution::Sequential,
+            timeout: Some(1),
+            keep_alive: None,
+            runs: 1,
+            headers: None,
+            query_string_params: None,
+            body: None,
+            test: None,
+            selected_scenario: None,
+            selected_authorization: None,
+            selected_certificate: None,
+            selected_proxy: None,
+            warnings: None,
+        };
+        let response =
+            dispatch_request(&request, &HashMap::new(), None, None, None, None, None).await;
+        match &response {
+            Ok(_) => {}
+            Err(err) => {
+                println!("{}: {}", err.get_label(), err);
+            }
+        }
+        assert!(response.is_err());
+        mock.assert();
+    }
 
     #[tokio::test]
     async fn dispatch_requests_with_substituted_variables() {
@@ -1160,14 +1277,13 @@ mod tests {
         let mut successes = 0;
         let mut failures = 0;
         for test_result in result.unwrap().unwrap().results.unwrap().iter() {
-
             // if let Some(logs) = &test_result.logs {
             //     println!("Logs: {}", logs.join("; "));
             // }
             // if let Some(error) = &test_result.error {
             //     println!("Error: {}", error);
             // }
-    
+
             if test_result.success {
                 successes += 1;
             } else {
@@ -1291,7 +1407,102 @@ mod tests {
         assert_eq!(failures, 0);
     }
 
+    async fn wait_and_cancel(
+        cancellation: CancellationToken,
+    ) -> Result<ApicizeExecution, ApicizeError> {
+        sleep(Duration::from_millis(10));
+        cancellation.cancel();
+        Ok(ApicizeExecution {
+            duration: 0,
+            items: vec![],
+            success: false,
+            requests_with_passed_tests_count: 0,
+            requests_with_failed_tests_count: 0,
+            requests_with_errors: 0,
+            passed_test_count: 0,
+            failed_test_count: 0,
+        })
+    }
 
+    #[tokio::test]
+    async fn run_honors_cancel() {
+        let mut server = mockito::Server::new_async().await;
+        server
+            .mock("GET", "/")
+            .with_status(200)
+            .with_header("Content-Type", "text/plain")
+            .with_chunked_body(|_| {
+                sleep(Duration::from_secs(5000));
+                Ok({})
+            })
+            .create();
 
+        let request = WorkbookRequestEntry::Info(WorkbookRequest {
+            id: String::from("123"),
+            name: String::from("test"),
+            url: server.url(),
+            method: Some(WorkbookRequestMethod::Get),
+            multi_run_execution: crate::WorkbookExecution::Sequential,
+            timeout: Some(60000),
+            keep_alive: None,
+            runs: 1,
+            headers: None,
+            query_string_params: None,
+            body: None,
+            test: None,
+            selected_scenario: None,
+            selected_authorization: None,
+            selected_certificate: None,
+            selected_proxy: None,
+            warnings: None,
+        });
 
+        let workspace = Workspace {
+            requests: IndexedRequests {
+                top_level_ids: vec![String::from("123")],
+                entities: HashMap::from([(String::from("123"), request)]),
+                child_ids: None,
+            },
+            scenarios: IndexedEntities {
+                top_level_ids: vec![],
+                entities: HashMap::new(),
+            },
+            authorizations: IndexedEntities {
+                top_level_ids: vec![],
+                entities: HashMap::new(),
+            },
+            certificates: IndexedEntities {
+                top_level_ids: vec![],
+                entities: HashMap::new(),
+            },
+            proxies: IndexedEntities {
+                top_level_ids: vec![],
+                entities: HashMap::new(),
+            },
+            defaults: None,
+            warnings: None,
+        };
+
+        let tests_started = Arc::new(Instant::now());
+        let cancellation = CancellationToken::new();
+
+        let mut results: JoinSet<Result<ApicizeExecution, ApicizeError>> = JoinSet::new();
+
+        let attempt = test_runner::run(
+            Arc::new(workspace),
+            Some(vec![String::from("123")]),
+            Some(cancellation.clone()),
+            tests_started,
+        );
+
+        results.spawn(attempt);
+        let cloned_cancellation = cancellation.clone();
+        results.spawn(wait_and_cancel(cloned_cancellation));
+
+        let completed_results = results.join_all().await;
+        let has_cancelled_result = completed_results
+            .iter()
+            .any(|r| r.as_ref().is_err_and(|err| err.get_label() == "Cancelled"));
+        assert!(has_cancelled_result);
+    }
 }

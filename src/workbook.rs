@@ -6,8 +6,10 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::path::PathBuf;
 
+use crate::ApicizeError;
+
 use super::{
-    save_data_file, utility::*, ExecutionError, Identifable, IndexedEntities, SelectableOptions, SerializationFailure, SerializationSaveSuccess, Warnings, WorkspaceParameter
+    save_data_file, utility::*, Identifable, IndexedEntities, SelectableOptions, SerializationFailure, SerializationSaveSuccess, Warnings, WorkspaceParameter
 };
 use reqwest::{ClientBuilder, Error, Identity, Proxy};
 use serde::{Deserialize, Serialize};
@@ -143,7 +145,7 @@ pub struct WorkbookRequest {
     /// HTTP method
     #[serde(skip_serializing_if = "Option::is_none")]
     pub method: Option<WorkbookRequestMethod>,
-    /// Timeout, in seconds, to wait for a response
+    /// Timeout, in milliseconds, to wait for a response
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout: Option<u32>,
     /// HTTP headers
@@ -849,7 +851,7 @@ impl WorkbookCertificate {
     pub fn append_to_builder(
         &self,
         builder: ClientBuilder,
-    ) -> Result<ClientBuilder, ExecutionError> {
+    ) -> Result<ClientBuilder, ApicizeError> {
         let identity_result = match self {
             WorkbookCertificate::PKCS12 { pfx, password, .. } => Identity::from_pkcs12_der(
                 pfx,
@@ -869,7 +871,7 @@ impl WorkbookCertificate {
                         .use_native_tls(), // .tls_info(true)
                 )
             }
-            Err(err) => Err(ExecutionError::Reqwest(err)),
+            Err(err) => Err(ApicizeError::from_reqwest(err)),
         }
     }    
 }

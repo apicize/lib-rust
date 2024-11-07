@@ -1,82 +1,197 @@
 //! Apicize execution error types
 use std::error::Error;
+use std::fmt::Display;
 
 use oauth2::basic::BasicErrorResponseType;
 use oauth2::{RequestTokenError, StandardErrorResponse};
-use serde::ser::SerializeMap;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::task::JoinError;
 
-/// Represents errors occuring during Workbook running, dispatching and testing
-#[derive(Error, Debug)]
-pub enum ExecutionError {
-    /// HTTP errors
-    #[error(transparent)]
-    Reqwest(#[from] reqwest::Error),
-    /// Join/async errors
-    #[error(transparent)]
-    Join(#[from] JoinError),
-    /// OAuth2 authentication errors
-    #[error(transparent)]
-    OAuth2(
-        #[from]
-        RequestTokenError<
+#[derive(Error, Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(tag = "type")]
+/// Errors that can result from Apicize operations
+pub enum ApicizeError {
+    Error {
+        description: String,
+        source: Option<Box<ApicizeError>>,
+    },
+    Http {
+        description: String,
+        source: Option<Box<ApicizeError>>,
+        url: Option<String>,
+    },
+    Timeout {
+        description: String,
+        source: Option<Box<ApicizeError>>,
+        url: Option<String>,
+    },
+    Cancelled {
+        description: String,
+        source: Option<Box<ApicizeError>>,
+    },
+    OAuth2Client {
+        description: String,
+        source: Option<Box<ApicizeError>>,
+    },
+    Async {
+        id: String,
+        description: String,
+        source: Option<Box<ApicizeError>>,
+    },
+    FailedTest {
+        description: String,
+    },
+}
+
+impl ApicizeError {
+    fn from_error(error: &dyn Error) -> ApicizeError {
+        ApicizeError::Error {
+            description: error.to_string(),
+            source: error
+                .source()
+                .map(|src| Box::new(ApicizeError::from_error(src))),
+        }
+    }
+
+    pub fn from_reqwest(error: reqwest::Error) -> ApicizeError {
+        if error.is_timeout() {
+            ApicizeError::Timeout {
+                description: String::from("Timeout"),
+                source: error
+                    .source()
+                    .map(|src| Box::new(ApicizeError::from_error(src))),
+                url: error.url().map(|url| url.to_string()),
+            }
+        } else if error.is_timeout() {
+            ApicizeError::Cancelled {
+                description: String::from("Cancelled"),
+                source: error
+                    .source()
+                    .map(|src| Box::new(ApicizeError::from_error(src))),
+            }
+        } else {
+            ApicizeError::Http {
+                description: error.to_string(),
+                source: error
+                    .source()
+                    .map(|src| Box::new(ApicizeError::from_error(src))),
+                url: error.url().map(|url| url.to_string()),
+            }
+        }
+    }
+
+    pub fn from_oauth2(
+        error: RequestTokenError<
             oauth2::HttpClientError<oauth2::reqwest::Error>,
             StandardErrorResponse<BasicErrorResponseType>,
         >,
-    ),
-    /// Failed test execution
-    #[error("{0}")]
-    FailedTest(String),
-}
-
-impl Serialize for ExecutionError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer {
-        let mut map = serializer.serialize_map(None)?;
-        match &self {
-            ExecutionError::Reqwest(error) => {
-                map.serialize_entry("errorType", "HttpError")?;
-                map.serialize_entry("errorDescription", error.to_string().as_str())?;
-                if let Some(source) = error.source() {
-                    map.serialize_entry("errorSource", source.to_string().as_str())?;
-                }
-            },
-            ExecutionError::Join(error) => {
-                map.serialize_entry("errorType", "AsyncError")?;
-                map.serialize_entry("errorDescription", error.to_string().as_str())?;
-                if let Some(source) = error.source() {
-                    map.serialize_entry("errorSource", source.to_string().as_str())?;
-                }
-            },
-            ExecutionError::OAuth2(error) => {
-                map.serialize_entry("errorType", "OAuth2Error")?;
-                map.serialize_entry("errorDescription", error.to_string().as_str())?;
-                if let Some(source) = error.source() {
-                    map.serialize_entry("errorSource", source.to_string().as_str())?;
-                }
-            },
-            ExecutionError::FailedTest(error) => {
-                map.serialize_entry("errorType", "TestError")?;
-                map.serialize_entry("errorDescription", error.to_string().as_str())?;
-            },
+    ) -> ApicizeError {
+        ApicizeError::Error {
+            description: error.to_string(),
+            source: error
+                .source()
+                .map(|src| Box::new(ApicizeError::from_error(src))),
         }
-        map.end()
+    }
+
+    pub fn from_async(error: JoinError) -> ApicizeError {
+        ApicizeError::Async {
+            id: error.id().to_string(),
+            description: error.to_string(),
+            source: error
+                .source()
+                .map(|src| Box::new(ApicizeError::from_error(src))),
+        }
+    }
+
+    pub fn from_failed_test(description: String) -> ApicizeError {
+        ApicizeError::FailedTest { description }
+    }
+
+    pub fn get_label(&self) -> &str {
+        match &self {
+            ApicizeError::Error { .. } => "Error",
+            ApicizeError::Http { .. } => "HTTP Error",
+            ApicizeError::Timeout { .. } => "HTTP Timeout",
+            ApicizeError::Cancelled { .. } => "Cancelled",
+            ApicizeError::OAuth2Client { .. } => "OAuth2 Token Error",
+            ApicizeError::Async { .. } => "Task Error",
+            ApicizeError::FailedTest { .. } => "Failed Test",
+        }
     }
 }
 
-/// Represents errors occuring during Workbook running, dispatching and testing
-#[derive(Error, Debug)]
-pub enum RunError {
-    /// Other error
-    #[error("Other")]
-    Other(String),
-    /// Join error
-    #[error("JoinError")]
-    JoinError(JoinError),
-    /// Execution cancelled
-    #[error("Cancelled")]
-    Cancelled,
+fn format_child_description(parent_description: &str, child: Option<&dyn Error>) -> Option<String> {
+    match child {
+        Some(c) => {
+            let child_desc = c.to_string();
+            parent_description.ends_with(&child_desc).then(|| {
+                if let Some(grandchild_desc) = format_child_description(&child_desc, c.source()) {
+                    format!(", {}{}", child_desc, grandchild_desc)
+                } else {
+                    format!(", {}", child_desc)
+                }
+            })
+        }
+        None => None,
+    }
+}
+
+impl Display for ApicizeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let desc: &String;
+        let suffix: Option<String>;
+        match &self {
+            ApicizeError::Error { description, .. } => {
+                suffix = None;
+                desc = description;
+            }
+            ApicizeError::Http {
+                description, url, ..
+            } => {
+                suffix = url
+                    .as_ref()
+                    .map_or_else(|| None, |u| Some(format!("calling {}", u)));
+                desc = description;
+            }
+            ApicizeError::Timeout {
+                description, url, ..
+            } => {
+                suffix = url
+                    .as_ref()
+                    .map_or_else(|| None, |u| Some(format!("calling {}", u)));
+                desc = description;
+            }
+            ApicizeError::Cancelled { description, .. } => {
+                suffix = None;
+                desc = description;
+            }
+            ApicizeError::OAuth2Client { description, .. } => {
+                suffix = None;
+                desc = description;
+            }
+            ApicizeError::Async {
+                description, id, ..
+            } => {
+                suffix = Some(format!("(task {})", id));
+                desc = description;
+            }
+            ApicizeError::FailedTest { description, .. } => {
+                suffix = None;
+                desc = description;
+            }
+        }
+
+        let source = self.source();
+        let mut s = if let Some(sfx) = suffix {
+            format!("{}, {}", desc, sfx,)
+        } else {
+            desc.to_owned()
+        };
+        if let Some(s1) = format_child_description(desc, source) {
+            s = s + &s1;
+        }
+        f.write_str(s.as_str())
+    }
 }

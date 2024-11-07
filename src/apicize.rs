@@ -10,6 +10,8 @@ use serde_with::base64::{Base64, Standard};
 use serde_with::formats::Unpadded;
 use serde_with::serde_as;
 
+use crate::ApicizeError;
+
 /// Trait to expose functionality for retrieving totals and variables
 pub trait ExecutionTotalsSource {
     /// Retrieve totals
@@ -136,7 +138,7 @@ pub struct ApicizeExecutionRequestRun {
     /// Set to true if HTTP call succeeded (regardless of status code)
     pub success: bool,
     /// Set if there was an error in execution
-    pub error: Option<String>,
+    pub error: Option<ApicizeError>,
     /// Tests executed during run
     pub tests: Option<Vec<ApicizeTestResult>>,
     /// If set, active variables should be updated to this value after execution
