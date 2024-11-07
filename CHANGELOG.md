@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.11.2
+
+* Switch to yarn for JavaScript build
+
 # 0.11.1
 
 * Improved child error rendering

@@ -15,9 +15,8 @@ fn main() {
     copy(Path::join(framework_dir, "package-lock.json"), Path::join(&out_framework_dir, "package-lock.json")).unwrap();
     copy(Path::join(framework_dir, "webpack.config.js"), Path::join(&out_framework_dir, "webpack.config.js")).unwrap();
 
-
     if !out_node_modules_dir.exists() {
-        let result_install = Command::new("npm")
+        let result_install = Command::new("yarn")
             .current_dir(&out_framework_dir)
             .args(["install"])
             .status();
@@ -25,28 +24,28 @@ fn main() {
         match result_install {
             Ok(status) => {
                 if !status.success() {
-                    panic!("Unable to initialize NodeJS");
+                    panic!("yarn install failed");
                 }
             }
             Err(err) => {
-                panic!("Error initilalizing NodeJS: {}", err);
+                panic!("unable to execute yarn install: {}", err);
             }
         }
     }
 
-    let result_build = Command::new("npm")
+    let result_build = Command::new("yarn")
         .current_dir(&out_framework_dir)
-        .args(["run", "build"])
+        .args(["build"])
         .status();
 
     match result_build {
         Ok(status) => {
             if !status.success() {
-                panic!("Unable to build test framework JavaScript");
+                panic!("yarn build failed");
             }
         }
         Err(err) => {
-            panic!("Error building test framework JavaScript: {}", err);
+            panic!("unable to execute yarn build: {}", err);
         }
     }
 

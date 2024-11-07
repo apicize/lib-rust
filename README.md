@@ -45,3 +45,4 @@ The following variables and functions are available in the testing sandbox:
 The [build.rs](./build.rs) file triggers a Webpack build of the JavaScript dependencies defined in [./test-framework](./test-framework/index.js).  Adding new functionality involves adding depdencies to [./test-framework/package.json](./test-framework/package.json) and then exposing variables/functions in [./test-framework/index.js](./test-framework/index.js).  Note that when creating variables that are exposed to the test runner you should *not* use `const`, `var` or `let` to define them.  Also, you should add tests to [test_runner.rs](./src/test_runner.rs) to ensure any
 additions are working properly upon rebuild.
 
+> Note: you must have **yarn** installed to build this library
