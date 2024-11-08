@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.11.3
+
+* Added yarn.lock to test-framework
+
 # 0.11.2
 
 * Switch to yarn for JavaScript build
