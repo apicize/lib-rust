@@ -17,6 +17,4 @@ fn main() {
         Path::new(&dest_path).join("framework.min.js")
     )
     .unwrap();
-    
-    println!("cargo::rerun-if-changed=test-framework/dist/framework.min.js");
 }
