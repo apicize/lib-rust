@@ -42,10 +42,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
-      - name: Install Yarn
-        run: |
-          npm install --global yarn
-          find . -name yarn
+      - name: Find Yarn
+        run: find . -name yarn
       - name: Add Rust to path
         run: . "$HOME/.cargo/env"
       - name: Run lint
@@ -75,13 +73,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
-      - name: Install Yarn
-        run: |
-          npm install --global yarn
-          find . -name yarn
+      - name: Find Yarn
+        run: find . -name yarn
       - name: Run unit test
         run: cargo test
-      
 
   publish-crate:
     name: Publish Crate
@@ -111,10 +106,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
-      - name: Install Yarn
-        run: |
-          npm install --global yarn
-          find . -name yarn
       - name: Build the project
         run: cargo build --release
       # - name: Publish to crates.io
