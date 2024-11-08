@@ -2,7 +2,7 @@
 
 # 0.11.3
 
-* Added yarn.lock to test-framework
+* Move test-framework.js build back out of Cargo build, move prebuilt file using Cargo build
 
 # 0.11.2
 

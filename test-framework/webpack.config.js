@@ -8,7 +8,7 @@ module.exports = {
 
     entry: './index.js',
     output: {
-        path: path.join(__dirname , ".."),
+        path: path.join(__dirname , "dist"),
         filename
     },
     mode: 'production',
