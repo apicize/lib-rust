@@ -38,14 +38,14 @@ jobs:
       #     fail-on-cache-miss: true
       - name: Checkout project
         uses: actions/checkout@v4
-      - name: Setup NodeJS and Yarn
+      - name: Setup NodeJS
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
-          cache: 'yarn'
-      - name: Install Rust
+      - name: Install Yarn
         run: |
-          curl https://sh.rustup.rs -sSf | sh -s -- -y
+          npm install --global yarn
+          find . -name yarn
       - name: Add Rust to path
         run: . "$HOME/.cargo/env"
       - name: Run lint
@@ -71,13 +71,14 @@ jobs:
           curl https://sh.rustup.rs -sSf | sh -s -- -y
       - name: Add Rust to path
         run: . "$HOME/.cargo/env"
-      - name: Setup NodeJS and Yarn
+      - name: Setup NodeJS
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
-          cache: 'yarn'
       - name: Install Yarn
-        run: npm install --global yarn
+        run: |
+          npm install --global yarn
+          find . -name yarn
       - name: Run unit test
         run: cargo test
       
@@ -106,13 +107,14 @@ jobs:
           curl https://sh.rustup.rs -sSf | sh -s -- -y
       - name: Add Rust to path
         run: . "$HOME/.cargo/env"
-      - name: Setup NodeJS and Yarn
+      - name: Setup NodeJS
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
-          cache: 'yarn'
       - name: Install Yarn
-        run: npm install --global yarn
+        run: |
+          npm install --global yarn
+          find . -name yarn
       - name: Build the project
         run: cargo build --release
       # - name: Publish to crates.io
