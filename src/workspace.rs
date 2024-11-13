@@ -660,6 +660,7 @@ impl Workspace {
                 tests_started.clone(),
                 request_id.clone(),
                 Arc::new(HashMap::new()),
+                None,
             );
             executing_items.spawn(async move {
                 select! {

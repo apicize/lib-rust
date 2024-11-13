@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.12.0
+
+* Re-introduced optional number of runs override argument for run function
+
 # 0.11.3
 
 * Move test-framework.js build back out of Cargo build, move prebuilt file using Cargo build

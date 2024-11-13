@@ -39,6 +39,7 @@ pub async fn run(
     request_ids: Option<Vec<String>>,
     cancellation_token: Option<CancellationToken>,
     tests_started: Arc<Instant>,
+    override_number_of_runs: Option<usize>
 ) -> Result<ApicizeExecution, ApicizeError> {
     // Ensure V8 is initialized
     V8_INIT.call_once(|| {
@@ -71,6 +72,7 @@ pub async fn run(
                     cloned_tests_started,
                     request_id,
                     Arc::new(HashMap::new()),
+                    override_number_of_runs,
                 ) => {
                     Ok(result)
                 }
@@ -135,6 +137,7 @@ async fn run_request_group(
                 tests_started.clone(),
                 child_id.clone(),
                 variables.clone(),
+                None,
             )
             .await;
 
@@ -153,6 +156,7 @@ async fn run_request_group(
                 tests_started.clone(),
                 id,
                 variables.clone(),
+                None,
             );
             child_items.spawn(async move {
                 select! {
@@ -202,6 +206,7 @@ pub async fn run_request_item(
     tests_started: Arc<Instant>,
     request_id: String,
     variables: Arc<HashMap<String, Value>>,
+    override_number_of_runs: Option<usize>,
 ) -> ApicizeExecutionItem {
     let entity = workspace.requests.entities.get(&request_id).unwrap();
     let params = workspace.retrieve_parameters(entity, &variables);
@@ -209,7 +214,7 @@ pub async fn run_request_item(
 
     let executed_at = tests_started.elapsed().as_millis();
     let start_instant = Instant::now();
-    let number_of_runs = entity.get_runs();
+    let number_of_runs = override_number_of_runs.unwrap_or(entity.get_runs());
 
     match entity {
         WorkbookRequestEntry::Info(request) => {
@@ -920,7 +925,7 @@ mod tests {
     use tokio_util::sync::CancellationToken;
 
     use crate::{
-        apicize::{ApicizeExecution, ApicizeHttpResponse},
+        apicize::{ApicizeExecution, ApicizeExecutionItem, ApicizeHttpResponse},
         test_runner::{self, dispatch_request, execute_request_test},
         ApicizeError, IndexedEntities, IndexedRequests, WorkbookCertificate, WorkbookNameValuePair,
         WorkbookProxy, WorkbookRequest, WorkbookRequestEntry, WorkbookRequestMethod, Workspace,
@@ -1425,6 +1430,83 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn run_honors_override_number_of_runs() {
+        let mut server = mockito::Server::new_async().await;
+        server
+            .mock("GET", "/")
+            .with_status(200)
+            .with_header("Content-Type", "text/plain")
+            .with_body("Ok")
+            .create();
+
+        let request = WorkbookRequestEntry::Info(WorkbookRequest {
+            id: String::from("123"),
+            name: String::from("test"),
+            url: server.url(),
+            method: Some(WorkbookRequestMethod::Get),
+            multi_run_execution: crate::WorkbookExecution::Sequential,
+            timeout: Some(500),
+            keep_alive: None,
+            runs: 1,
+            headers: None,
+            query_string_params: None,
+            body: None,
+            test: None,
+            selected_scenario: None,
+            selected_authorization: None,
+            selected_certificate: None,
+            selected_proxy: None,
+            warnings: None,
+        });
+
+        let workspace = Workspace {
+            requests: IndexedRequests {
+                top_level_ids: vec![String::from("123")],
+                entities: HashMap::from([(String::from("123"), request)]),
+                child_ids: None,
+            },
+            scenarios: IndexedEntities {
+                top_level_ids: vec![],
+                entities: HashMap::new(),
+            },
+            authorizations: IndexedEntities {
+                top_level_ids: vec![],
+                entities: HashMap::new(),
+            },
+            certificates: IndexedEntities {
+                top_level_ids: vec![],
+                entities: HashMap::new(),
+            },
+            proxies: IndexedEntities {
+                top_level_ids: vec![],
+                entities: HashMap::new(),
+            },
+            defaults: None,
+            warnings: None,
+        };
+
+        let tests_started = Arc::new(Instant::now());
+        let cancellation = CancellationToken::new();
+
+        let attempt = test_runner::run(
+            Arc::new(workspace),
+            Some(vec![String::from("123")]),
+            Some(cancellation.clone()),
+            tests_started,
+            Some(4),
+        ).await;
+
+        let runs = if let ApicizeExecutionItem::Request( result) = attempt.unwrap().items.first().unwrap() {
+            result.runs.len()
+        } else {
+            0
+        };
+        assert_eq!(runs, 4)
+        
+    
+    }
+
+    #[tokio::test]
     async fn run_honors_cancel() {
         let mut server = mockito::Server::new_async().await;
         server
@@ -1493,6 +1575,7 @@ mod tests {
             Some(vec![String::from("123")]),
             Some(cancellation.clone()),
             tests_started,
+            None,
         );
 
         results.spawn(attempt);

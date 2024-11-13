@@ -185,7 +185,7 @@ impl Display for ApicizeError {
         let result = if let Some(sfx) = suffix {
             f.write_str(format!("{}, {}", desc, sfx,).as_str())
         } else {
-            f.write_str(&desc)
+            f.write_str(desc)
         };
 
         result.and_then(|()| format_child_description(desc, self.source(), f))
