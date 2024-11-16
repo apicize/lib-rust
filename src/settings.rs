@@ -56,6 +56,9 @@ pub struct ApicizeSettings {
     #[serde(default)]
     /// Layout for editor panels (UI)
     pub editor_panels: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recent_workbook_file_names: Option<Vec<String>>
 }
 
 impl ApicizeSettings {
@@ -96,6 +99,7 @@ impl ApicizeSettings {
                 font_size: 12,
                 color_scheme: ColorScheme::Dark,
                 editor_panels: String::from(""),
+                recent_workbook_file_names: None,
             };
             Ok(SerializationOpenSuccess {
                 file_name: String::from(""),

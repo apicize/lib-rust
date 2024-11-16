@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.13.0
+
+* Added recent workbook file names to settings
+
 # 0.12.0
 
 * Re-introduced optional number of runs override argument for run function
