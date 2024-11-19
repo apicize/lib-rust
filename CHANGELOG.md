@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.13.1
+
+* Added Clone to ApicizeSettings
+
 # 0.13.0
 
 * Added recent workbook file names to settings

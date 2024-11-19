@@ -23,7 +23,7 @@ fn default_color_scheme() -> ColorScheme {
     ColorScheme::Dark
 }
 
-#[derive(Serialize, Deserialize, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 /// Color scheme for UI app
 pub enum ColorScheme {
@@ -34,7 +34,7 @@ pub enum ColorScheme {
 }
 
 /// Apicize application settings
-#[derive(Serialize, Deserialize, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ApicizeSettings {
     /// Default directory that workbooks are stored in
