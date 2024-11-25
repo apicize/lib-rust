@@ -141,6 +141,8 @@ pub struct ApicizeExecutionRequestRun {
     pub error: Option<ApicizeError>,
     /// Tests executed during run
     pub tests: Option<Vec<ApicizeTestResult>>,
+    // Input variables, if any, passed into the execution
+    pub input_variables: Option<HashMap<String, Value>>,
     /// If set, active variables should be updated to this value after execution
     pub variables: Option<HashMap<String, Value>>,
     // True if run is successful

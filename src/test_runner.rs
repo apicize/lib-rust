@@ -513,6 +513,11 @@ async fn execute_request_run(
                         success: test_count == 0 || failed_test_count == 0,
                         error: None,
                         tests: test_results,
+                        input_variables: if params.variables.is_empty() {
+                            None
+                        } else {
+                            Some(params.variables.clone())
+                        },
                         variables: result_variables,
                         requests_with_passed_tests_count: if test_count == 0
                             && failed_test_count == 0
@@ -536,6 +541,7 @@ async fn execute_request_run(
                     success: false,
                     error: Some(err),
                     tests: None,
+                    input_variables: None,
                     variables: None,
                     requests_with_passed_tests_count: 0,
                     requests_with_failed_tests_count: 0,
@@ -554,6 +560,7 @@ async fn execute_request_run(
             success: false,
             error: Some(err),
             tests: None,
+            input_variables: None,
             variables: None,
             requests_with_passed_tests_count: 0,
             requests_with_failed_tests_count: 0,

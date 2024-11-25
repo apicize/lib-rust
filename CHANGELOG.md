@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.13.2
+
+* Added ApicizeExecutionRequestRun::input_variables
+
 # 0.13.1
 
 * Added Clone to ApicizeSettings
