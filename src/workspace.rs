@@ -69,6 +69,7 @@ pub struct IndexedEntities<T> {
 impl<T: Identifable> IndexedEntities<T> {
     /// Find a match based upon ID or name
     pub fn find_match(&self, selection: &Selection) -> bool {
+        selection.id == NO_SELECTION_ID ||
         self.entities.contains_key(&selection.id)
             || self
                 .entities

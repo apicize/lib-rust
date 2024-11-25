@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.13.3
+
+* Fix warnings on NO_SELECTION_ID 
+
 # 0.13.2
 
 * Added ApicizeExecutionRequestRun::input_variables
