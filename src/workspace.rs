@@ -2,8 +2,10 @@
 //!
 //! This submodule defines modules used to manage workspaces
 
-
-use crate::{apicize::{ApicizeExecution, ApicizeExecutionItem, ExecutionTotals}, run_request_item};
+use crate::{
+    apicize::{ApicizeExecution, ApicizeExecutionItem, ExecutionTotals},
+    run_request_item,
+};
 
 use super::{
     open_data_file, workbook::*, Identifable, Parameters, SelectableOptions, SerializationFailure,
@@ -11,11 +13,14 @@ use super::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::{
+    collections::{HashMap, HashSet},
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Instant,
+};
 use tokio::{select, task::JoinSet};
 use tokio_util::sync::CancellationToken;
-use std::{
-    collections::{HashMap, HashSet}, path::{Path, PathBuf}, sync::Arc, time::Instant
-};
 
 const NO_SELECTION_ID: &str = "\tNONE\t";
 
@@ -69,8 +74,8 @@ pub struct IndexedEntities<T> {
 impl<T: Identifable> IndexedEntities<T> {
     /// Find a match based upon ID or name
     pub fn find_match(&self, selection: &Selection) -> bool {
-        selection.id == NO_SELECTION_ID ||
-        self.entities.contains_key(&selection.id)
+        selection.id == NO_SELECTION_ID
+            || self.entities.contains_key(&selection.id)
             || self
                 .entities
                 .values()
@@ -326,6 +331,76 @@ impl Workspace {
         selection: &Option<Selection>,
     ) -> WorkbookSelectedOption<&WorkbookScenario> {
         Workspace::find_matching_selection(selection, &self.scenarios)
+    }
+
+    /// Create a new workspace, including globals specified (if any)
+    pub fn new(
+        globals_filename: Option<PathBuf>,
+    ) -> Result<Workspace, SerializationFailure> {
+        let wkspc_requests = IndexedRequests {
+            top_level_ids: vec![],
+            child_ids: None,
+            entities: HashMap::new(),
+        };
+        let mut wkspc_scenarios = IndexedEntities::<WorkbookScenario> {
+            top_level_ids: vec![],
+            entities: HashMap::new(),
+        };
+        let mut wkspc_authorizations = IndexedEntities::<WorkbookAuthorization> {
+            top_level_ids: vec![],
+            entities: HashMap::new(),
+        };
+        let mut wkspc_certificates = IndexedEntities::<WorkbookCertificate> {
+            top_level_ids: vec![],
+            entities: HashMap::new(),
+        };
+        let mut wkspc_proxies = IndexedEntities::<WorkbookProxy> {
+            top_level_ids: vec![],
+            entities: HashMap::new(),
+        };
+
+        // Open globals using either the specified file name or falling back to the default name,
+        match Parameters::open_global_parameters(globals_filename) {
+            Ok(success) => {
+                let globals = success.data;
+                // Populate entries from global storage
+                Self::populate_indexes(
+                    &globals.scenarios,
+                    &mut wkspc_scenarios,
+                    Persistence::Global,
+                );
+                Self::populate_indexes(
+                    &globals.authorizations,
+                    &mut wkspc_authorizations,
+                    Persistence::Global,
+                );
+                Self::populate_indexes(
+                    &globals.certificates,
+                    &mut wkspc_certificates,
+                    Persistence::Global,
+                );
+                Self::populate_indexes(&globals.proxies, &mut wkspc_proxies, Persistence::Global);
+                
+                let mut workspace = Workspace {
+                    requests: wkspc_requests,
+                    scenarios: wkspc_scenarios,
+                    authorizations: wkspc_authorizations,
+                    certificates: wkspc_certificates,
+                    proxies: wkspc_proxies,
+                    defaults: None,
+                    warnings: None,
+                };
+
+                // Validate the default workbook scenarios, etc. selected for testing
+                workspace.validate_workbook_defaults();
+
+                // for request in wkspc_requests.entities.values() {
+                // }
+
+                Ok(workspace)                
+            }
+            Err(failure) => Err(failure),
+        }
     }
 
     /// Open the specified workbook and globals file names

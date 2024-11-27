@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.14.0
+
+* Added Workspace::new to load globals when creating new workspace
+
 # 0.13.3
 
 * Fix warnings on NO_SELECTION_ID 
