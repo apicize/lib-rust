@@ -1,8 +1,9 @@
 //! This module implements OAuth2 client flow support, including support for caching tokens
-use crate::{ApicizeError, WorkbookCertificate, WorkbookProxy};
+use crate::{ApicizeError, Identifable, WorkbookCertificate, WorkbookProxy};
 use oauth2::basic::BasicClient;
 use oauth2::reqwest;
 use oauth2::{ClientId, ClientSecret, Scope, TokenResponse, TokenUrl};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ops::Add;
 use std::sync::LazyLock;
@@ -11,6 +12,21 @@ use tokio::sync::Mutex;
 
 pub static TOKEN_CACHE: LazyLock<Mutex<HashMap<String, (Instant, String)>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// OAuth2 issued token result
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub struct TokenResult {
+    /// Issued token
+    pub token: String,
+    /// Set to True if token was retrieved via cache
+    pub cached: bool,
+    /// URL used to retrieve token
+    pub url: Option<String>,
+    /// Name of the certificate parameter, if any
+    pub certificate: Option<String>,
+    /// Name of the proxy parameter, if any
+    pub proxy: Option<String>,
+}
 
 /// Return cached oauth2 token, with indicator of whether value was retrieved from cache
 pub async fn get_oauth2_client_credentials<'a>(
@@ -21,7 +37,7 @@ pub async fn get_oauth2_client_credentials<'a>(
     scope: &'a Option<String>,
     certificate: Option<&'a WorkbookCertificate>,
     proxy: Option<&'a WorkbookProxy>,
-) -> Result<(String, bool), ApicizeError> {
+) -> Result<TokenResult, ApicizeError> {
     let cloned_scope = scope.clone();
 
     // Check cache and return if token found and not expired
@@ -39,7 +55,13 @@ pub async fn get_oauth2_client_credentials<'a>(
     };
 
     if let Some(token) = valid_token {
-        return Ok((token, true));
+        return Ok(TokenResult {
+            token,
+            cached: true,
+            url: None,
+            certificate: None,
+            proxy: None,
+        });
     }
 
     // Retrieve an access token
@@ -63,7 +85,12 @@ pub async fn get_oauth2_client_credentials<'a>(
     if let Some(active_cert) = certificate {
         match active_cert.append_to_builder(reqwest_builder) {
             Ok(updated_builder) => reqwest_builder = updated_builder,
-            Err(err) => return Err(err),
+            Err(err) => {
+                return Err(ApicizeError::OAuth2Client {
+                    description: String::from("Error assigning OAuth certificate"),
+                    source: Some(Box::new(err)),
+                })
+            }
         }
     }
 
@@ -71,13 +98,24 @@ pub async fn get_oauth2_client_credentials<'a>(
     if let Some(active_proxy) = proxy {
         match active_proxy.append_to_builder(reqwest_builder) {
             Ok(updated_builder) => reqwest_builder = updated_builder,
-            Err(err) => return Err(ApicizeError::from_reqwest(err)),
+            Err(err) => {
+                return Err(ApicizeError::OAuth2Client {
+                    description: String::from("Error assigning OAuth proxy"),
+                    source: Some(Box::new(ApicizeError::from_reqwest(err))),
+                })
+            }
         }
     }
 
-    let http_client = reqwest_builder
-        .build()
-        .expect("Unable to build OAuth HTTP client");
+    let http_client = match reqwest_builder.build() {
+        Ok(client) => client,
+        Err(err) => {
+            return Err(ApicizeError::OAuth2Client {
+                description: String::from("Error building OAuth request"),
+                source: Some(Box::new(ApicizeError::from_reqwest(err))),
+            })
+        }
+    };
 
     match token_request.request_async(&http_client).await {
         Ok(token_response) => {
@@ -87,9 +125,18 @@ pub async fn get_oauth2_client_credentials<'a>(
             };
             let token = token_response.access_token().secret().clone();
             locked_cache.insert(String::from(id), (expiration, token.clone()));
-            Ok((token, false))
+            Ok(TokenResult {
+                token,
+                cached: false,
+                url: Some(String::from(token_url)),
+                certificate: certificate.map(|c| c.get_name().to_owned()),
+                proxy: proxy.map(|p| p.get_name().to_owned()),
+            })
         }
-        Err(err) => Err(ApicizeError::from_oauth2(err)),
+        Err(err) => Err(ApicizeError::OAuth2Client {
+            description: String::from("Error dispatching OAuth2 token request"),
+            source: Some(Box::new(ApicizeError::from_oauth2(err))),
+        }),
     }
 }
 
@@ -116,7 +163,8 @@ pub mod tests {
     use serial_test::{parallel, serial};
 
     use crate::oauth2_client_tokens::{
-        clear_all_oauth2_tokens, clear_oauth2_token, get_oauth2_client_credentials, TOKEN_CACHE,
+        clear_all_oauth2_tokens, clear_oauth2_token, get_oauth2_client_credentials, TokenResult,
+        TOKEN_CACHE,
     };
 
     pub struct OAuth2ClientTokens;
@@ -130,9 +178,21 @@ pub mod tests {
             _scope: &'a Option<String>,
             _certificate: Option<&'a crate::WorkbookCertificate>,
             _proxy: Option<&'a crate::WorkbookProxy>,
-        ) -> Result<(String, bool), crate::ApicizeError> { Ok((String::from(""), false))}
-        pub async fn clear_all_oauth2_tokens<'a>() -> usize { 1 }
-        pub async fn clear_oauth2_token(_id: &str) -> bool { true }    
+        ) -> Result<TokenResult, crate::ApicizeError> {
+            Ok(TokenResult {
+                token: String::from(""),
+                cached: false,
+                url: None,
+                certificate: None,
+                proxy: None
+            })
+        }
+        pub async fn clear_all_oauth2_tokens<'a>() -> usize {
+            1
+        }
+        pub async fn clear_oauth2_token(_id: &str) -> bool {
+            true
+        }
     }
 
     // Note - because we are using shared storage for cached tokens, some tests cannot be run in parallel, thus the "serial" attributes.
@@ -163,7 +223,13 @@ pub mod tests {
             )
             .await)
                 .unwrap(),
-            (String::from("123"), true)
+            TokenResult {
+                token: String::from("123"),
+                cached: true,
+                url: None,
+                certificate: None,
+                proxy: None
+            }
         );
     }
 
@@ -200,7 +266,16 @@ pub mod tests {
 
         mock.assert();
 
-        assert_eq!(result.unwrap(), (String::from(FAKE_TOKEN), false));
+        assert_eq!(
+            result.unwrap(),
+            TokenResult {
+                token: String::from(FAKE_TOKEN),
+                cached: false,
+                url: Some(server.url()),
+                certificate: None,
+                proxy: None
+            }
+        );
 
         {
             let locked_cache = TOKEN_CACHE.lock().await;
@@ -250,7 +325,16 @@ pub mod tests {
 
         mock.assert();
 
-        assert_eq!(result.unwrap(), (String::from(FAKE_TOKEN), false));
+        assert_eq!(
+            result.unwrap(),
+            TokenResult {
+                token: String::from(FAKE_TOKEN),
+                cached: false,
+                url: Some(server.url()),
+                certificate: None,
+                proxy: None
+            }
+        );
         {
             let locked_cache = TOKEN_CACHE.lock().await;
             assert!(locked_cache.get(&String::from("abc")).is_some());
@@ -326,7 +410,13 @@ pub mod tests {
             (get_oauth2_client_credentials("abc1", &server.url(), "me", "shhh", &None, None, None)
                 .await)
                 .unwrap(),
-            (String::from(FAKE_TOKEN), false)
+            TokenResult {
+                token: String::from(FAKE_TOKEN),
+                cached: false,
+                url: Some(server.url()),
+                certificate: None,
+                proxy: None
+            }
         );
         mock.assert();
 
@@ -335,7 +425,14 @@ pub mod tests {
             (get_oauth2_client_credentials("abc1", &server.url(), "me", "shhh", &None, None, None)
                 .await)
                 .unwrap(),
-            (String::from(FAKE_TOKEN), true)
+                TokenResult {
+                    token: String::from(FAKE_TOKEN),
+                    cached: true,
+                    url: None,
+                    certificate: None,
+                    proxy: None
+                }
+    
         );
         mock.expect_at_most(0);
     }
@@ -359,7 +456,14 @@ pub mod tests {
             (get_oauth2_client_credentials("abc2", &server.url(), "me", "shhh", &None, None, None)
                 .await)
                 .unwrap(),
-            (String::from(FAKE_TOKEN), false)
+                TokenResult {
+                    token: String::from(FAKE_TOKEN),
+                    cached: false,
+                    url: Some(server.url()),
+                    certificate: None,
+                    proxy: None
+                }
+    
         );
         mock.assert();
 
@@ -368,7 +472,14 @@ pub mod tests {
             (get_oauth2_client_credentials("abc2", &server.url(), "me", "shhh", &None, None, None)
                 .await)
                 .unwrap(),
-            (String::from(FAKE_TOKEN), true)
+                TokenResult {
+                    token: String::from(FAKE_TOKEN),
+                    cached: true,
+                    url: None,
+                    certificate: None,
+                    proxy: None
+                }
+    
         );
         mock.expect_at_most(0);
     }
@@ -392,7 +503,14 @@ pub mod tests {
             (get_oauth2_client_credentials("abc3", &server.url(), "me", "shhh", &None, None, None)
                 .await)
                 .unwrap(),
-            (String::from(FAKE_TOKEN), false)
+                TokenResult {
+                    token: String::from(FAKE_TOKEN),
+                    cached: false,
+                    url: Some(server.url()),
+                    certificate: None,
+                    proxy: None
+                }
+    
         );
         mock.assert();
 
@@ -401,7 +519,14 @@ pub mod tests {
             (get_oauth2_client_credentials("abc3", &server.url(), "me", "shhh", &None, None, None)
                 .await)
                 .unwrap(),
-            (String::from(FAKE_TOKEN), true)
+                TokenResult {
+                    token: String::from(FAKE_TOKEN),
+                    cached: true,
+                    url: None,
+                    certificate: None,
+                    proxy: None
+                }
+    
         );
         mock.expect_at_most(0);
     }

@@ -19,7 +19,8 @@ use crate::apicize::{
     ApicizeExecutionItem, ApicizeExecutionRequest, ApicizeExecutionRequestRun, ApicizeRequest,
     ApicizeTestResponse, ExecutionTotals, ExecutionTotalsSource,
 };
-use crate::{apicize::ApicizeHttpResponse, WorkbookRequest};
+use crate::oauth2_client_tokens::TokenResult;
+use crate::{apicize::ApicizeResponse, WorkbookRequest};
 use crate::{
     ApicizeError, WorkbookAuthorization, WorkbookCertificate, WorkbookExecution, WorkbookProxy,
     WorkbookRequestBody, WorkbookRequestEntry, WorkbookRequestMethod, Workspace,
@@ -39,7 +40,7 @@ pub async fn run(
     request_ids: Option<Vec<String>>,
     cancellation_token: Option<CancellationToken>,
     tests_started: Arc<Instant>,
-    override_number_of_runs: Option<usize>
+    override_number_of_runs: Option<usize>,
 ) -> Result<ApicizeExecution, ApicizeError> {
     // Ensure V8 is initialized
     V8_INIT.call_once(|| {
@@ -379,7 +380,7 @@ pub async fn run_request_item(
 /// Execute the specified request's tests
 fn execute_request_test(
     request: &WorkbookRequest,
-    response: &ApicizeHttpResponse,
+    response: &ApicizeResponse,
     variables: &HashMap<String, Value>,
     tests_started: &Arc<Instant>,
 ) -> Result<Option<ApicizeTestResponse>, ApicizeError> {
@@ -580,7 +581,7 @@ async fn dispatch_request(
     proxy: Option<&WorkbookProxy>,
     auth_certificate: Option<&WorkbookCertificate>,
     auth_proxy: Option<&WorkbookProxy>,
-) -> Result<(ApicizeRequest, ApicizeHttpResponse), ApicizeError> {
+) -> Result<(ApicizeRequest, ApicizeResponse), ApicizeError> {
     let method = match request.method {
         Some(WorkbookRequestMethod::Get) => reqwest::Method::GET,
         Some(WorkbookRequestMethod::Post) => reqwest::Method::POST,
@@ -640,6 +641,7 @@ async fn dispatch_request(
     }
 
     let builder_result = reqwest_builder.build();
+    let mut oauth2_token: Option<TokenResult> = None;
 
     match builder_result {
         Ok(client) => {
@@ -667,7 +669,6 @@ async fn dispatch_request(
                 }
             }
 
-            let mut auth_token_cached: Option<bool> = None;
             match authorization {
                 Some(WorkbookAuthorization::Basic {
                     username, password, ..
@@ -699,9 +700,9 @@ async fn dispatch_request(
                     )
                     .await
                     {
-                        Ok((token, cached)) => {
-                            auth_token_cached = Some(cached);
-                            request_builder = request_builder.bearer_auth(token);
+                        Ok(token_result) => {
+                            request_builder = request_builder.bearer_auth(token_result.token.clone());
+                            oauth2_token = Some(token_result);
                         }
                         Err(err) => return Err(err),
                     }
@@ -887,12 +888,12 @@ async fn dispatch_request(
                                                 Some(variables.clone())
                                             },
                                         },
-                                        ApicizeHttpResponse {
+                                        ApicizeResponse {
                                             status: status.as_u16(),
                                             status_text,
                                             headers,
                                             body: response_body,
-                                            auth_token_cached,
+                                            oauth2_token
                                         },
                                     );
 
@@ -932,7 +933,8 @@ mod tests {
     use tokio_util::sync::CancellationToken;
 
     use crate::{
-        apicize::{ApicizeExecution, ApicizeExecutionItem, ApicizeHttpResponse},
+        apicize::{ApicizeExecution, ApicizeExecutionItem, ApicizeResponse},
+        oauth2_client_tokens::TokenResult,
         test_runner::{self, dispatch_request, execute_request_test},
         ApicizeError, IndexedEntities, IndexedRequests, WorkbookCertificate, WorkbookNameValuePair,
         WorkbookProxy, WorkbookRequest, WorkbookRequestEntry, WorkbookRequestMethod, Workspace,
@@ -1222,7 +1224,13 @@ mod tests {
                  _scope: &Option<String>,
                  _certificate: Option<&WorkbookCertificate>,
                  _proxy: Option<&WorkbookProxy>| {
-                    Ok((String::from("***TOKEN***"), false))
+                    Ok(TokenResult {
+                        token: String::from("***TOKEN***"),
+                        cached: true,
+                        url: None,
+                        certificate: None,
+                        proxy: None,
+                    })
                 },
             );
 
@@ -1272,12 +1280,12 @@ mod tests {
             warnings: None,
         };
 
-        let response = ApicizeHttpResponse {
+        let response = ApicizeResponse {
             status: 200,
             status_text: String::from("Ok"),
             headers: None,
             body: None,
-            auth_token_cached: None,
+            oauth2_token: None,
         };
 
         let variables: HashMap<String, Value> = HashMap::new();
@@ -1329,12 +1337,12 @@ mod tests {
             warnings: None,
         };
 
-        let response = ApicizeHttpResponse {
+        let response = ApicizeResponse {
             status: 200,
             status_text: String::from("Ok"),
             headers: None,
             body: None,
-            auth_token_cached: None,
+            oauth2_token: None,
         };
 
         let variables: HashMap<String, Value> = HashMap::new();
@@ -1385,12 +1393,12 @@ mod tests {
             warnings: None,
         };
 
-        let response = ApicizeHttpResponse {
+        let response = ApicizeResponse {
             status: 200,
             status_text: String::from("Ok"),
             headers: None,
             body: None,
-            auth_token_cached: None,
+            oauth2_token: None,
         };
 
         let variables: HashMap<String, Value> = HashMap::new();
@@ -1501,16 +1509,17 @@ mod tests {
             Some(cancellation.clone()),
             tests_started,
             Some(4),
-        ).await;
+        )
+        .await;
 
-        let runs = if let ApicizeExecutionItem::Request( result) = attempt.unwrap().items.first().unwrap() {
+        let runs = if let ApicizeExecutionItem::Request(result) =
+            attempt.unwrap().items.first().unwrap()
+        {
             result.runs.len()
         } else {
             0
         };
         assert_eq!(runs, 4)
-        
-    
     }
 
     #[tokio::test]

@@ -10,6 +10,7 @@ use serde_with::base64::{Base64, Standard};
 use serde_with::formats::Unpadded;
 use serde_with::serde_as;
 
+use crate::oauth2_client_tokens::TokenResult;
 use crate::ApicizeError;
 
 /// Trait to expose functionality for retrieving totals and variables
@@ -134,7 +135,7 @@ pub struct ApicizeExecutionRequestRun {
     /// Request sent as HTTP call
     pub request: Option<ApicizeRequest>,
     /// Response received during exexecuted run
-    pub response: Option<ApicizeHttpResponse>,
+    pub response: Option<ApicizeResponse>,
     /// Set to true if HTTP call succeeded (regardless of status code)
     pub success: bool,
     /// Set if there was an error in execution
@@ -162,7 +163,7 @@ pub struct ApicizeExecutionRequestRun {
 #[serde_as]
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct ApicizeHttpResponse {
+pub struct ApicizeResponse {
     /// HTTP status code
     pub status: u16,
     /// HTTP status text
@@ -173,8 +174,8 @@ pub struct ApicizeHttpResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Response body
     pub body: Option<ApicizeBody>,
-    /// True if authorization token cached
-    pub auth_token_cached: Option<bool>,
+    /// Set to OAuth2 token result information
+    pub oauth2_token: Option<TokenResult>,
 }
 
 /// Response from V8 when executing a request's tests

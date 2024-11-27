@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.14.1
+
+* Improve diagnostic info for OAuth2 token requests
+
 # 0.14.0
 
 * Added Workspace::new to load globals when creating new workspace
