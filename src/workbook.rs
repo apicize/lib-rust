@@ -299,6 +299,36 @@ pub enum WorkbookAuthorization {
         // #[serde(skip_serializing_if="Option::is_none")]
         // send_credentials_in_body: Option<bool>,
     },
+    /// OAuth2 PKCE flow (note, this can only be used interactively)
+    #[serde(rename_all = "camelCase")]
+    OAuth2Pkce {
+        /// Uniquely identifies authorization configuration
+        #[serde(default = "generate_uuid")]
+        id: String,
+        /// Indicates if/how authorization will be persisted
+        /// Human-readable name of authorization configuration
+        name: String,
+        /// Specifies how authorization will be saved
+        #[serde(skip_serializing_if = "Option::is_none")]
+        persistence: Option<Persistence>,
+        /// URL for authorization
+        authorization_url: String,
+        /// URL to retrieve access token from
+        access_token_url: String,
+        /// Client ID
+        client_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        /// Scope to add to token (multiple scopes should be space-delimited)
+        scope: Option<String>,
+        /// Currently active token (needs to be set before usage)
+        token: Option<String>,
+        /// Currently active refresh token if available (needs to be set before usage)
+        refresh_token: Option<String>,
+        /// Expiration of currently active token in seconds past Unix epoch (needs to be set before usage)
+        expiration: Option<u64>,
+        // #[serde(skip_serializing_if="Option::is_none")]
+        // send_credentials_in_body: Option<bool>,
+    },    
     /// API key authentication (sent in HTTP header)
     #[serde(rename_all = "camelCase")]
     ApiKey {
@@ -748,6 +778,7 @@ impl WorkbookAuthorization {
         match self {
             WorkbookAuthorization::Basic { id, name, .. } => (id, name),
             WorkbookAuthorization::OAuth2Client { id, name, .. } => (id, name),
+            WorkbookAuthorization::OAuth2Pkce { id, name, .. } => (id, name),
             WorkbookAuthorization::ApiKey { id, name, .. } => (id, name),
         }
     }
@@ -779,6 +810,7 @@ impl WorkspaceParameter<WorkbookAuthorization> for WorkbookAuthorization {
         match self {
             WorkbookAuthorization::Basic { persistence, .. } => *persistence,
             WorkbookAuthorization::OAuth2Client { persistence, .. } => *persistence,
+            WorkbookAuthorization::OAuth2Pkce { persistence, .. } => *persistence,
             WorkbookAuthorization::ApiKey { persistence, .. } => *persistence,
         }
     }
@@ -791,6 +823,9 @@ impl WorkspaceParameter<WorkbookAuthorization> for WorkbookAuthorization {
             WorkbookAuthorization::OAuth2Client { persistence, .. } => {
                 *persistence = Some(persistence_to_set)
             }
+            WorkbookAuthorization::OAuth2Pkce { persistence, .. } => {
+                *persistence = Some(persistence_to_set)
+            }
             WorkbookAuthorization::ApiKey { persistence, .. } => {
                 *persistence = Some(persistence_to_set)
             }
@@ -801,6 +836,7 @@ impl WorkspaceParameter<WorkbookAuthorization> for WorkbookAuthorization {
         match self {
             WorkbookAuthorization::Basic { persistence, .. } => *persistence = None,
             WorkbookAuthorization::OAuth2Client { persistence, .. } => *persistence = None,
+            WorkbookAuthorization::OAuth2Pkce { persistence, .. } => *persistence = None,
             WorkbookAuthorization::ApiKey { persistence, .. } => *persistence = None,
         }
     }

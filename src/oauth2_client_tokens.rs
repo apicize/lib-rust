@@ -13,7 +13,7 @@ use tokio::sync::Mutex;
 pub static TOKEN_CACHE: LazyLock<Mutex<HashMap<String, (Instant, String)>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// OAuth2 issued token result
+/// OAuth2 issued client token result
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct TokenResult {
     /// Issued token
@@ -26,6 +26,17 @@ pub struct TokenResult {
     pub certificate: Option<String>,
     /// Name of the proxy parameter, if any
     pub proxy: Option<String>,
+}
+
+/// OAuth2 issued PKCE token result
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub struct PkceTokenResult {
+    /// Access token
+    pub access_token: String,
+    /// Refresh token
+    pub refresh_token: Option<String>,
+    /// Expiration of token in seconds past Unix epoch
+    pub expiration: Option<u64>,
 }
 
 /// Return cached oauth2 token, with indicator of whether value was retrieved from cache

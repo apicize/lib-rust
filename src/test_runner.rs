@@ -706,7 +706,20 @@ async fn dispatch_request(
                         }
                         Err(err) => return Err(err),
                     }
-                }
+                },
+                Some(WorkbookAuthorization::OAuth2Pkce { token, .. }) => {
+                    match token {
+                        Some(t) => {
+                            request_builder = request_builder.bearer_auth(t.clone());
+                        }
+                        None => {
+                            return Err(ApicizeError::Error {
+                                description: String::from("PKCE authorization is not available in CLI test runner"),
+                                source: None
+                            });
+                        }
+                    }
+                },
                 None => {}
             }
 

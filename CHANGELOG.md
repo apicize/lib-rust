@@ -2,7 +2,7 @@
 
 # 0.14.1
 
-* Improve diagnostic info for OAuth2 token requests
+* Add support for PKCE
 
 # 0.14.0
 

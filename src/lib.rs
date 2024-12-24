@@ -11,6 +11,7 @@ pub mod test_runner;
 pub mod utility;
 pub mod workbook;
 pub mod workspace;
+pub mod oauth2_pkce;
 pub use errors::*;
 pub use parameters::*;
 pub use settings::*;
