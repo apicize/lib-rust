@@ -1,8 +1,12 @@
 # Change Log
 
-# 0.14.1
+# 0.15.0
 
 * Add support for PKCE
+
+# 0.14.1
+
+* Improve diagnostic info for OAuth2 token requests
 
 # 0.14.0
 
