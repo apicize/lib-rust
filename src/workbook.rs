@@ -312,7 +312,9 @@ pub enum WorkbookAuthorization {
         #[serde(skip_serializing_if = "Option::is_none")]
         persistence: Option<Persistence>,
         /// URL for authorization
-        authorization_url: String,
+        authorize_url: String,
+        /// URL for redirection
+        redirect_url: String,
         /// URL to retrieve access token from
         access_token_url: String,
         /// Client ID
