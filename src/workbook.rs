@@ -313,8 +313,6 @@ pub enum WorkbookAuthorization {
         persistence: Option<Persistence>,
         /// URL for authorization
         authorize_url: String,
-        /// URL for redirection
-        redirect_url: String,
         /// URL to retrieve access token from
         access_token_url: String,
         /// Client ID
