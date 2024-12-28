@@ -47,29 +47,34 @@ pub async fn retrieve_access_token(
         .build()
         .expect("Client should build");
 
-    let token_result = BasicClient::new(ClientId::new(client_id.to_string()))
+    println!("Client ID: {}, Code: {}, Verifier: {}", client_id, code, verifier);
+
+    match BasicClient::new(ClientId::new(client_id.to_string()))
         .set_token_uri(TokenUrl::new(access_token_uri.to_string()).unwrap())
         .exchange_code(AuthorizationCode::new(code.to_string()))
         .set_pkce_verifier(PkceCodeVerifier::new(verifier.to_string()))
         .request_async(&http_client)
-        .await
-        .expect("Unable to retrieve token");
+        .await {
+            Ok(token_result) => {
+                let access_token = token_result.access_token().secret().to_string();
+                let refresh_token = token_result.refresh_token().map(|t| t.secret().to_string());
+                let expiration = token_result.expires_in().map(|e| {
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs()
+                        + e.as_secs()
+                });
+            
+                Ok(PkceTokenResult {
+                    access_token,
+                    refresh_token,
+                    expiration,
+                })
+            }
+            Err(err) => Err(format!("{:?}", err))
+        }
 
-    let access_token = token_result.access_token().secret().to_string();
-    let refresh_token = token_result.refresh_token().map(|t| t.secret().to_string());
-    let expiration = token_result.expires_in().map(|e| {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs()
-            + e.as_secs()
-    });
-
-    Ok(PkceTokenResult {
-        access_token,
-        refresh_token,
-        expiration,
-    })
 }
 
 /// Exchange refresh token for access token (after call to retrieve_access_token)
