@@ -37,6 +37,7 @@ pub fn generate_authorization(
 /// Retrieve access token (after call to generate_authorization)
 pub async fn retrieve_access_token(
     access_token_uri: &str,
+    redirect_uri: &str,
     client_id: &str,
     code: &str,
     verifier: &str,
@@ -47,10 +48,11 @@ pub async fn retrieve_access_token(
         .build()
         .expect("Client should build");
 
-    println!("Client ID: {}, Code: {}, Verifier: {}", client_id, code, verifier);
+    println!("Token URL: {}, Redirect URL: {}, Client ID: {}, Code: {}, Verifier: {}", access_token_uri, redirect_uri, client_id, code, verifier);
 
     match BasicClient::new(ClientId::new(client_id.to_string()))
         .set_token_uri(TokenUrl::new(access_token_uri.to_string()).unwrap())
+        .set_redirect_uri(RedirectUrl::new(redirect_uri.to_string()).unwrap())
         .exchange_code(AuthorizationCode::new(code.to_string()))
         .set_pkce_verifier(PkceCodeVerifier::new(verifier.to_string()))
         .request_async(&http_client)
