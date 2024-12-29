@@ -48,7 +48,7 @@ pub async fn retrieve_access_token(
         .build()
         .expect("Client should build");
 
-    println!("Token URL: {}, Redirect URL: {}, Client ID: {}, Code: {}, Verifier: {}", access_token_uri, redirect_uri, client_id, code, verifier);
+    // println!("Token URL: {}, Redirect URL: {}, Client ID: {}, Code: {}, Verifier: {}", access_token_uri, redirect_uri, client_id, code, verifier);
 
     match BasicClient::new(ClientId::new(client_id.to_string()))
         .set_token_uri(TokenUrl::new(access_token_uri.to_string()).unwrap())

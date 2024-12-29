@@ -15,6 +15,7 @@ pub static TOKEN_CACHE: LazyLock<Mutex<HashMap<String, (Instant, String)>>> =
 
 /// OAuth2 issued client token result
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct TokenResult {
     /// Issued token
     pub token: String,
@@ -30,6 +31,7 @@ pub struct TokenResult {
 
 /// OAuth2 issued PKCE token result
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct PkceTokenResult {
     /// Access token
     pub access_token: String,
