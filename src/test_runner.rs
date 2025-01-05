@@ -714,7 +714,7 @@ async fn dispatch_request(
                         }
                         None => {
                             return Err(ApicizeError::Error {
-                                description: String::from("PKCE authorization is not available in CLI test runner"),
+                                description: String::from("PKCE access token is not available"),
                                 source: None
                             });
                         }
