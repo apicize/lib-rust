@@ -324,10 +324,13 @@ pub enum WorkbookAuthorization {
         /// Scope to add to token (multiple scopes should be space-delimited)
         scope: Option<String>,
         /// Currently active token (needs to be set before usage)
+        #[serde(skip_serializing)]
         token: Option<String>,
         /// Currently active refresh token if available (needs to be set before usage)
+        #[serde(skip_serializing)]
         refresh_token: Option<String>,
         /// Expiration of currently active token in seconds past Unix epoch (needs to be set before usage)
+        #[serde(skip_serializing)]
         expiration: Option<u64>,
         // #[serde(skip_serializing_if="Option::is_none")]
         // send_credentials_in_body: Option<bool>,
