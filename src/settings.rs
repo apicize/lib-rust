@@ -23,6 +23,11 @@ fn default_color_scheme() -> ColorScheme {
     ColorScheme::Dark
 }
 
+fn default_pkce_listener_port() -> u16 {
+    8080
+}
+
+
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 /// Color scheme for UI app
@@ -58,7 +63,12 @@ pub struct ApicizeSettings {
     pub editor_panels: String,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub recent_workbook_file_names: Option<Vec<String>>
+    /// Recent workbook file names opened in UI
+    pub recent_workbook_file_names: Option<Vec<String>>,
+
+    /// Port for UI PKCE listener
+    #[serde(default = "default_pkce_listener_port")]
+    pub pkce_listener_port: u16,
 }
 
 impl ApicizeSettings {
@@ -100,6 +110,7 @@ impl ApicizeSettings {
                 color_scheme: ColorScheme::Dark,
                 editor_panels: String::from(""),
                 recent_workbook_file_names: None,
+                pkce_listener_port: 8080,
             };
             Ok(SerializationOpenSuccess {
                 file_name: String::from(""),

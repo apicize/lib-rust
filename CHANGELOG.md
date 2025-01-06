@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.15.1
+
+* Add PKCE Port to settings
+
 # 0.15.0
 
 * Add support for PKCE
