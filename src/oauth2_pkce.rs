@@ -82,7 +82,7 @@ pub async fn retrieve_access_token(
 /// Exchange refresh token for access token (after call to retrieve_access_token)
 pub async fn refresh_token(
     access_token_uri: &str,
-    refresh_token_uri: &str,
+    refresh_token: &str,
     client_id: &str,
 ) -> Result<PkceTokenResult, String> {
     let http_client = reqwest::ClientBuilder::new()
@@ -95,7 +95,7 @@ pub async fn refresh_token(
         .set_token_uri(
             TokenUrl::new(access_token_uri.to_string()).expect("Unable to parse token_url"),
         )
-        .exchange_refresh_token(&RefreshToken::new(refresh_token_uri.to_string()))
+        .exchange_refresh_token(&RefreshToken::new(refresh_token.to_string()))
         .request_async(&http_client)
         .await
         .expect("Unable to retrieve token");

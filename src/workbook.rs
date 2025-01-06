@@ -315,9 +315,6 @@ pub enum WorkbookAuthorization {
         authorize_url: String,
         /// URL to retrieve access token from
         access_token_url: String,
-        /// URL to process refresh token requests
-        #[serde(skip_serializing_if = "Option::is_none")]
-        refresh_token_url: Option<String>,
         /// Client ID
         client_id: String,
         #[serde(skip_serializing_if = "Option::is_none")]
