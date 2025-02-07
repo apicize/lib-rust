@@ -1,5 +1,5 @@
 //! This module implements OAuth2 client flow support, including support for caching tokens
-use crate::{ApicizeError, Identifable, WorkbookCertificate, WorkbookProxy};
+use crate::{ApicizeError, Identifable, Certificate, Proxy};
 use oauth2::basic::BasicClient;
 use oauth2::reqwest;
 use oauth2::{ClientId, ClientSecret, Scope, TokenResponse, TokenUrl};
@@ -48,8 +48,8 @@ pub async fn get_oauth2_client_credentials<'a>(
     client_id: &str,
     client_secret: &str,
     scope: &'a Option<String>,
-    certificate: Option<&'a WorkbookCertificate>,
-    proxy: Option<&'a WorkbookProxy>,
+    certificate: Option<&'a Certificate>,
+    proxy: Option<&'a Proxy>,
 ) -> Result<TokenResult, ApicizeError> {
     let cloned_scope = scope.clone();
 
@@ -189,8 +189,8 @@ pub mod tests {
             _client_id: &str,
             _client_secret: &str,
             _scope: &'a Option<String>,
-            _certificate: Option<&'a crate::WorkbookCertificate>,
-            _proxy: Option<&'a crate::WorkbookProxy>,
+            _certificate: Option<&'a crate::Certificate>,
+            _proxy: Option<&'a crate::Proxy>,
         ) -> Result<TokenResult, crate::ApicizeError> {
             Ok(TokenResult {
                 token: String::from(""),

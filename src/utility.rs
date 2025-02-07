@@ -2,10 +2,9 @@
 //! 
 //! This submodule defines utility functions used for serialization and deserialization
 
-
 use uuid::Uuid;
 
-use crate::WorkbookExecution;
+use crate::ExecutionConcurrency;
 
 /// Generate unique ID
 pub fn generate_uuid() -> String {
@@ -18,6 +17,6 @@ pub fn one() -> usize {
 }
 
 /// Generate the value of Sequential execution for serde
-pub fn sequential() -> WorkbookExecution {
-    WorkbookExecution::Sequential
+pub fn sequential() -> ExecutionConcurrency {
+    ExecutionConcurrency::Sequential
 }

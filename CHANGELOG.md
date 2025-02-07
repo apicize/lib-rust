@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.15.2
+
+* Update Workspace representation of Parameters to be hierarchical by persistence (public, private, global)
+
 # 0.15.1
 
 * Add PKCE Port to settings
