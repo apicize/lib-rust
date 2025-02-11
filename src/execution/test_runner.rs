@@ -15,12 +15,15 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    ApicizeBody, ApicizeExecution, ApicizeExecutionGroup, ApicizeExecutionGroupRun, ApicizeExecutionItem, ApicizeExecutionRequest, ApicizeExecutionRequestRun, ApicizeRequest, ApicizeResponse, ApicizeTestResponse, ExecutionTotals, ExecutionTotalsSource
+    ApicizeBody, ApicizeExecution, ApicizeExecutionGroup, ApicizeExecutionGroupRun,
+    ApicizeExecutionItem, ApicizeExecutionRequest, ApicizeExecutionRequestRun, ApicizeRequest,
+    ApicizeResponse, ApicizeTestResponse, ExecutionTotals, ExecutionTotalsSource,
 };
 use crate::oauth2_client_tokens::TokenResult;
 use crate::types::workspace::RequestParameters;
 use crate::{
-    ApicizeError, Authorization, ExecutionConcurrency, Request, RequestBody, RequestEntry, RequestMethod, Workspace
+    ApicizeError, Authorization, ExecutionConcurrency, Request, RequestBody, RequestEntry,
+    RequestMethod, Workspace,
 };
 
 #[cfg(test)]
@@ -31,7 +34,6 @@ use crate::oauth2_client_tokens as oauth2;
 
 static V8_INIT: Once = Once::new();
 
-
 /// Dispatch requests/groups in the specified workspace, optionally forcing the number of runs
 pub async fn run(
     request_ids: &Vec<String>,
@@ -39,6 +41,7 @@ pub async fn run(
     cancellation: Option<Arc<CancellationToken>>,
     tests_started: Arc<Instant>,
     override_number_of_runs: Option<usize>,
+    enable_trace: bool,
 ) -> Result<ApicizeExecution, ApicizeError> {
     // Ensure V8 is initialized
     V8_INIT.call_once(|| {
@@ -47,13 +50,10 @@ pub async fn run(
         v8::V8::initialize();
     });
 
-    let cancellation_token = cancellation.unwrap_or(
-        Arc::new(CancellationToken::default())
-    );
+    let cancellation_token = cancellation.unwrap_or(Arc::new(CancellationToken::default()));
 
     let mut executing_items: JoinSet<Result<ApicizeExecutionItem, ApicizeError>> = JoinSet::new();
     for request_id in request_ids {
-        
         let cloned_request_id = request_id.clone();
         let cloned_workspace = workspace.clone();
         let cloned_cancellation = cancellation_token.clone();
@@ -73,13 +73,13 @@ pub async fn run(
                     cloned_request_id,
                     Arc::new(HashMap::new()),
                     override_number_of_runs,
+                    enable_trace,
                 ) => {
                     Ok(result)
                 }
             }
-        });        
+        });
     }
-
 
     let completed_items = executing_items.join_all().await;
 
@@ -124,6 +124,7 @@ async fn run_request_group(
     group_child_ids: Vec<String>,
     run_number: usize,
     mut variables: Arc<HashMap<String, Value>>,
+    enable_trace: bool,
 ) -> ApicizeExecutionGroupRun {
     let mut items: Vec<ApicizeExecutionItem> = vec![];
     let number_of_children = group_child_ids.len();
@@ -139,6 +140,7 @@ async fn run_request_group(
                 child_id.clone(),
                 variables.clone(),
                 None,
+                enable_trace,
             )
             .await;
 
@@ -158,6 +160,7 @@ async fn run_request_group(
                 id,
                 variables.clone(),
                 None,
+                enable_trace,
             );
             child_items.spawn(async move {
                 select! {
@@ -208,6 +211,7 @@ async fn run_request_item(
     request_id: String,
     variables: Arc<HashMap<String, Value>>,
     override_number_of_runs: Option<usize>,
+    enable_trace: bool,
 ) -> ApicizeExecutionItem {
     let request_as_entity = workspace.requests.entities.get(&request_id).unwrap();
     let params = workspace.retrieve_request_parameters(request_as_entity, &variables);
@@ -226,7 +230,8 @@ async fn run_request_item(
             let shared_request = Arc::new(request.clone());
             let shared_variables = Arc::new(params.variables);
 
-            if request.multi_run_execution == ExecutionConcurrency::Sequential || number_of_runs < 2 {
+            if request.multi_run_execution == ExecutionConcurrency::Sequential || number_of_runs < 2
+            {
                 for ctr in 0..number_of_runs {
                     let run = execute_request_run(
                         workspace.clone(),
@@ -235,6 +240,7 @@ async fn run_request_item(
                         shared_request.clone(),
                         shared_entity.clone(),
                         shared_variables.clone(),
+                        enable_trace,
                     )
                     .await;
                     runs.push(run);
@@ -251,6 +257,7 @@ async fn run_request_item(
                         shared_request.clone(),
                         shared_entity.clone(),
                         shared_variables.clone(),
+                        enable_trace,
                     );
                     child_runs.spawn(async move {
                         select! {
@@ -292,11 +299,12 @@ async fn run_request_item(
             ApicizeExecutionItem::Request(Box::new(executed_request))
         }
         RequestEntry::Group(group) => {
-            let group_child_ids = if let Some(group_child_ids) = workspace.requests.child_ids.get(&group.id) {
-                group_child_ids.clone()
-            } else {
-                vec![]
-            };
+            let group_child_ids =
+                if let Some(group_child_ids) = workspace.requests.child_ids.get(&group.id) {
+                    group_child_ids.clone()
+                } else {
+                    vec![]
+                };
 
             let mut runs: Vec<ApicizeExecutionGroupRun> = vec![];
 
@@ -312,6 +320,7 @@ async fn run_request_item(
                                 group_child_ids.clone(),
                                 ctr + 1,
                                 variables.clone(),
+                                enable_trace,
                             )
                             .await,
                         )
@@ -330,6 +339,7 @@ async fn run_request_item(
                             group_child_ids.clone(),
                             ctr + 1,
                             variables.clone(),
+                            enable_trace,
                         );
                         executing_runs.spawn(async move {
                             select! {
@@ -452,6 +462,7 @@ async fn execute_request_run(
     request: Arc<Request>,
     request_as_entry: Arc<RequestEntry>,
     variables: Arc<HashMap<String, Value>>,
+    enable_trace: bool,
 ) -> ApicizeExecutionRequestRun {
     let shared_workspace = workspace.clone();
     let shared_test_started = tests_started.clone();
@@ -461,10 +472,7 @@ async fn execute_request_run(
 
     let params = shared_workspace.retrieve_request_parameters(&request_as_entry, &variables);
 
-    let dispatch_response = dispatch_request(
-        &request,
-        &workspace,
-        &params).await;
+    let dispatch_response = dispatch_request(&request, &workspace, &params, enable_trace).await;
 
     match dispatch_response {
         Ok((packaged_request, response)) => {
@@ -567,6 +575,7 @@ async fn dispatch_request(
     request: &Request,
     workspace: &Workspace,
     params: &RequestParameters,
+    enable_trace: bool,
 ) -> Result<(ApicizeRequest, ApicizeResponse), ApicizeError> {
     let method = match request.method {
         Some(RequestMethod::Get) => reqwest::Method::GET,
@@ -593,7 +602,8 @@ async fn dispatch_request(
     //     keep_alive = true;
     // }
 
-    let subs = &params.variables
+    let subs = &params
+        .variables
         .iter()
         .map(|(name, value)| {
             let v = if let Some(s) = value.as_str() {
@@ -608,7 +618,8 @@ async fn dispatch_request(
     // Build the reqwest client and request
     let mut reqwest_builder = Client::builder()
         // .http2_keep_alive_while_idle(keep_alive)
-        .timeout(timeout);
+        .timeout(timeout)
+        .connection_verbose(enable_trace);
 
     // Add certificate to builder if configured
     if let Some(certificate) = workspace.certificates.get(&params.certificate_id) {
@@ -642,13 +653,13 @@ async fn dispatch_request(
                 for nvp in h {
                     if nvp.disabled != Some(true) {
                         headers.insert(
-                            reqwest::header::HeaderName::try_from(
-                                RequestEntry::clone_and_sub(&nvp.name, subs),
-                            )
+                            reqwest::header::HeaderName::try_from(RequestEntry::clone_and_sub(
+                                &nvp.name, subs,
+                            ))
                             .unwrap(),
-                            reqwest::header::HeaderValue::try_from(
-                                RequestEntry::clone_and_sub(&nvp.value, subs),
-                            )
+                            reqwest::header::HeaderValue::try_from(RequestEntry::clone_and_sub(
+                                &nvp.value, subs,
+                            ))
                             .unwrap(),
                         );
                     }
@@ -683,27 +694,27 @@ async fn dispatch_request(
                         scope,
                         workspace.certificates.get(&params.auth_certificate_id),
                         workspace.proxies.get(&params.auth_proxy_id),
+                        enable_trace,
                     )
                     .await
                     {
                         Ok(token_result) => {
-                            request_builder = request_builder.bearer_auth(token_result.token.clone());
+                            request_builder =
+                                request_builder.bearer_auth(token_result.token.clone());
                             oauth2_token = Some(token_result);
                         }
                         Err(err) => return Err(err),
                     }
-                },
-                Some(Authorization::OAuth2Pkce { token, .. }) => {
-                    match token {
-                        Some(t) => {
-                            request_builder = request_builder.bearer_auth(t.clone());
-                        }
-                        None => {
-                            return Err(ApicizeError::Error {
-                                description: String::from("PKCE access token is not available"),
-                                source: None
-                            });
-                        }
+                }
+                Some(Authorization::OAuth2Pkce { token, .. }) => match token {
+                    Some(t) => {
+                        request_builder = request_builder.bearer_auth(t.clone());
+                    }
+                    None => {
+                        return Err(ApicizeError::Error {
+                            description: String::from("PKCE access token is not available"),
+                            source: None,
+                        });
                     }
                 },
                 None => {}
@@ -733,7 +744,7 @@ async fn dispatch_request(
                     let s = RequestEntry::clone_and_sub(data, subs);
                     request_builder = request_builder.body(Body::from(s.clone()));
                 }
-                Some(RequestBody::JSON { data }) => {
+                Some(RequestBody::JSON { data, .. }) => {
                     let s = RequestEntry::clone_and_sub(
                         serde_json::to_string(&data).unwrap().as_str(),
                         subs,
@@ -892,7 +903,7 @@ async fn dispatch_request(
                                             status_text,
                                             headers,
                                             body: response_body,
-                                            oauth2_token
+                                            oauth2_token,
                                         },
                                     );
 
@@ -1598,5 +1609,3 @@ pub fn cleanup_v8() {
 //         assert!(has_cancelled_result);
 //     }
 // }
-
-

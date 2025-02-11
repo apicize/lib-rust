@@ -83,7 +83,6 @@ impl Certificate {
                 Ok(
                     builder
                         .identity(identity)
-                        // .connection_verbose(true)
                         .use_native_tls(), // .tls_info(true)
                 )
             }

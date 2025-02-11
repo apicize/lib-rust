@@ -41,9 +41,11 @@ pub async fn retrieve_access_token(
     client_id: &str,
     code: &str,
     verifier: &str,
+    enable_trace: bool,
 ) -> Result<PkceTokenResult, String> {
     let http_client = reqwest::ClientBuilder::new()
         // Following redirects opens the client up to SSRF vulnerabilities.
+        .connection_verbose(enable_trace)
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .expect("Client should build");

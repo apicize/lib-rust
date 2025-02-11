@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.16.0
+
+* Add support for reqwest trace logging
+
 # 0.15.2
 
 * Update Workspace representation of Parameters to be hierarchical by persistence (public, private, global)
