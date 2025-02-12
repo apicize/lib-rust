@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use super::{SelectedParameters, Selection};
 
 /// Default parameters for the workbook
-#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkbookDefaultParameters {
     /// Selected scenario, if applicable

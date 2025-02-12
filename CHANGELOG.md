@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.16.1
+
+Add default implementation to WorkbookDefaultParameters
+
 # 0.16.0
 
 * Add support for reqwest trace logging
