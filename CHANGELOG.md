@@ -1,6 +1,6 @@
 # Change Log
 
-# 0.16.2
+# 0.16.2 / 0.16.3
 
 Store JSON data files in "pretty" format
 
