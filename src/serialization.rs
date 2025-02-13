@@ -1,6 +1,7 @@
 use serde::{de::DeserializeOwned, Serialize};
+use serde_json::ser::PrettyFormatter;
 use thiserror::Error;
-use std::{fs, io::{self, Read}, path::{Path, PathBuf}};
+use std::{fs::{self, File}, io::{self, Read}, path::{Path, PathBuf}};
 
 /// Information on save success
 /// Information on open success, including data
@@ -88,21 +89,26 @@ pub fn save_data_file<T: Serialize>(
     data: &T,
 ) -> Result<SerializationSaveSuccess, SerializationFailure> {
     let file_name = String::from(output_file_name.to_string_lossy());
-    match serde_json::to_string(data) {
-        Ok(text) => match fs::write(output_file_name, text) {
-            Ok(()) => Ok(SerializationSaveSuccess {
-                file_name,
-                operation: SerializationOperation::Save,
-            }),
-            Err(err) => Err(SerializationFailure {
-                file_name,
-                error: SerializationError::IO(err),
-            }),
+    let formatter = PrettyFormatter::with_indent(b"    ");
+
+    match File::create(output_file_name) {
+        Ok(writer) => {
+            let mut ser = serde_json::Serializer::with_formatter(writer, formatter);
+            match data.serialize(&mut ser) {
+                Ok(()) => Ok(SerializationSaveSuccess {
+                    file_name,
+                    operation: SerializationOperation::Save,
+                }),
+                Err(err) => Err(SerializationFailure {
+                    file_name,
+                    error: SerializationError::JSON(err),
+                }),
+            }
         },
         Err(err) => Err(SerializationFailure {
             file_name,
-            error: SerializationError::JSON(err),
-        }),
+            error: SerializationError::IO(err),
+        })
     }
 }
 

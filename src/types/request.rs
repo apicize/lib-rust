@@ -44,8 +44,6 @@ pub enum RequestBody {
     JSON {
         /// Text
         data: Value,
-        /// Optional formatted text version
-        formatted: Option<String>,
     },
     /// XML body data
     #[serde(rename = "XML")]

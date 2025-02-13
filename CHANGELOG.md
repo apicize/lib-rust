@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.16.2
+
+Store JSON data files in "pretty" format
+
 # 0.16.1
 
 Add default implementation to WorkbookDefaultParameters
