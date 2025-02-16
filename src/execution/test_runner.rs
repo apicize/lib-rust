@@ -2,7 +2,8 @@
 //!
 //! This library supports dispatching Apicize functional web tests
 use std::collections::HashMap;
-use std::sync::{Arc, Once};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex, Once};
 use std::time::{Duration, Instant};
 
 use async_recursion::async_recursion;
@@ -23,7 +24,7 @@ use crate::oauth2_client_tokens::TokenResult;
 use crate::types::workspace::RequestParameters;
 use crate::{
     ApicizeError, Authorization, ExecutionConcurrency, Request, RequestBody, RequestEntry,
-    RequestMethod, Workspace,
+    RequestMethod, ScenarioValueCache, Workspace,
 };
 
 #[cfg(test)]
@@ -41,6 +42,7 @@ pub async fn run(
     cancellation: Option<Arc<CancellationToken>>,
     tests_started: Arc<Instant>,
     override_number_of_runs: Option<usize>,
+    allowed_data_path: Option<PathBuf>,
     enable_trace: bool,
 ) -> Result<ApicizeExecution, ApicizeError> {
     // Ensure V8 is initialized
@@ -52,12 +54,15 @@ pub async fn run(
 
     let cancellation_token = cancellation.unwrap_or(Arc::new(CancellationToken::default()));
 
+    let value_cache = Arc::new(Mutex::new(ScenarioValueCache::new(allowed_data_path)));
+
     let mut executing_items: JoinSet<Result<ApicizeExecutionItem, ApicizeError>> = JoinSet::new();
     for request_id in request_ids {
         let cloned_request_id = request_id.clone();
         let cloned_workspace = workspace.clone();
         let cloned_cancellation = cancellation_token.clone();
         let cloned_tests_started = tests_started.clone();
+        let cloned_value_cache = value_cache.clone();
 
         executing_items.spawn(async move {
             // println!("Request: {}", cloned_request_id);
@@ -73,6 +78,7 @@ pub async fn run(
                     cloned_request_id,
                     Arc::new(HashMap::new()),
                     override_number_of_runs,
+                    cloned_value_cache.clone(),
                     enable_trace,
                 ) => {
                     Ok(result)
@@ -125,6 +131,7 @@ async fn run_request_group(
     run_number: usize,
     mut variables: Arc<HashMap<String, Value>>,
     enable_trace: bool,
+    value_cache: Arc<Mutex<ScenarioValueCache>>,
 ) -> ApicizeExecutionGroupRun {
     let mut items: Vec<ApicizeExecutionItem> = vec![];
     let number_of_children = group_child_ids.len();
@@ -140,6 +147,7 @@ async fn run_request_group(
                 child_id.clone(),
                 variables.clone(),
                 None,
+                value_cache.clone(),
                 enable_trace,
             )
             .await;
@@ -160,6 +168,7 @@ async fn run_request_group(
                 id,
                 variables.clone(),
                 None,
+                value_cache.clone(),
                 enable_trace,
             );
             child_items.spawn(async move {
@@ -211,22 +220,48 @@ async fn run_request_item(
     request_id: String,
     variables: Arc<HashMap<String, Value>>,
     override_number_of_runs: Option<usize>,
+    value_cache: Arc<Mutex<ScenarioValueCache>>,
     enable_trace: bool,
 ) -> ApicizeExecutionItem {
-    let request_as_entity = workspace.requests.entities.get(&request_id).unwrap();
-    let params = workspace.retrieve_request_parameters(request_as_entity, &variables);
-    let name = request_as_entity.get_name().as_str();
+    let request_as_entry = workspace.requests.entities.get(&request_id).unwrap();
+    let name = request_as_entry.get_name().as_str();
 
     let executed_at = tests_started.elapsed().as_millis();
     let start_instant = Instant::now();
-    let number_of_runs = override_number_of_runs.unwrap_or(request_as_entity.get_runs());
+    let number_of_runs = override_number_of_runs.unwrap_or(request_as_entry.get_runs());
 
-    match request_as_entity {
+    match request_as_entry {
         RequestEntry::Info(request) => {
+            // If there is a failure to get parameters, then our execution has failed
+            let params = match workspace.retrieve_request_parameters(
+                request_as_entry,
+                &variables,
+                &value_cache,
+            ) {
+                Ok(valid) => valid,
+                Err(err) => {
+                    return ApicizeExecutionItem::Request(Box::new(ApicizeExecutionRequest {
+                        id: request.id.clone(),
+                        name: request.name.clone(),
+                        executed_at,
+                        duration: 0,
+                        runs: vec![],
+                        variables: None,
+                        success: false,
+                        requests_with_passed_tests_count: 0,
+                        requests_with_failed_tests_count: 0,
+                        requests_with_errors: 0,
+                        passed_test_count: 0,
+                        failed_test_count: 0,
+                        error: Some(err),
+                    }));
+                }
+            };
+
             let mut runs: Vec<ApicizeExecutionRequestRun> = vec![];
 
             // todo!("It would be nice not to clone these, but with recursion it may be necessary evil");
-            let shared_entity = Arc::new(request_as_entity.clone());
+            let shared_entity = Arc::new(request_as_entry.clone());
             let shared_request = Arc::new(request.clone());
             let shared_variables = Arc::new(params.variables);
 
@@ -241,6 +276,7 @@ async fn run_request_item(
                         shared_entity.clone(),
                         shared_variables.clone(),
                         enable_trace,
+                        value_cache.clone(),
                     )
                     .await;
                     runs.push(run);
@@ -258,6 +294,7 @@ async fn run_request_item(
                         shared_entity.clone(),
                         shared_variables.clone(),
                         enable_trace,
+                        value_cache.clone(),
                     );
                     child_runs.spawn(async move {
                         select! {
@@ -288,6 +325,7 @@ async fn run_request_item(
                 requests_with_errors: 0,
                 passed_test_count: 0,
                 failed_test_count: 0,
+                error: None,
             };
 
             for run in &runs {
@@ -321,6 +359,7 @@ async fn run_request_item(
                                 ctr + 1,
                                 variables.clone(),
                                 enable_trace,
+                                value_cache.clone(),
                             )
                             .await,
                         )
@@ -340,6 +379,7 @@ async fn run_request_item(
                             ctr + 1,
                             variables.clone(),
                             enable_trace,
+                            value_cache.clone(),
                         );
                         executing_runs.spawn(async move {
                             select! {
@@ -371,6 +411,7 @@ async fn run_request_item(
                 requests_with_errors: 0,
                 passed_test_count: 0,
                 failed_test_count: 0,
+                error: None,
             };
 
             for run in &runs {
@@ -463,6 +504,7 @@ async fn execute_request_run(
     request_as_entry: Arc<RequestEntry>,
     variables: Arc<HashMap<String, Value>>,
     enable_trace: bool,
+    value_cache: Arc<Mutex<ScenarioValueCache>>,
 ) -> ApicizeExecutionRequestRun {
     let shared_workspace = workspace.clone();
     let shared_test_started = tests_started.clone();
@@ -470,7 +512,32 @@ async fn execute_request_run(
     let executed_at = shared_test_started.elapsed().as_millis();
     let start_instant = Instant::now();
 
-    let params = shared_workspace.retrieve_request_parameters(&request_as_entry, &variables);
+    let params = match shared_workspace.retrieve_request_parameters(
+        &request_as_entry,
+        &variables,
+        &value_cache,
+    ) {
+        Ok(valid) => valid,
+        Err(err) => {
+            return ApicizeExecutionRequestRun {
+                run_number,
+                executed_at,
+                duration: start_instant.elapsed().as_millis(),
+                request: None,
+                response: None,
+                success: false,
+                error: Some(err),
+                tests: None,
+                input_variables: None,
+                variables: None,
+                requests_with_passed_tests_count: 0,
+                requests_with_failed_tests_count: 0,
+                requests_with_errors: 0,
+                passed_test_count: 0,
+                failed_test_count: 0,
+            };
+        }
+    };
 
     let dispatch_response = dispatch_request(&request, &workspace, &params, enable_trace).await;
 

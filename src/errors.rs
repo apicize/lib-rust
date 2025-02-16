@@ -1,6 +1,7 @@
 //! Apicize execution error types
 use std::error::Error;
 use std::fmt::Display;
+use std::io;
 
 use oauth2::basic::BasicErrorResponseType;
 use oauth2::{RequestTokenError, StandardErrorResponse};
@@ -38,6 +39,13 @@ pub enum ApicizeError {
         id: String,
         description: String,
         source: Option<Box<ApicizeError>>,
+    },
+    IO {
+        description: String,
+    },
+    Parse {
+        description: String,
+        name: String,
     },
     FailedTest {
         description: String,
@@ -105,6 +113,26 @@ impl ApicizeError {
         }
     }
 
+    pub fn from_serde(error: serde_json::Error, name: &str) -> ApicizeError {
+        ApicizeError::Parse {
+            description: format!("{}", error),
+            name: name.to_string(),
+        }
+    }
+
+    pub fn from_csv(error: csv::Error, name: &str) -> ApicizeError {
+        ApicizeError::Parse {
+            description: format!("{}", error),
+            name: name.to_string(),
+        }
+    }
+
+    pub fn from_io(error: io::Error) -> ApicizeError {
+        ApicizeError::IO { 
+            description: format!("{}", error)
+        }
+    }
+
     pub fn from_failed_test(description: String) -> ApicizeError {
         ApicizeError::FailedTest { description }
     }
@@ -118,6 +146,8 @@ impl ApicizeError {
             ApicizeError::OAuth2Client { .. } => "OAuth2 Token Error",
             ApicizeError::Async { .. } => "Task Error",
             ApicizeError::FailedTest { .. } => "Failed Test",
+            ApicizeError::IO { .. } => "I/O",
+            ApicizeError::Parse { .. } => "Failed Parsing",
         }
     }
 }
@@ -174,6 +204,14 @@ impl Display for ApicizeError {
                 description, id, ..
             } => {
                 suffix = Some(format!("(task {})", id));
+                desc = description;
+            }
+            ApicizeError::IO { description, .. } => {
+                suffix = None;
+                desc = description;
+            }
+            ApicizeError::Parse { description, name } => {
+                suffix = Some(format!("(value \"{}\"", name));
                 desc = description;
             }
             ApicizeError::FailedTest { description, .. } => {

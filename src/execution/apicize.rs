@@ -120,6 +120,8 @@ pub struct ApicizeExecutionRequest {
     pub passed_test_count: usize,
     /// Number of failed tests, if request and tests are succesfully run
     pub failed_test_count: usize,
+    /// If set, indicates a fatal error
+    pub error: Option<ApicizeError>,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
@@ -228,6 +230,8 @@ pub struct ApicizeExecutionGroup {
     pub passed_test_count: usize,
     /// Number of failed tests, if request and tests are succesfully run
     pub failed_test_count: usize,
+    /// If set, indicates a fatal error
+    pub error: Option<ApicizeError>,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]

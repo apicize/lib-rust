@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{PersistedIndex, RequestEntry, PERSIST_PRIVATE, PERSIST_VAULT, PERSIST_WORKBOOK};
+use crate::{ApicizeError, PersistedIndex, RequestEntry, PERSIST_PRIVATE, PERSIST_VAULT, PERSIST_WORKBOOK};
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -55,6 +55,27 @@ impl<T: Identifable + Clone> IndexedEntities<T> {
                 }
             }
             None => None,
+        }
+    }
+
+    /// Return entry ID matched by ID
+    pub fn find_by_id_or_name(&self, id_or_name: &Option<String>) -> Result<Option<String>, ApicizeError> {
+        match id_or_name {
+            Some(id_to_find) => {
+                if id_to_find == NO_SELECTION_ID {
+                    Ok(None)
+                } else if let Some(found) = self.entities.get(id_to_find) {
+                    Ok(Some(found.get_id().clone()))
+                } else if let Some(found_by_name) = self.entities.values().find(|e| e.get_name() == id_to_find) {
+                    Ok(Some(found_by_name.get_id().clone()))
+                } else {
+                    Err(ApicizeError::Error { 
+                        description: format!("Invalid ID {}", &id_to_find), 
+                        source: None
+                    })
+                }
+            }
+            None => Ok(None),
         }
     }
 

@@ -3,19 +3,17 @@
 //! This submodule defines modules used to manage workspaces
 
 use crate::{
-    open_data_file, Authorization, Certificate, Identifable, PersistedIndex, Proxy, RequestEntry,
-    Scenario, SelectedParameters, Selection, SerializationFailure, SerializationSaveSuccess,
-    Warnings, Workbook, WorkbookDefaultParameters,
+    open_data_file, ApicizeError, Authorization, Certificate, Identifable, PersistedIndex, Proxy, RequestEntry, Scenario, SelectedParameters, Selection, SerializationFailure, SerializationSaveSuccess, Warnings, Workbook, WorkbookDefaultParameters
 };
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
     collections::{HashMap, HashSet},
-    path::PathBuf,
+    path::PathBuf, sync::Mutex,
 };
 
-use super::{indexed_entities::NO_SELECTION_ID, IndexedEntities, Parameters};
+use super::{indexed_entities::NO_SELECTION_ID, IndexedEntities, Parameters, ScenarioValueCache};
 
 /// Data type for entities used by Apicize during testing and editing.  This will be
 /// the combination of ,  credential and global settings values
@@ -283,7 +281,8 @@ impl Workspace {
         &self,
         request: &RequestEntry,
         variables: &HashMap<String, Value>,
-    ) -> RequestParameters {
+        value_cache: &Mutex<ScenarioValueCache>,
+    ) -> Result<RequestParameters, ApicizeError> {
         let mut done = false;
 
         let mut current = request;
@@ -435,21 +434,29 @@ impl Workspace {
 
         let mut result_variables = variables.clone();
         if let Some(active_scenario) = scenario {
-            if let Some(variables) = &active_scenario.variables {
-                for pair in variables {
-                    result_variables.insert(pair.name.clone(), Value::from(pair.value.clone()));
+            let mut locked_cache = value_cache.lock().unwrap();
+            let values = locked_cache.get_scenario_values(active_scenario);
+            for (name, value) in values {
+                match value {
+                    Ok(valid) => {
+                        result_variables.insert(name.clone(), valid.clone());
+                    },
+                    Err(err) => {
+                        return Err(err.clone());
+                    }
                 }
+                
             }
-        };
+        }
 
-        RequestParameters {
+        Ok(RequestParameters {
             variables: result_variables,
             authorization_id: authorization.map(|a| a.get_id().clone()),
             certificate_id: certificate.map(|a| a.get_id().clone()),
             proxy_id: proxy.map(|p| p.get_id().clone()),
             auth_certificate_id,
             auth_proxy_id,
-        }
+        })
     }
 }
 
