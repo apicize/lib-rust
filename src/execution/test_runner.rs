@@ -81,7 +81,7 @@ pub async fn run(
                     cloned_value_cache.clone(),
                     enable_trace,
                 ) => {
-                    Ok(result)
+                    result
                 }
             }
         });
@@ -132,7 +132,7 @@ async fn run_request_group(
     mut variables: Arc<HashMap<String, Value>>,
     enable_trace: bool,
     value_cache: Arc<Mutex<ScenarioValueCache>>,
-) -> ApicizeExecutionGroupRun {
+) -> Result<ApicizeExecutionGroupRun, ApicizeError> {
     let mut items: Vec<ApicizeExecutionItem> = vec![];
     let number_of_children = group_child_ids.len();
     let executed_at = tests_started.elapsed().as_millis();
@@ -152,13 +152,21 @@ async fn run_request_group(
             )
             .await;
 
-            if let Some(updated_variables) = executed_child.get_variables() {
-                variables = Arc::new(updated_variables.clone());
+            match executed_child {
+                Ok(execution) => {
+                    if let Some(updated_variables) = execution.get_variables() {
+                        variables = Arc::new(updated_variables.clone());
+                    }
+                    items.push(execution);        
+                },
+                Err(err) => {
+                    return Err(err);
+                },
             }
-            items.push(executed_child);
+
         }
     } else {
-        let mut child_items: JoinSet<Option<ApicizeExecutionItem>> = JoinSet::new();
+        let mut child_items: JoinSet<Option<Result<ApicizeExecutionItem, ApicizeError>>> = JoinSet::new();
         for id in group_child_ids {
             let cloned_cancellation = cancellation_token.clone();
             let executed_item = run_request_item(
@@ -182,8 +190,22 @@ async fn run_request_group(
         }
 
         while let Some(child_results) = child_items.join_next().await {
-            if let Ok(Some(result)) = child_results {
-                items.push(result);
+            match child_results {
+                Ok(execution) => {
+                    if let Some(execution_item) = execution {
+                        match execution_item {
+                            Ok(result) => {
+                                items.push(result);
+                            },
+                            Err(err) => {
+                                return Err(err);    
+                            }
+                        }
+                    }
+                },
+                Err(err) => {
+                    return Err(ApicizeError::from_async(err));
+                },
             }
         }
     }
@@ -207,7 +229,7 @@ async fn run_request_group(
         Clone::clone_from(&mut executed_run.variables, item.get_variables());
     }
     executed_run.items = items;
-    return executed_run;
+    return Ok(executed_run);
 }
 
 /// Run the specified request entry recursively.  We are marking everything
@@ -222,7 +244,7 @@ async fn run_request_item(
     override_number_of_runs: Option<usize>,
     value_cache: Arc<Mutex<ScenarioValueCache>>,
     enable_trace: bool,
-) -> ApicizeExecutionItem {
+) -> Result<ApicizeExecutionItem, ApicizeError> {
     let request_as_entry = workspace.requests.entities.get(&request_id).unwrap();
     let name = request_as_entry.get_name().as_str();
 
@@ -240,21 +262,7 @@ async fn run_request_item(
             ) {
                 Ok(valid) => valid,
                 Err(err) => {
-                    return ApicizeExecutionItem::Request(Box::new(ApicizeExecutionRequest {
-                        id: request.id.clone(),
-                        name: request.name.clone(),
-                        executed_at,
-                        duration: 0,
-                        runs: vec![],
-                        variables: None,
-                        success: false,
-                        requests_with_passed_tests_count: 0,
-                        requests_with_failed_tests_count: 0,
-                        requests_with_errors: 0,
-                        passed_test_count: 0,
-                        failed_test_count: 0,
-                        error: Some(err),
-                    }));
+                    return Err(err);
                 }
             };
 
@@ -325,7 +333,6 @@ async fn run_request_item(
                 requests_with_errors: 0,
                 passed_test_count: 0,
                 failed_test_count: 0,
-                error: None,
             };
 
             for run in &runs {
@@ -334,7 +341,7 @@ async fn run_request_item(
 
             executed_request.runs = runs;
 
-            ApicizeExecutionItem::Request(Box::new(executed_request))
+            Ok(ApicizeExecutionItem::Request(Box::new(executed_request)))
         }
         RequestEntry::Group(group) => {
             let group_child_ids =
@@ -344,7 +351,7 @@ async fn run_request_item(
                     vec![]
                 };
 
-            let mut runs: Vec<ApicizeExecutionGroupRun> = vec![];
+            let mut runs: Vec<Result<ApicizeExecutionGroupRun, ApicizeError>> = vec![];
 
             match group.multi_run_execution {
                 ExecutionConcurrency::Sequential => {
@@ -366,7 +373,7 @@ async fn run_request_item(
                     }
                 }
                 ExecutionConcurrency::Concurrent => {
-                    let mut executing_runs: JoinSet<Option<ApicizeExecutionGroupRun>> =
+                    let mut executing_runs: JoinSet<Option<Result<ApicizeExecutionGroupRun, ApicizeError>>> =
                         JoinSet::new();
                     for ctr in 0..number_of_runs {
                         let cloned_cancellation = cancellation_token.clone();
@@ -391,11 +398,18 @@ async fn run_request_item(
                         });
                     }
                     for completed_run in executing_runs.join_all().await {
-                        if let Some(r) = completed_run {
-                            runs.push(r);
+                        match completed_run {
+                            Some(run) => {
+                                runs.push(run);
+                            },
+                            None => {},
                         }
-                        runs.sort_by_key(|r| r.run_number);
                     }
+
+                    runs.sort_by_key(|run| match run {
+                        Ok(r) => r.run_number,
+                        Err(_) => 0,
+                    });
                 }
             }
 
@@ -411,15 +425,23 @@ async fn run_request_item(
                 requests_with_errors: 0,
                 passed_test_count: 0,
                 failed_test_count: 0,
-                error: None,
             };
 
-            for run in &runs {
-                executed_group.add_totals(run);
+            executed_group.runs = vec![];
+            for run in runs {
+                match run {
+                    Ok(successful_run) => {
+                        executed_group.add_totals(&successful_run);
+                        executed_group.runs.push(successful_run);
+                    },
+                    Err(err) => {
+                        return Err(err);
+                    },
+                }
+                
             }
-            executed_group.runs = runs;
 
-            ApicizeExecutionItem::Group(Box::new(executed_group))
+            Ok(ApicizeExecutionItem::Group(Box::new(executed_group)))
         }
     }
 }
