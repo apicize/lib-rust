@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use crate::{save_data_file, Authorization, Certificate, Proxy, RequestEntry, Scenario, SerializationFailure, SerializationSaveSuccess};
 use serde::{Deserialize, Serialize};
 
-use super::WorkbookDefaultParameters;
+use super::{ExternalData, WorkbookDefaultParameters};
 
 /// Persisted Apcizize requests and scenario definitions
 #[derive(Serialize, Deserialize, PartialEq)]
@@ -26,6 +26,9 @@ pub struct Workbook {
     /// Workbook proxy servers
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proxies: Option<Vec<Proxy>>,
+    /// External data
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Vec<ExternalData>>,
     /// Workbook defaults
     #[serde(skip_serializing_if = "Option::is_none")]
     pub defaults: Option<WorkbookDefaultParameters>
@@ -40,6 +43,7 @@ impl Workbook {
         authorizations: Option<Vec<Authorization>>,
         certificates: Option<Vec<Certificate>>,
         proxies: Option<Vec<Proxy>>,
+        data: Option<Vec<ExternalData>>,
         defaults: Option<WorkbookDefaultParameters>
     ) -> Result<SerializationSaveSuccess, SerializationFailure> {
         let save_scenarios = match scenarios {
@@ -83,6 +87,17 @@ impl Workbook {
             None => None,
         };
 
+        let save_data = match data {
+            Some(entities) => {
+                if entities.is_empty() {
+                    None
+                } else {
+                    Some(entities.to_vec())
+                }
+            },
+            None => None,
+        };
+
         let workbook = Workbook {
             version: 1.0,
             requests,
@@ -90,6 +105,7 @@ impl Workbook {
             authorizations: save_authorizations,
             certificates: save_certiificates,
             proxies: save_proxies,
+            data: save_data,
             defaults,
         };
 

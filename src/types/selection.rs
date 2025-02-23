@@ -10,6 +10,7 @@ pub struct Selection {
     /// ID of selected entity
     pub id: String,
     /// Name of selected entity
+    #[serde(skip_serializing_if = "String::is_empty", default = "String::default")]
     pub name: String,
 }
 

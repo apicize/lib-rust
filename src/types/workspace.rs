@@ -3,17 +3,22 @@
 //! This submodule defines modules used to manage workspaces
 
 use crate::{
-    open_data_file, ApicizeError, Authorization, Certificate, Identifable, PersistedIndex, Proxy, RequestEntry, Scenario, SelectedParameters, Selection, SerializationFailure, SerializationSaveSuccess, Warnings, Workbook, WorkbookDefaultParameters
+    open_data_file, ApicizeError, Authorization, Certificate, Identifable, PersistedIndex, Proxy,
+    RequestEntry, Scenario, SelectedParameters, Selection, SerializationFailure,
+    SerializationSaveSuccess, Warnings, Workbook, WorkbookDefaultParameters,
 };
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf, sync::Mutex,
+    collections::HashSet,
+    path::PathBuf,
+    sync::Mutex,
 };
 
-use super::{indexed_entities::NO_SELECTION_ID, IndexedEntities, Parameters, ScenarioValueCache};
+use super::{
+    indexed_entities::NO_SELECTION_ID, ExternalData, IndexedEntities, Parameters, VariableCache,
+};
 
 /// Data type for entities used by Apicize during testing and editing.  This will be
 /// the combination of ,  credential and global settings values
@@ -34,6 +39,9 @@ pub struct Workspace {
 
     /// Proxies for the workspace
     pub proxies: IndexedEntities<Proxy>,
+
+    /// External data for the workspace
+    pub data: IndexedEntities<ExternalData>,
 
     /// Default values for requests and groups
     pub defaults: Option<WorkbookDefaultParameters>,
@@ -164,6 +172,7 @@ impl Workspace {
                 None,
                 global_parameters.proxies.as_deref(),
             ),
+            data: IndexedEntities::<ExternalData>::new(None, None, None),
             defaults: None,
             warnings: None,
         })
@@ -218,6 +227,7 @@ impl Workspace {
                 private_parameters.proxies.as_deref(),
                 global_parameters.proxies.as_deref(),
             ),
+            data: IndexedEntities::<ExternalData>::new(workbook.data.as_deref(), None, None),
             defaults: workbook.defaults.clone(),
             warnings: None,
         };
@@ -242,6 +252,7 @@ impl Workspace {
             self.authorizations.get_workbook(),
             self.certificates.get_workbook(),
             self.proxies.get_workbook(),
+            self.data.get_workbook(),
             self.defaults.clone(),
         ) {
             Ok(success) => successes.push(success),
@@ -280,8 +291,8 @@ impl Workspace {
     pub fn retrieve_request_parameters(
         &self,
         request: &RequestEntry,
-        variables: &HashMap<String, Value>,
-        value_cache: &Mutex<ScenarioValueCache>,
+        input_variables: &Option<Map<String, Value>>,
+        value_cache: &Mutex<VariableCache>,
     ) -> Result<RequestParameters, ApicizeError> {
         let mut done = false;
 
@@ -291,6 +302,7 @@ impl Workspace {
         let mut authorization: Option<&Authorization> = None;
         let mut certificate: Option<&Certificate> = None;
         let mut proxy: Option<&Proxy> = None;
+        let mut external_data: Option<&ExternalData> = None;
 
         let mut auth_certificate_id: Option<String> = None;
         let mut auth_proxy_id: Option<String> = None;
@@ -299,6 +311,7 @@ impl Workspace {
         let mut allow_authorization = true;
         let mut allow_certificate = true;
         let mut allow_proxy = true;
+        let mut allow_data = true;
 
         let mut encountered_ids = HashSet::<String>::new();
 
@@ -352,11 +365,24 @@ impl Workspace {
                     }
                 }
             }
+            if allow_data && external_data.is_none() {
+                match self.data.find(current.selected_data()) {
+                    SelectedOption::UseDefault => {}
+                    SelectedOption::Off => {
+                        proxy = None;
+                        allow_data = false;
+                    }
+                    SelectedOption::Some(p) => {
+                        external_data = Some(p);
+                    }
+                }
+            }
 
             done = (scenario.is_some() || !allow_scenario)
                 && (authorization.is_some() || !allow_authorization)
                 && (certificate.is_some() || !allow_certificate)
-                && (proxy.is_some() || !allow_proxy);
+                && (proxy.is_some() || !allow_proxy)
+                && (external_data.is_some() || !allow_data);
 
             if !done {
                 // Get the parent
@@ -388,7 +414,7 @@ impl Workspace {
             }
         }
 
-        // Load from  defaults if required
+        // Load from defaults if required
         if let Some(defaults) = &self.defaults {
             if scenario.is_none() && allow_scenario {
                 if let SelectedOption::Some(s) = self.scenarios.find(&defaults.selected_scenario) {
@@ -414,6 +440,11 @@ impl Workspace {
                     proxy = Some(p);
                 }
             }
+            if external_data.is_none() && allow_data {
+                if let SelectedOption::Some(d) = self.data.find(&defaults.selected_data) {
+                    external_data = Some(d);
+                }
+            }
         }
 
         // Set up OAuth2 cert/proxy if specified
@@ -432,25 +463,69 @@ impl Workspace {
             }
         }
 
-        let mut result_variables = variables.clone();
+        let mut locked_cache = value_cache.lock().unwrap();
+
+        // Build out variables for the request
+        let mut variables = match input_variables {
+            Some(existing) => existing.clone(),
+            None => Map::new()
+        };
+        
         if let Some(active_scenario) = scenario {
-            let mut locked_cache = value_cache.lock().unwrap();
             let values = locked_cache.get_scenario_values(active_scenario);
             for (name, value) in values {
                 match value {
                     Ok(valid) => {
-                        result_variables.insert(name.clone(), valid.clone());
-                    },
+                        variables.insert(name.clone(), valid.clone());
+                    }
                     Err(err) => {
                         return Err(err.clone());
                     }
                 }
-                
             }
-        }
+        };
+
+        // Build out data
+        let (data, total_rows) = match external_data {
+            Some(d) => match locked_cache.get_external_data(d) {
+                Ok(valid) => {
+                    let standardized: Vec<Map<String, Value>>;
+                    if let Some(arr) = valid.as_array() {
+                        standardized = arr.iter().map(|item| {
+                            if let Some(obj) = item.as_object() {
+                                obj.clone()
+                            } else {
+                                Map::from_iter([("data".to_string(), item.clone())])
+                            }
+                        }).collect();
+                    } else if let Some(obj) = valid.as_object() {
+                        standardized = vec![obj.clone()];
+                    } else {
+                        standardized = Vec::from_iter(
+                            [Map::from_iter([("data".to_string(), valid.clone())])] 
+                        );
+                    }
+                    let len = standardized.len();
+                    (Some(standardized), len)
+                }
+                Err(err) => {
+                    return Err(err.clone());
+                }
+            },
+            None => (None, 0),
+        };
 
         Ok(RequestParameters {
-            variables: result_variables,
+            variables: if variables.is_empty() {
+                None
+            } else {
+                Some(variables)
+            },
+            data: if total_rows > 0 {
+                data
+            } else {
+                None
+            },
             authorization_id: authorization.map(|a| a.get_id().clone()),
             certificate_id: certificate.map(|a| a.get_id().clone()),
             proxy_id: proxy.map(|p| p.get_id().clone()),
@@ -475,7 +550,8 @@ impl Warnings for Workspace {
 
 /// Parameters to use when executing a request
 pub struct RequestParameters {
-    pub variables: HashMap<String, Value>,
+    pub variables: Option<Map<String, Value>>,
+    pub data: Option<Vec<Map<String, Value>>>,
     pub authorization_id: Option<String>,
     pub certificate_id: Option<String>,
     pub proxy_id: Option<String>,

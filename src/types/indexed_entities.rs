@@ -4,7 +4,7 @@ use crate::{ApicizeError, PersistedIndex, RequestEntry, PERSIST_PRIVATE, PERSIST
 use serde::{Deserialize, Serialize};
 
 use super::{
-    workspace::SelectedOption, Authorization, Certificate, Identifable, Proxy, Scenario, Selection,
+    workspace::SelectedOption, Authorization, Certificate, ExternalData, Identifable, Proxy, Scenario, Selection
 };
 
 pub const NO_SELECTION_ID: &str = "\tNONE\t";
@@ -45,7 +45,16 @@ impl<T: Identifable + Clone> IndexedEntities<T> {
     }
 
     /// Return entry matched by ID
-    pub fn get<'a>(&'a self, id: &Option<String>) -> Option<&'a T> {
+    pub fn get(&self, id: &String) -> Option<&T> {
+        if id == NO_SELECTION_ID {
+            None
+        } else {
+            self.entities.get(id)
+        }
+    }
+
+    /// Return entry matched by optional ID
+    pub fn get_optional(&self, id: &Option<String>) -> Option<&T> {
         match id {
             Some(id_to_find) => {
                 if id_to_find == NO_SELECTION_ID {
@@ -373,6 +382,28 @@ impl PersistedIndex<Proxy> for IndexedEntities<Proxy> {
         private: Option<&[Proxy]>,
         vault: Option<&[Proxy]>,
     ) -> IndexedEntities<Proxy> {
+        from_persisted_lists(workbook, private, vault)
+    }
+}
+
+impl PersistedIndex<ExternalData> for IndexedEntities<ExternalData> {
+    fn get_workbook(&self) -> Option<Vec<ExternalData>> {
+        to_persisted_list(self, PERSIST_WORKBOOK)
+    }
+
+    fn get_private(&self) -> Option<Vec<ExternalData>> {
+        to_persisted_list(self, PERSIST_PRIVATE)
+    }
+
+    fn get_vault(&self) -> Option<Vec<ExternalData>> {
+        to_persisted_list(self, PERSIST_VAULT)
+    }
+
+    fn new(
+        workbook: Option<&[ExternalData]>,
+        private: Option<&[ExternalData]>,
+        vault: Option<&[ExternalData]>,
+    ) -> IndexedEntities<ExternalData> {
         from_persisted_lists(workbook, private, vault)
     }
 }

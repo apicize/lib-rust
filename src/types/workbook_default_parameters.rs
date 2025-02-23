@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{SelectedParameters, Selection};
+use super::{SelectedParameters, Selection, Variable};
 
 /// Default parameters for the workbook
 #[derive(Serialize, Deserialize, PartialEq, Clone, Default)]
@@ -18,6 +18,11 @@ pub struct WorkbookDefaultParameters {
     /// Selected proxy, if applicable
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selected_proxy: Option<Selection>,
+    /// Selected external data, if applicable
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_data: Option<Selection>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed: Option<Variable>,
 }
 
 impl SelectedParameters for WorkbookDefaultParameters {
@@ -37,6 +42,10 @@ impl SelectedParameters for WorkbookDefaultParameters {
         &self.selected_proxy
     }
 
+    fn selected_data(&self) -> &Option<Selection> {
+        &self.selected_data
+    }
+
     fn selected_scenario_as_mut(&mut self) -> &mut Option<Selection> {
         &mut self.selected_scenario
     }
@@ -51,5 +60,9 @@ impl SelectedParameters for WorkbookDefaultParameters {
 
     fn selected_proxy_as_mut(&mut self) -> &mut Option<Selection> {
         &mut self.selected_proxy
+    }    
+
+    fn selected_data_as_mut(&mut self) -> &mut Option<Selection> {
+        &mut self.selected_data
     }    
 }

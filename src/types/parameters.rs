@@ -32,6 +32,7 @@ pub struct Parameters {
     pub proxies: Option<Vec<Proxy>>,
 }
 
+
 impl Default for Parameters {
     fn default() -> Self {
         Self {
