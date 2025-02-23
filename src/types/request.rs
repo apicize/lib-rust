@@ -282,6 +282,7 @@ impl RequestEntry {
             RequestEntry::Group(group) => group.runs,
         }
     }
+
 }
 
 impl Display for RequestEntry {

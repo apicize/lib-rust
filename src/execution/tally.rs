@@ -1,4 +1,7 @@
-use super::{ApicizeExecution, ApicizeExecutionDetail, ApicizeExecutionSummary, ApicizeItem, ApicizeRequestWithExecution, ApicizeSummary};
+use super::{
+    ApicizeExecution, ApicizeExecutionDetail, ApicizeExecutionSummary, ApicizeItem, ApicizeList,
+    ApicizeRequestWithExecution, ApicizeSummary,
+};
 
 pub struct Tallies {
     pub success: bool,
@@ -12,7 +15,7 @@ pub struct Tallies {
 impl Default for Tallies {
     fn default() -> Self {
         Self {
-            success: false,
+            success: true,
             requests_with_passed_tests_count: 0,
             requests_with_failed_tests_count: 0,
             requests_with_errors: 0,
@@ -33,7 +36,7 @@ impl Tallies {
         self.requests_with_errors += summary.requests_with_errors;
     }
 
-    pub fn add_executions(&mut self, executions: &Vec<ApicizeExecution>) {
+    pub fn add_executions(&mut self, executions: &Vec<Box<ApicizeExecution>>) {
         for execution in executions {
             self.add_execution(execution);
         }
@@ -41,17 +44,17 @@ impl Tallies {
 
     pub fn add_execution(&mut self, execution: &ApicizeExecution) {
         match execution {
-            ApicizeExecution::Details(items) => self.add_items(items),
+            ApicizeExecution::Details(list) => self.add_items_from_list(list),
             ApicizeExecution::Rows(items) => self.add_execution_summaries(items),
             ApicizeExecution::Runs(items) => self.add_execution_details(items),
         }
     }
-    pub fn add_execution_summaries(&mut self, executions: &Vec<ApicizeExecutionSummary>) {
+    pub fn add_execution_summaries(&mut self, executions: &ApicizeList<ApicizeExecutionSummary>) {
         let mut requests_with_passed_tests_count = self.requests_with_passed_tests_count;
         let mut requests_with_failed_tests_count = self.requests_with_failed_tests_count;
         let mut requests_with_errors = self.requests_with_errors;
 
-        for execution in executions {
+        for execution in executions.iter() {
             self.success = self.success && execution.success;
             self.passed_test_count += execution.passed_test_count;
             self.failed_test_count += execution.failed_test_count;
@@ -66,7 +69,7 @@ impl Tallies {
                 requests_with_errors = 1;
             }
 
-            if let Some(child_execution) = &execution.children {
+            if let Some(child_execution) = &execution.execution {
                 self.add_execution(child_execution);
             }
         }
@@ -75,12 +78,12 @@ impl Tallies {
         self.requests_with_errors = requests_with_errors;
     }
 
-    pub fn add_execution_details(&mut self, executions: &Vec<ApicizeExecutionDetail>) {
+    pub fn add_execution_details(&mut self, executions: &ApicizeList<ApicizeExecutionDetail>) {
         let mut requests_with_passed_tests_count = self.requests_with_passed_tests_count;
         let mut requests_with_failed_tests_count = self.requests_with_failed_tests_count;
         let mut requests_with_errors = self.requests_with_errors;
 
-        for execution in executions {
+        for execution in executions.iter() {
             self.success = self.success && execution.success;
             self.passed_test_count += execution.passed_test_count;
             self.failed_test_count += execution.failed_test_count;
@@ -97,7 +100,7 @@ impl Tallies {
         }
         self.requests_with_passed_tests_count = requests_with_passed_tests_count;
         self.requests_with_failed_tests_count = requests_with_failed_tests_count;
-        self.requests_with_errors = requests_with_errors;    
+        self.requests_with_errors = requests_with_errors;
     }
 
     pub fn add_executed_request(&mut self, request: &ApicizeRequestWithExecution) {
@@ -116,16 +119,34 @@ impl Tallies {
         }
     }
 
-    pub fn add_items(&mut self, items: &Vec<ApicizeItem>) {
-        for item in items {
-            match item {
+    pub fn add_items_from_list(&mut self, list: &ApicizeList<Box<ApicizeItem>>) {
+        for item in &list.items {
+            match item.as_ref() {
                 ApicizeItem::Group(summary) => self.add_summary(summary),
                 ApicizeItem::Request(summary) => self.add_summary(summary),
                 ApicizeItem::ExecutedRequest(request) => self.add_executed_request(request),
                 ApicizeItem::Execution(execution) => self.add_execution(execution),
-                ApicizeItem::ExecutionSummaries(summaries) => self.add_execution_summaries(summaries),
-                ApicizeItem::Items(items) => self.add_items(items),
+                ApicizeItem::ExecutionSummaries(summaries) => {
+                    self.add_execution_summaries(summaries)
+                }
+                ApicizeItem::Items(items) => self.add_items_from_list(items),
             }
         }
     }
+
+    pub fn add_items(&mut self, items: &Vec<Box<ApicizeItem>>) {
+        for item in items {
+            match item.as_ref() {
+                ApicizeItem::Group(summary) => self.add_summary(summary),
+                ApicizeItem::Request(summary) => self.add_summary(summary),
+                ApicizeItem::ExecutedRequest(request) => self.add_executed_request(request),
+                ApicizeItem::Execution(execution) => self.add_execution(execution),
+                ApicizeItem::ExecutionSummaries(summaries) => {
+                    self.add_execution_summaries(summaries)
+                }
+                ApicizeItem::Items(items) => self.add_items_from_list(items),
+            }
+        }
+    }
+
 }

@@ -17,8 +17,8 @@ use tokio_util::sync::CancellationToken;
 
 use super::{
     ApicizeBody, ApicizeDispatchRequest, ApicizeDispatchResponse, ApicizeExecution,
-    ApicizeExecutionDetail, ApicizeExecutionSummary, ApicizeTestResponse, ApicizeTestResult,
-    Tallies,
+    ApicizeExecutionDetail, ApicizeExecutionSummary, ApicizeList, ApicizeTestResponse,
+    ApicizeTestResult, OutputVariables, Tallies,
 };
 use crate::oauth2_client_tokens::TokenResult;
 use crate::types::workspace::RequestParameters;
@@ -39,8 +39,8 @@ static V8_INIT: Once = Once::new();
 pub trait ApicizeRunner {
     fn run(
         &self,
-        request_ids: Vec<String>,
-    ) -> impl std::future::Future<Output = Result<Vec<ApicizeItem>, ApicizeError>> + Send;
+        request_ids: &Vec<String>,
+    ) -> impl std::future::Future<Output = Result<Vec<Box<ApicizeItem>>, ApicizeError>> + Send;
 }
 
 pub struct TestRunnerContext {
@@ -69,7 +69,7 @@ impl TestRunnerContext {
 
         TestRunnerContext {
             workspace,
-            cancellation: cancellation.unwrap_or(CancellationToken::default()),
+            cancellation: cancellation.unwrap_or_default(),
             value_cache: Mutex::new(VariableCache::new(allowed_data_path)),
             tests_started: Instant::now(),
             override_number_of_runs,
@@ -79,22 +79,22 @@ impl TestRunnerContext {
 }
 
 impl ApicizeRunner for Arc<TestRunnerContext> {
-    /// Dispatch requests/groups in the specified workspace, optionally forcing the number of runs
-    async fn run(&self, request_ids: Vec<String>) -> Result<Vec<ApicizeItem>, ApicizeError> {
-        let mut executing_items: JoinSet<Result<ApicizeItem, ApicizeError>> = JoinSet::new();
+    /// Dispatch requests/groups in the specified workspace
+    async fn run(&self, request_ids: &Vec<String>) -> Result<Vec<Box<ApicizeItem>>, ApicizeError> {
+        let mut executing_items: JoinSet<Result<Box<ApicizeItem>, ApicizeError>> = JoinSet::new();
 
         for request_id in request_ids {
             let cloned_context = self.clone();
+            let cloned_id = request_id.clone();
 
             executing_items.spawn(async move {
-                let id = request_id.clone();
                 select! {
                     _ = cloned_context.cancellation.cancelled() => Err(ApicizeError::Cancelled {
                         description: String::from("Cancelled"), source: None
                     }),
                     result = run_item(
                         cloned_context.clone(),
-                        id,
+                        cloned_id,
                         None,
                     ) => {
                         result
@@ -104,7 +104,7 @@ impl ApicizeRunner for Arc<TestRunnerContext> {
         }
 
         let completed_items = executing_items.join_all().await;
-        let mut results = Vec::<ApicizeItem>::with_capacity(completed_items.len());
+        let mut results = Vec::<Box<ApicizeItem>>::with_capacity(completed_items.len());
 
         for completed_item in completed_items {
             match completed_item {
@@ -126,8 +126,8 @@ async fn run_item(
     context: Arc<TestRunnerContext>,
     id: String,
     input_variables: Option<Map<String, Value>>,
-) -> Result<ApicizeItem, ApicizeError> {
-    let response: ApicizeItem;
+) -> Result<Box<ApicizeItem>, ApicizeError> {
+    let response: Box<ApicizeItem>;
 
     match context.workspace.requests.get(&id) {
         Some(entry) => {
@@ -167,7 +167,7 @@ async fn run_request(
     context: Arc<TestRunnerContext>,
     request: Arc<Request>,
     params: Arc<RequestParameters>,
-) -> ApicizeItem {
+) -> Box<ApicizeItem> {
     let number_of_runs = context.override_number_of_runs.unwrap_or(request.runs);
     let number_of_rows = match &params.data {
         Some(d) => d.len(),
@@ -178,7 +178,7 @@ async fn run_request(
     let executed_at = context.tests_started.elapsed().as_millis();
 
     if number_of_runs < 1 {
-        return ApicizeItem::Request(ApicizeSummary {
+        return Box::new(ApicizeItem::Request(ApicizeSummary {
             id: request.id.clone(),
             name: request.name.clone(),
             executed_at,
@@ -191,7 +191,7 @@ async fn run_request(
             requests_with_errors: 0,
             passed_test_count: 0,
             failed_test_count: 0,
-        });
+        }));
     }
 
     // If this is a single run, and no data or single-row data, return shothand
@@ -206,7 +206,7 @@ async fn run_request(
         )
         .await;
 
-        return ApicizeItem::ExecutedRequest(ApicizeRequestWithExecution {
+        return Box::new(ApicizeItem::ExecutedRequest(ApicizeRequestWithExecution {
             id: request.id.clone(),
             name: request.name.clone(),
             row_number,
@@ -225,12 +225,12 @@ async fn run_request(
             success: execution.success,
             passed_test_count: execution.passed_test_count,
             failed_test_count: execution.failed_test_count,
-        });
+        }));
     }
 
     if number_of_rows == 0 {
         // No data, return a set of runs
-        let mut executions = Vec::<ApicizeExecutionDetail>::with_capacity(number_of_runs);
+        let mut executions = ApicizeList::with_capacity(number_of_runs);
         match request.multi_run_execution {
             ExecutionConcurrency::Sequential => {
                 for run_number in 1..=number_of_runs {
@@ -265,38 +265,38 @@ async fn run_request(
                     });
                 }
 
-                executions.extend(child_runs.join_all().await.into_iter().flatten());
-
-                executions.sort_by_key(|r| r.run_number);
+                executions
+                    .items
+                    .extend(child_runs.join_all().await.into_iter().flatten());
+                executions.items.sort_by_key(|r| r.run_number);
             }
         }
 
         let mut tallies = Tallies::default();
         tallies.add_execution_details(&executions);
-        return ApicizeItem::Request(ApicizeSummary {
+        Box::new(ApicizeItem::Request(ApicizeSummary {
             id: request.id.clone(),
             name: request.name.clone(),
             executed_at,
             duration: started_at.elapsed().as_millis(),
-            output_variables: executions
-                .last()
-                .map_or(None, |d| d.output_variables.clone()),
-            children: Some(ApicizeItem::Execution(ApicizeExecution::Runs(
+            output_variables: executions.get_output_variables(),
+            children: Some(Box::new(ApicizeItem::Execution(ApicizeExecution::Runs(
                 executions,
-            ))),
+            )))),
             success: tallies.success,
             requests_with_passed_tests_count: tallies.requests_with_passed_tests_count,
             requests_with_failed_tests_count: tallies.requests_with_failed_tests_count,
             requests_with_errors: tallies.requests_with_errors,
             passed_test_count: tallies.passed_test_count,
             failed_test_count: tallies.failed_test_count,
-        });
+        }))
     } else {
-        let mut executions = Vec::<ApicizeExecutionSummary>::with_capacity(number_of_rows);
+        let mut executions = ApicizeList::<ApicizeExecutionSummary>::with_capacity(number_of_rows);
 
         // Multi-row data
         for row_number in 1..=number_of_rows {
-            let mut row_executions = Vec::<ApicizeExecutionDetail>::with_capacity(number_of_runs);
+            let mut row_executions =
+                ApicizeList::<ApicizeExecutionDetail>::with_capacity(number_of_runs);
             let row_started_at = Instant::now();
             let row_executed_at = context.tests_started.elapsed().as_millis();
 
@@ -334,24 +334,22 @@ async fn run_request(
                         });
                     }
 
-                    row_executions.extend(child_runs.join_all().await.into_iter().flatten());
+                    row_executions
+                        .items
+                        .extend(child_runs.join_all().await.into_iter().flatten());
 
-                    row_executions.sort_by_key(|r| r.run_number);
+                    row_executions.items.sort_by_key(|r| r.run_number);
                 }
             }
 
             let mut row_tallies = Tallies::default();
             row_tallies.add_execution_details(&row_executions);
-            let output_variables = row_executions
-                .last()
-                .map_or(None, |e| e.output_variables.clone());
+            let output_variables = row_executions.get_output_variables();
 
             executions.push(ApicizeExecutionSummary {
                 row_number: Some(row_number),
                 run_number: None,
-                children: Some(ApicizeExecution::Runs(
-                    row_executions
-                )),
+                execution: Some(ApicizeExecution::Runs(row_executions)),
                 executed_at: row_executed_at,
                 duration: row_started_at.elapsed().as_millis(),
                 output_variables,
@@ -366,30 +364,22 @@ async fn run_request(
 
         let mut tallies = Tallies::default();
         tallies.add_execution_summaries(&executions);
-        return ApicizeItem::Request(ApicizeSummary {
+        Box::new(ApicizeItem::Request(ApicizeSummary {
             id: request.id.clone(),
             name: request.name.clone(),
             executed_at,
             duration: started_at.elapsed().as_millis(),
-            output_variables: None,
-            // output_variables: executions.last().map_or(None, |s| match &s.children {
-            //     Some(exec) => match exec {
-            //         ApicizeExecution::Details(d) => d,
-            //         ApicizeExecution::Rows(items) => todo!(),
-            //         ApicizeExecution::Runs(apicize_execution_details) => todo!(),
-            //     },
-            //     None => None,
-            // }),
-            children: Some(ApicizeItem::Execution(ApicizeExecution::Rows(
+            output_variables: executions.get_output_variables(),
+            children: Some(Box::new(ApicizeItem::Execution(ApicizeExecution::Rows(
                 executions,
-            ))),
+            )))),
             success: tallies.success,
             requests_with_passed_tests_count: tallies.requests_with_passed_tests_count,
             requests_with_failed_tests_count: tallies.requests_with_failed_tests_count,
             requests_with_errors: tallies.requests_with_errors,
             passed_test_count: tallies.passed_test_count,
             failed_test_count: tallies.failed_test_count,
-        });
+        }))
     }
 }
 
@@ -399,13 +389,13 @@ async fn run_group(
     context: Arc<TestRunnerContext>,
     group: Arc<RequestGroup>,
     params: Arc<RequestParameters>,
-) -> Result<ApicizeItem, ApicizeError> {
+) -> Result<Box<ApicizeItem>, ApicizeError> {
     let number_of_runs = context.override_number_of_runs.unwrap_or(group.runs);
     let started_at = Instant::now();
     let executed_at = context.tests_started.elapsed().as_millis();
 
     if number_of_runs < 1 {
-        return Ok(ApicizeItem::Group(ApicizeSummary {
+        return Ok(Box::new(ApicizeItem::Group(ApicizeSummary {
             id: group.id.clone(),
             name: group.name.clone(),
             executed_at,
@@ -418,55 +408,64 @@ async fn run_group(
             requests_with_errors: 0,
             passed_test_count: 0,
             failed_test_count: 0,
-        }));
+        })));
     }
 
-    let mut run_summaries = Vec::<ApicizeExecutionSummary>::with_capacity(number_of_runs);
+    let mut run_summaries = ApicizeList::<ApicizeExecutionSummary>::with_capacity(number_of_runs);
 
     if let Some(child_ids) = context.workspace.requests.child_ids.get(&group.id) {
         for run_number in 1..=number_of_runs {
-            let mut run_items = Vec::<ApicizeItem>::with_capacity(child_ids.len());
+            let mut run_items = ApicizeList::<Box<ApicizeItem>>::with_capacity(child_ids.len());
 
             let run_executed_at = context.tests_started.elapsed().as_millis();
             let run_started_at = Instant::now();
+
+            let mut run_params = (*params).clone();
 
             for child_id in child_ids {
                 if let Some(child) = context.workspace.requests.get(child_id) {
                     let c = match child {
                         RequestEntry::Info(request) => {
-                            run_request(context.clone(), Arc::new(request.clone()), params.clone())
-                                .await
+                            run_request(
+                                context.clone(),
+                                Arc::new(request.clone()),
+                                Arc::new(run_params.clone()),
+                            )
+                            .await
                         }
                         RequestEntry::Group(group) => {
-                            run_group(context.clone(), Arc::new(group.clone()), params.clone()).await?
+                            run_group(
+                                context.clone(),
+                                Arc::new(group.clone()),
+                                Arc::new(run_params.clone()),
+                            )
+                            .await?
                         }
                     };
+                    run_params.variables = c.get_output_variables();
                     run_items.push(c);
                 }
             }
 
             let mut run_tallies = Tallies::default();
-            run_tallies.add_items(&run_items);
-            let output_variables = match run_items.last() {
-                Some(last_item) => last_item.get_output_variables(),
-                None => None,
-            };
+            run_tallies.add_items_from_list(&run_items);
+            let output_variables = run_items.get_output_variables();
 
             if number_of_runs < 2 {
-                return Ok(ApicizeItem::Group(ApicizeSummary {
+                return Ok(Box::new(ApicizeItem::Group(ApicizeSummary {
                     id: group.id.clone(),
                     name: group.name.clone(),
                     executed_at,
                     duration: started_at.elapsed().as_millis(),
                     output_variables,
-                    children: Some(ApicizeItem::Items(run_items)),
+                    children: Some(Box::new(ApicizeItem::Items(run_items))),
                     success: run_tallies.success,
                     requests_with_passed_tests_count: run_tallies.requests_with_passed_tests_count,
                     requests_with_failed_tests_count: run_tallies.requests_with_failed_tests_count,
                     requests_with_errors: run_tallies.requests_with_errors,
                     passed_test_count: run_tallies.passed_test_count,
                     failed_test_count: run_tallies.failed_test_count,
-                }));
+                })));
             }
 
             run_summaries.push(ApicizeExecutionSummary {
@@ -476,7 +475,7 @@ async fn run_group(
                     None
                 },
                 row_number: None,
-                children: Some(ApicizeExecution::Details(run_items)),
+                execution: Some(ApicizeExecution::Details(run_items)),
                 executed_at: run_executed_at,
                 duration: run_started_at.elapsed().as_millis(),
                 output_variables,
@@ -493,28 +492,23 @@ async fn run_group(
     let mut tallies = Tallies::default();
     tallies.add_execution_summaries(&run_summaries);
 
-    let output_variables = run_summaries.last().map_or(None, |l| l.output_variables.clone());
+    let output_variables = run_summaries.get_output_variables();
 
-    Ok(ApicizeItem::Group(
-        ApicizeSummary {
-            id: group.id.clone(),
-            name: group.name.clone(),
-            executed_at,
-            duration: started_at.elapsed().as_millis(),
-            children: Some(
-                ApicizeItem::ExecutionSummaries(run_summaries)
-            ),
-            output_variables,
-            success: tallies.success,
-            requests_with_passed_tests_count: tallies.requests_with_passed_tests_count,
-            requests_with_failed_tests_count: tallies.requests_with_failed_tests_count,
-            requests_with_errors: tallies.requests_with_errors,
-            passed_test_count: tallies.passed_test_count,
-            failed_test_count: tallies.failed_test_count,
-        }
-    ))
+    Ok(Box::new(ApicizeItem::Group(ApicizeSummary {
+        id: group.id.clone(),
+        name: group.name.clone(),
+        executed_at,
+        duration: started_at.elapsed().as_millis(),
+        children: Some(Box::new(ApicizeItem::ExecutionSummaries(run_summaries))),
+        output_variables,
+        success: tallies.success,
+        requests_with_passed_tests_count: tallies.requests_with_passed_tests_count,
+        requests_with_failed_tests_count: tallies.requests_with_failed_tests_count,
+        requests_with_errors: tallies.requests_with_errors,
+        passed_test_count: tallies.passed_test_count,
+        failed_test_count: tallies.failed_test_count,
+    })))
 }
-
 
 #[async_recursion]
 async fn dispatch_request_and_test(
@@ -751,7 +745,7 @@ async fn dispatch_request(
                         access_token_url.as_str(),
                         client_id.as_str(),
                         client_secret.as_str(),
-                        &scope,
+                        scope,
                         context
                             .workspace
                             .certificates

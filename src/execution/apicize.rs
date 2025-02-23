@@ -2,12 +2,13 @@
 //!
 //! This submodule defines models used to execute Apicize tests and report their results
 
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use serde_with::base64::{Base64, Standard};
 use serde_with::formats::Unpadded;
 use serde_with::serde_as;
+use std::collections::HashMap;
+use std::slice::{Iter, IterMut};
 
 use crate::ApicizeError;
 
@@ -18,36 +19,84 @@ use super::oauth2_client_tokens::TokenResult;
 pub enum ApicizeItem {
     Group(ApicizeSummary),
     Request(ApicizeSummary),
-    Items(Vec<Box<ApicizeItem>>),
-    ExecutionSummaries(Vec<Box<ApicizeExecutionSummary>>),
-    ExecutedRequest(Box<ApicizeRequestWithExecution>),
-    Execution(Box<ApicizeExecution>),
+    Items(ApicizeList<Box<ApicizeItem>>),
+    ExecutionSummaries(ApicizeList<ApicizeExecutionSummary>),
+    ExecutedRequest(ApicizeRequestWithExecution),
+    Execution(ApicizeExecution),
 }
 
 impl ApicizeItem {
-    pub fn get_output_variables(&self) -> Option<Map<String, Value>> {
+    pub fn get_name(&self) -> &str {
         match self {
-            ApicizeItem::Group(g) => g.output_variables.clone(),
-            ApicizeItem::Request(r) => r.output_variables.clone(),
-            ApicizeItem::ExecutedRequest(e) => e.output_variables.clone(),
-            ApicizeItem::Execution(e) => match e {
-                ApicizeExecution::Rows(items) => {
-                    items.last().map_or(None, |i| i.output_variables.clone())
+            ApicizeItem::Group(group) => group.name.as_str(),
+            ApicizeItem::Request(request) => request.name.as_str(),
+            ApicizeItem::Items(_) => "",
+            ApicizeItem::ExecutionSummaries(_) => "",
+            ApicizeItem::ExecutedRequest(request) => request.name.as_str(),
+            ApicizeItem::Execution(_) => "",
+        }
+    }
+    pub fn get_success(&self) -> bool {
+        match self {
+            ApicizeItem::Group(group) => group.success,
+            ApicizeItem::Request(request) => request.success,
+            ApicizeItem::Items(list) => !list.items.iter().any(|i| !i.get_success()),
+            ApicizeItem::ExecutionSummaries(summaries) => {
+                !summaries.items.iter().any(|summary| !summary.success)
+            }
+            ApicizeItem::ExecutedRequest(request) => request.success,
+            ApicizeItem::Execution(execution) => match execution {
+                ApicizeExecution::Details(list) => !list.items.iter().any(|item| !item.get_success()),
+                ApicizeExecution::Rows(summaries) => {
+                    !summaries.iter().any(|summary| !summary.success)
                 }
-                ApicizeExecution::Runs(items) => {
-                    items.last().map_or(None, |d| d.output_variables.clone())
+                ApicizeExecution::Runs(summaries) => {
+                    !summaries.iter().any(|summary| !summary.success)
                 }
-                ApicizeExecution::Details(apicize_items) => todo!(),
             },
-            ApicizeItem::Items(apicize_items) => todo!(),
-            ApicizeItem::ExecutionSummaries(items) => todo!(),
         }
     }
 }
 
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+/// This class exists so that we can have a serializable vector
+pub struct ApicizeList<T> {
+    pub items: Vec<T>
+}
+
+impl <T> ApicizeList<T> {
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            items: Vec::with_capacity(capacity)
+        }
+    }
+
+    #[inline]
+    pub fn iter(&self) -> Iter<'_, T> {
+        self.items.iter()
+    }
+
+
+    #[inline]
+    pub fn iter_mut(&mut self) -> IterMut<'_, T> {
+        self.items.iter_mut()
+    }
+
+    #[inline]
+    pub fn push(&mut self, item: T) {
+        self.items.push(item)
+    }
+
+    #[inline]
+    pub fn last(&self) -> Option<&T> {
+        self.items.last()
+    }
+
+}
+
+
 /// A summary of a request, group or executions
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
-
 #[serde(rename_all = "camelCase")]
 pub struct ApicizeSummary {
     /// Request ID
@@ -66,7 +115,7 @@ pub struct ApicizeSummary {
     /// Variables to update at the end of the group
     pub output_variables: Option<Map<String, Value>>,
 
-    pub children: Option<ApicizeItem>,
+    pub children: Option<Box<ApicizeItem>>,
 
     /// Success is true if all runs are successful
     pub success: bool,
@@ -140,10 +189,11 @@ pub struct ApicizeRequestWithExecution {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[serde(tag="type")]
 pub enum ApicizeExecution {
-    Details(Vec<ApicizeItem>),
-    Rows(Vec<ApicizeExecutionSummary>),
-    Runs(Vec<ApicizeExecutionDetail>),
+    Details(ApicizeList<Box<ApicizeItem>>),
+    Rows(ApicizeList<ApicizeExecutionSummary>),
+    Runs(ApicizeList<ApicizeExecutionDetail>),
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
@@ -156,7 +206,7 @@ pub struct ApicizeExecutionSummary {
     pub row_number: Option<usize>,
 
     /// Child executions (multiple runs of a row)
-    pub children: Option<ApicizeExecution>,
+    pub execution: Option<ApicizeExecution>,
 
     /// Execution start (millisecond offset from start)
     pub executed_at: u128,
@@ -195,6 +245,7 @@ pub struct ApicizeExecutionDetail {
     pub executed_at: u128,
     /// Duration of execution (milliseconds)
     pub duration: u128,
+
     /// Variables assigned to the group
     pub input_variables: Option<Map<String, Value>>,
     /// Row data assigned to the group

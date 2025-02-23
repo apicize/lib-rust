@@ -549,6 +549,7 @@ impl Warnings for Workspace {
 }
 
 /// Parameters to use when executing a request
+#[derive(Clone)]
 pub struct RequestParameters {
     pub variables: Option<Map<String, Value>>,
     pub data: Option<Vec<Map<String, Value>>>,

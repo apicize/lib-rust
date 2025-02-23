@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 use crate::utility::*;
 
-#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Clone, Default)]
 pub enum VariableSourceType {
+    #[default]
     #[serde(rename="TEXT")]
     Text,
     JSON,
@@ -13,11 +14,6 @@ pub enum VariableSourceType {
     ExternalData,
 }
 
-impl Default for VariableSourceType {
-    fn default() -> Self {
-        VariableSourceType::Text
-    }
-}
 
 impl VariableSourceType {
     fn is_default(&self) -> bool {

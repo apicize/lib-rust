@@ -36,6 +36,7 @@ pub struct Workbook {
 
 impl Workbook {
     /// Save workbook information to the specified file
+    #[allow(clippy::too_many_arguments)] 
     pub fn save(
         file_name: PathBuf,
         requests: Vec<RequestEntry>,
