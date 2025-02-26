@@ -61,8 +61,12 @@ impl VariableCache {
             .entry(data.name.clone())
             .or_insert_with(|| match data.source_type {
                 ExternalDataSourceType::JSON => convert_json(&data.name, &data.source),
-                ExternalDataSourceType::FileJSON => extract_json(&data.name, &data.source, &self.allowed_path),
-                ExternalDataSourceType::FileCSV => extract_json(&data.name, &data.source, &self.allowed_path),
+                ExternalDataSourceType::FileJSON => {
+                    extract_json(&data.name, &data.source, &self.allowed_path)
+                }
+                ExternalDataSourceType::FileCSV => {
+                    extract_csv(&data.name, &data.source, &self.allowed_path)
+                }
             })
     }
 }

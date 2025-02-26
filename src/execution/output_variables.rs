@@ -1,41 +1,71 @@
 use serde_json::{Map, Value};
 
-use super::{ApicizeExecution, ApicizeExecutionDetail, ApicizeExecutionSummary, ApicizeItem, ApicizeList};
+use super::{
+    ApicizeExecution, ApicizeExecutionType, ApicizeGroupItem, ApicizeGroupRun, ApicizeRequest,
+};
 
 pub trait OutputVariables {
     fn get_output_variables(&self) -> Option<Map<String, Value>>;
 }
 
-impl OutputVariables for ApicizeItem {
+impl OutputVariables for ApicizeGroupItem {
     fn get_output_variables(&self) -> Option<Map<String, Value>> {
         match self {
-            ApicizeItem::Group(g) => g.output_variables.clone(),
-            ApicizeItem::Request(r) => r.output_variables.clone(),
-            ApicizeItem::ExecutedRequest(e) => e.output_variables.clone(),
-            ApicizeItem::Execution(e) => match e {
-                ApicizeExecution::Rows(summaries) => summaries.get_output_variables(),
-                ApicizeExecution::Runs(details) => details.get_output_variables(),
-                ApicizeExecution::Details(items) => items.get_output_variables(),
-            },
-            ApicizeItem::Items(items) => items.get_output_variables(),
-            ApicizeItem::ExecutionSummaries(summaries) => summaries.get_output_variables(),
+            ApicizeGroupItem::Group(g) => g.output_variables.clone(),
+            ApicizeGroupItem::Request(r) => r.output_variables.clone(),
         }
     }
 }
-impl OutputVariables for ApicizeList<Box<ApicizeItem>> {
+impl OutputVariables for Vec<ApicizeGroupItem> {
     fn get_output_variables(&self) -> Option<Map<String, Value>> {
-        self.items.last().and_then(|l| l.get_output_variables())
+        self.last().and_then(|l| l.get_output_variables())
     }
 }
 
-impl OutputVariables for ApicizeList<ApicizeExecutionDetail> {
+impl OutputVariables for ApicizeGroupRun {
     fn get_output_variables(&self) -> Option<Map<String, Value>> {
-        self.last().and_then(|l| l.output_variables.clone())
+        self.output_variables.clone()
     }
 }
 
-impl OutputVariables for ApicizeList<ApicizeExecutionSummary> {
+impl OutputVariables for Vec<ApicizeGroupRun> {
     fn get_output_variables(&self) -> Option<Map<String, Value>> {
-        self.last().and_then(|l| l.output_variables.clone())
+        self.last().and_then(|l| l.get_output_variables())
+    }
+}
+
+impl OutputVariables for ApicizeRequest {
+    fn get_output_variables(&self) -> Option<Map<String, Value>> {
+        self.output_variables.clone()
+    }
+}
+
+impl OutputVariables for ApicizeExecution {
+    fn get_output_variables(&self) -> Option<Map<String, Value>> {
+        self.output_variables.clone()
+    }
+}
+
+impl OutputVariables for Vec<ApicizeExecution> {
+    fn get_output_variables(&self) -> Option<Map<String, Value>> {
+        self.last().and_then(|e| e.output_variables.clone())
+    }
+}
+
+impl OutputVariables for ApicizeExecutionType {
+    fn get_output_variables(&self) -> Option<Map<String, Value>> {
+        match self {
+            ApicizeExecutionType::None => None,
+            ApicizeExecutionType::Single(execution) => execution.output_variables.clone(),
+            ApicizeExecutionType::Runs(execution) => {
+                execution.items.last().and_then(|e| e.output_variables.clone())
+            }
+            ApicizeExecutionType::Rows(execution) => {
+                execution.items.last().and_then(|e| e.output_variables.clone())
+            }
+            ApicizeExecutionType::MultiRunRows(rows) => {
+                rows.items.last().and_then(|e| e.output_variables.clone())
+            }
+        }
     }
 }
