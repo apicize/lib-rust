@@ -18,13 +18,13 @@ use tokio_util::sync::CancellationToken;
 use super::{
     ApicizeBody, ApicizeExecution, ApicizeExecutionType, ApicizeGroup, ApicizeGroupChildren,
     ApicizeGroupRun, ApicizeHttpRequest, ApicizeHttpResponse, ApicizeList, ApicizeRequest,
-    ApicizeTestResponse, ApicizeTestResult, OutputVariables, Tally,
+    ApicizeResult, ApicizeTestResponse, ApicizeTestResult, OutputVariables, Tally,
 };
 use crate::oauth2_client_tokens::TokenResult;
 use crate::types::workspace::RequestParameters;
 use crate::{
-    ApicizeError, ApicizeGroupItem, Authorization, ExecutionConcurrency, Request, RequestBody,
-    RequestEntry, RequestGroup, RequestMethod, VariableCache, Workspace,
+    ApicizeError, ApicizeGroupItem, ApicizeRow, Authorization, ExecutionConcurrency, Request,
+    RequestBody, RequestEntry, RequestGroup, RequestMethod, VariableCache, Workspace,
 };
 
 #[cfg(test)]
@@ -39,7 +39,7 @@ pub trait ApicizeRunner {
     fn run(
         &self,
         request_ids: &[String],
-    ) -> impl std::future::Future<Output = Result<Vec<ApicizeGroupItem>, ApicizeError>> + Send;
+    ) -> impl std::future::Future<Output = Result<Vec<ApicizeResult>, ApicizeError>> + Send;
 }
 
 pub struct TestRunnerContext {
@@ -79,8 +79,8 @@ impl TestRunnerContext {
 
 impl ApicizeRunner for Arc<TestRunnerContext> {
     /// Dispatch requests/groups in the specified workspace
-    async fn run(&self, request_ids: &[String]) -> Result<Vec<ApicizeGroupItem>, ApicizeError> {
-        let mut executing_items: JoinSet<Result<ApicizeGroupItem, ApicizeError>> = JoinSet::new();
+    async fn run(&self, request_ids: &[String]) -> Result<Vec<ApicizeResult>, ApicizeError> {
+        let mut executing_items: JoinSet<Result<ApicizeResult, ApicizeError>> = JoinSet::new();
 
         for request_id in request_ids {
             let cloned_context = self.clone();
@@ -102,7 +102,7 @@ impl ApicizeRunner for Arc<TestRunnerContext> {
         }
 
         let completed_items = executing_items.join_all().await;
-        let mut results = Vec::<ApicizeGroupItem>::with_capacity(completed_items.len());
+        let mut results = Vec::<ApicizeResult>::with_capacity(completed_items.len());
 
         for completed_item in completed_items {
             match completed_item {
@@ -122,7 +122,7 @@ impl ApicizeRunner for Arc<TestRunnerContext> {
 async fn launch_run_item(
     context: Arc<TestRunnerContext>,
     id: String,
-) -> Result<ApicizeGroupItem, ApicizeError> {
+) -> Result<ApicizeResult, ApicizeError> {
     match context.workspace.requests.get(&id) {
         Some(entry) => {
             let params = Arc::new(
@@ -131,9 +131,57 @@ async fn launch_run_item(
                     .retrieve_request_parameters(entry, &context.value_cache)?,
             );
 
-            // xxxx loop here for data
+            match &params.data {
+                Some(data) => {
+                    let row_count = data.len();
+                    let mut responses = Vec::<ApicizeRow>::with_capacity(row_count);
+                    for row_number in 1..=data.len() {
+                        let started_at = Instant::now();
+                        let executed_at = context.tests_started.elapsed().as_millis();
+                    
+                        match run_request_item(
+                            context.clone(),
+                            Arc::new(entry),
+                            params.clone(),
+                            Some(row_number),
+                        )
+                        .await
+                        {
+                            Ok(item) => {
+                                let tallies = item.get_tallies();
+                                responses.push(ApicizeRow { 
+                                    row_number, 
+                                    item,
+                                    executed_at,
+                                    duration: started_at.elapsed().as_millis(),
+                                    success: tallies.success,
+                                    request_success_count: tallies.request_success_count,
+                                    request_failure_count: tallies.request_failure_count,
+                                    request_error_count: tallies.request_error_count,
+                                    passed_test_count: tallies.passed_test_count,
+                                    failed_test_count: tallies.failed_test_count
+                                 })
+                            },
+                            Err(err) => return Err(err),
+                        }
+                    }
 
-            run_request_item(context.clone(), Arc::new(entry), params.clone(), None).await
+                    Ok(ApicizeResult::Rows(ApicizeList { items: responses }))
+                }
+                None => {
+                    match run_request_item(context.clone(), Arc::new(entry), params.clone(), None)
+                        .await
+                    {
+                        Ok(item) => match item {
+                            ApicizeGroupItem::Group(group) => Ok(ApicizeResult::Group(group)),
+                            ApicizeGroupItem::Request(request) => {
+                                Ok(ApicizeResult::Request(request))
+                            }
+                        },
+                        Err(err) => return Err(err),
+                    }
+                }
+            }
         }
         None => Err(ApicizeError::Error {
             description: format!("Invalid request ID \"{}\"", id),

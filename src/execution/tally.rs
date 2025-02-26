@@ -178,8 +178,8 @@ impl Tally for ApicizeExecutionType {
             ApicizeExecutionType::None => Tallies::default(),
             ApicizeExecutionType::Single(execution) => execution.get_tallies(),
             ApicizeExecutionType::Runs(execution) => execution.get_tallies(),
-            ApicizeExecutionType::Rows(execution) => execution.get_tallies(),
-            ApicizeExecutionType::MultiRunRows(rows) => rows.get_tallies(),
+            // ApicizeExecutionType::Rows(execution) => execution.get_tallies(),
+            // ApicizeExecutionType::MultiRunRows(rows) => rows.get_tallies(),
         }
     }
 }

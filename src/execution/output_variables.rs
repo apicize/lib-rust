@@ -60,12 +60,12 @@ impl OutputVariables for ApicizeExecutionType {
             ApicizeExecutionType::Runs(execution) => {
                 execution.items.last().and_then(|e| e.output_variables.clone())
             }
-            ApicizeExecutionType::Rows(execution) => {
-                execution.items.last().and_then(|e| e.output_variables.clone())
-            }
-            ApicizeExecutionType::MultiRunRows(rows) => {
-                rows.items.last().and_then(|e| e.output_variables.clone())
-            }
+            // ApicizeExecutionType::Rows(execution) => {
+            //     execution.items.last().and_then(|e| e.output_variables.clone())
+            // }
+            // ApicizeExecutionType::MultiRunRows(rows) => {
+            //     rows.items.last().and_then(|e| e.output_variables.clone())
+            // }
         }
     }
 }

@@ -11,6 +11,43 @@ use serde_with::serde_as;
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type")]
+pub enum ApicizeResult {
+    Group(Box<ApicizeGroup>),
+    Request(Box<ApicizeRequest>),
+    Rows(ApicizeList<ApicizeRow>),
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ApicizeRow {
+    /// Row number of data
+    pub row_number: usize,
+    // Group or request that was executed
+    pub item: ApicizeGroupItem,
+
+    /// Execution start (millisecond offset from start)
+    pub executed_at: u128,
+    /// Duration of execution (milliseconds)
+    pub duration: u128,
+    
+    /// Success is true if all runs are successful
+    pub success: bool,
+    /// Number of child requests/groups with successful requests and all tests passed
+    pub request_success_count: usize,
+    /// Number of child requests/groups with successful requests and some tests failed
+    pub request_failure_count: usize,
+    /// Number of child requests/groups with successful requests and some tests failed
+    pub request_error_count: usize,
+    /// Number of passed tests, if request and tests are succesfully run
+    pub passed_test_count: usize,
+    /// Number of failed tests, if request and tests are succesfully run
+    pub failed_test_count: usize,
+
+}
+
+
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[serde(tag = "type")]
 pub enum ApicizeGroupItem {
     Group(Box<ApicizeGroup>),
     Request(Box<ApicizeRequest>),
@@ -29,8 +66,8 @@ pub enum ApicizeExecutionType {
     None,
     Single(ApicizeExecution),
     Runs(ApicizeList<ApicizeExecution>),
-    Rows(ApicizeList<ApicizeExecution>),
-    MultiRunRows(ApicizeList<ApicizeRowRuns>),
+    // Rows(ApicizeList<ApicizeExecution>),
+    // MultiRunRows(ApicizeList<ApicizeRowRuns>),
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
