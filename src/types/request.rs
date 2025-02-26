@@ -323,13 +323,6 @@ impl SelectedParameters for RequestEntry {
         }
     }
 
-    fn selected_data(&self) -> &Option<Selection> {
-        match self {
-            RequestEntry::Info(info) => &info.selected_data,
-            RequestEntry::Group(group) => &group.selected_data,
-        }
-    }
-
     fn selected_scenario_as_mut(&mut self) -> &mut Option<Selection> {
         match self {
             RequestEntry::Info(info) => &mut info.selected_scenario,
@@ -357,13 +350,7 @@ impl SelectedParameters for RequestEntry {
             RequestEntry::Group(group) => &mut group.selected_proxy,
         }
     }
-
-    fn selected_data_as_mut(&mut self) -> &mut Option<Selection> {
-        match self {
-            RequestEntry::Info(info) => &mut info.selected_data,
-            RequestEntry::Group(group) => &mut group.selected_data,
-        }
-    }    
+ 
 }
 
 // Implement warnings trait for requests and groups

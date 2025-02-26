@@ -91,10 +91,9 @@ impl ApicizeRunner for Arc<TestRunnerContext> {
                     _ = cloned_context.cancellation.cancelled() => Err(ApicizeError::Cancelled {
                         description: String::from("Cancelled"), source: None
                     }),
-                    result = run_item(
+                    result = launch_run_item(
                         cloned_context.clone(),
                         cloned_id,
-                        None,
                     ) => {
                         result
                     }
@@ -120,40 +119,21 @@ impl ApicizeRunner for Arc<TestRunnerContext> {
     }
 }
 
-#[async_recursion]
-async fn run_item(
+async fn launch_run_item(
     context: Arc<TestRunnerContext>,
     id: String,
-    input_variables: Option<Map<String, Value>>,
 ) -> Result<ApicizeGroupItem, ApicizeError> {
-    let response: ApicizeGroupItem;
-
     match context.workspace.requests.get(&id) {
         Some(entry) => {
-            let params = Arc::new(context.workspace.retrieve_request_parameters(
-                entry,
-                &input_variables,
-                &context.value_cache,
-            )?);
+            let params = Arc::new(
+                context
+                    .workspace
+                    .retrieve_request_parameters(entry, &context.value_cache)?,
+            );
 
-            match entry {
-                RequestEntry::Info(request) => {
-                    response = run_request(
-                        context.clone(),
-                        Arc::new(request.to_owned()),
-                        params.clone(),
-                        None,
-                    )
-                    .await?;
-                }
-                RequestEntry::Group(group) => {
-                    response =
-                        run_group(context.clone(), Arc::new(group.to_owned()), params.clone())
-                            .await?;
-                }
-            }
+            // xxxx loop here for data
 
-            Ok(response)
+            run_request_item(context.clone(), Arc::new(entry), params.clone(), None).await
         }
         None => Err(ApicizeError::Error {
             description: format!("Invalid request ID \"{}\"", id),
@@ -162,7 +142,40 @@ async fn run_item(
     }
 }
 
-/// Dispatch the request and execute its tests
+#[async_recursion]
+async fn run_request_item(
+    context: Arc<TestRunnerContext>,
+    entry: Arc<&RequestEntry>,
+    params: Arc<RequestParameters>,
+    row_number: Option<usize>,
+) -> Result<ApicizeGroupItem, ApicizeError> {
+    let response: ApicizeGroupItem;
+
+    match *entry {
+        RequestEntry::Info(request) => {
+            response = run_request(
+                context.clone(),
+                Arc::new(request.to_owned()),
+                params.clone(),
+                row_number,
+            )
+            .await?;
+        }
+        RequestEntry::Group(group) => {
+            response = run_group(
+                context.clone(),
+                Arc::new(group.to_owned()),
+                params.clone(),
+                row_number,
+            )
+            .await?;
+        }
+    }
+
+    Ok(response)
+}
+
+/// Dispatch a request and execute its tests, optionally for a specific data row
 async fn run_request(
     context: Arc<TestRunnerContext>,
     request: Arc<Request>,
@@ -308,6 +321,7 @@ async fn run_group_iteration(
     group: Arc<RequestGroup>,
     params: Arc<RequestParameters>,
     run_number: usize,
+    row_number: Option<usize>,
 ) -> Result<ApicizeGroupRun, ApicizeError> {
     let run_executed_at = context.tests_started.elapsed().as_millis().clone();
     let run_started_at = Instant::now();
@@ -332,7 +346,7 @@ async fn run_group_iteration(
                                         context.clone(),
                                         Arc::new(request.clone()),
                                         Arc::new(run_params.clone()),
-                                        Some(run_number),
+                                        row_number,
                                     )
                                     .await
                                 }
@@ -341,6 +355,7 @@ async fn run_group_iteration(
                                         context.clone(),
                                         Arc::new(child_group.clone()),
                                         Arc::new(run_params.clone()),
+                                        row_number,
                                     )
                                     .await
                                 }
@@ -358,19 +373,30 @@ async fn run_group_iteration(
                         JoinSet::new();
 
                     for child_id in child_ids {
-                        let cloned_context = context.clone();
-                        let cloned_id = child_id.clone();
+                        let child = match context.workspace.requests.get(child_id) {
+                            Some(c) => c.clone(), // have to clone here because context get dropped?
+                            None => {
+                                return Err(ApicizeError::Error {
+                                    description: format!("Invalid request ID \"{}\"", child_id),
+                                    source: None,
+                                })
+                            }
+                        };
+
                         let ccl = context.cancellation.clone();
+                        let ctx = context.clone();
+                        let prm = params.clone();
 
                         spawned_items.spawn(async move {
                             select! {
                                 _ = ccl.cancelled() => Err(ApicizeError::Cancelled {
                                     description: String::from("Cancelled"), source: None
                                 }),
-                                result = run_item(
-                                    cloned_context.clone(),
-                                    cloned_id,
-                                    None
+                                result = run_request_item(
+                                    ctx.clone(),
+                                    Arc::new(&child),
+                                    prm.clone(),
+                                    row_number,
                                 ) => {
                                     result
                                 }
@@ -418,17 +444,11 @@ async fn run_group(
     context: Arc<TestRunnerContext>,
     group: Arc<RequestGroup>,
     params: Arc<RequestParameters>,
+    row_number: Option<usize>,
 ) -> Result<ApicizeGroupItem, ApicizeError> {
     let number_of_runs = context.override_number_of_runs.unwrap_or(group.runs);
     let started_at = Instant::now();
     let executed_at = context.tests_started.elapsed().as_millis();
-
-    /*
-        let number_of_rows = match &params.data {
-            Some(d) => d.len(),
-            None => 0,
-        };
-    */
 
     if number_of_runs < 1 {
         Ok(ApicizeGroupItem::Group(Box::new(ApicizeGroup {
@@ -446,7 +466,15 @@ async fn run_group(
             failed_test_count: 0,
         })))
     } else if number_of_runs == 1 {
-        match run_group_iteration(context.clone(), group.clone(), params.clone(), 1).await {
+        match run_group_iteration(
+            context.clone(),
+            group.clone(),
+            params.clone(),
+            1,
+            row_number,
+        )
+        .await
+        {
             Ok(run) => Ok(ApicizeGroupItem::Group(Box::new(ApicizeGroup {
                 id: group.id.clone(),
                 name: group.name.clone(),
@@ -476,6 +504,7 @@ async fn run_group(
                         group.clone(),
                         params.clone(),
                         run_number,
+                        row_number,
                     )
                     .await
                     {
@@ -499,7 +528,7 @@ async fn run_group(
                             _ = ccl.cancelled() => Err(ApicizeError::Cancelled {
                                 description: String::from("Cancelled"), source: None
                             }),
-                            result = run_group_iteration(cc.clone(), cg.clone(), cp.clone(), run_number) => {
+                            result = run_group_iteration(cc.clone(), cg.clone(), cp.clone(), run_number, row_number) => {
                                 result
                             }
                         }

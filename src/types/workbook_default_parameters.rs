@@ -42,10 +42,6 @@ impl SelectedParameters for WorkbookDefaultParameters {
         &self.selected_proxy
     }
 
-    fn selected_data(&self) -> &Option<Selection> {
-        &self.selected_data
-    }
-
     fn selected_scenario_as_mut(&mut self) -> &mut Option<Selection> {
         &mut self.selected_scenario
     }
@@ -60,9 +56,5 @@ impl SelectedParameters for WorkbookDefaultParameters {
 
     fn selected_proxy_as_mut(&mut self) -> &mut Option<Selection> {
         &mut self.selected_proxy
-    }    
-
-    fn selected_data_as_mut(&mut self) -> &mut Option<Selection> {
-        &mut self.selected_data
     }    
 }

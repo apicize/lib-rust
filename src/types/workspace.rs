@@ -10,11 +10,7 @@ use crate::{
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use std::{
-    collections::HashSet,
-    path::PathBuf,
-    sync::Mutex,
-};
+use std::{collections::HashSet, path::PathBuf, sync::Mutex};
 
 use super::{
     indexed_entities::NO_SELECTION_ID, ExternalData, IndexedEntities, Parameters, VariableCache,
@@ -291,7 +287,6 @@ impl Workspace {
     pub fn retrieve_request_parameters(
         &self,
         request: &RequestEntry,
-        input_variables: &Option<Map<String, Value>>,
         value_cache: &Mutex<VariableCache>,
     ) -> Result<RequestParameters, ApicizeError> {
         let mut done = false;
@@ -311,7 +306,6 @@ impl Workspace {
         let mut allow_authorization = true;
         let mut allow_certificate = true;
         let mut allow_proxy = true;
-        let mut allow_data = true;
 
         let mut encountered_ids = HashSet::<String>::new();
 
@@ -365,24 +359,11 @@ impl Workspace {
                     }
                 }
             }
-            if allow_data && external_data.is_none() {
-                match self.data.find(current.selected_data()) {
-                    SelectedOption::UseDefault => {}
-                    SelectedOption::Off => {
-                        proxy = None;
-                        allow_data = false;
-                    }
-                    SelectedOption::Some(p) => {
-                        external_data = Some(p);
-                    }
-                }
-            }
 
             done = (scenario.is_some() || !allow_scenario)
                 && (authorization.is_some() || !allow_authorization)
                 && (certificate.is_some() || !allow_certificate)
-                && (proxy.is_some() || !allow_proxy)
-                && (external_data.is_some() || !allow_data);
+                && (proxy.is_some() || !allow_proxy);
 
             if !done {
                 // Get the parent
@@ -440,10 +421,8 @@ impl Workspace {
                     proxy = Some(p);
                 }
             }
-            if external_data.is_none() && allow_data {
-                if let SelectedOption::Some(d) = self.data.find(&defaults.selected_data) {
-                    external_data = Some(d);
-                }
+            if let SelectedOption::Some(d) = self.data.find(&defaults.selected_data) {
+                external_data = Some(d);
             }
         }
 
@@ -466,11 +445,9 @@ impl Workspace {
         let mut locked_cache = value_cache.lock().unwrap();
 
         // Build out variables for the request
-        let mut variables = match input_variables {
-            Some(existing) => existing.clone(),
-            None => Map::new()
-        };
-        
+        let mut variables = Map::new();
+
+        // ...from the scenario variables
         if let Some(active_scenario) = scenario {
             let values = locked_cache.get_scenario_values(active_scenario);
             for (name, value) in values {
@@ -485,25 +462,27 @@ impl Workspace {
             }
         };
 
-        // Build out data
+        // ... and then data variables
         let (data, total_rows) = match external_data {
             Some(d) => match locked_cache.get_external_data(d) {
                 Ok(valid) => {
                     let standardized: Vec<Map<String, Value>>;
                     if let Some(arr) = valid.as_array() {
-                        standardized = arr.iter().map(|item| {
-                            if let Some(obj) = item.as_object() {
-                                obj.clone()
-                            } else {
-                                Map::from_iter([("data".to_string(), item.clone())])
-                            }
-                        }).collect();
+                        standardized = arr
+                            .iter()
+                            .map(|item| {
+                                if let Some(obj) = item.as_object() {
+                                    obj.clone()
+                                } else {
+                                    Map::from_iter([("data".to_string(), item.clone())])
+                                }
+                            })
+                            .collect();
                     } else if let Some(obj) = valid.as_object() {
                         standardized = vec![obj.clone()];
                     } else {
-                        standardized = Vec::from_iter(
-                            [Map::from_iter([("data".to_string(), valid.clone())])] 
-                        );
+                        standardized =
+                            Vec::from_iter([Map::from_iter([("data".to_string(), valid.clone())])]);
                     }
                     let len = standardized.len();
                     (Some(standardized), len)
@@ -521,11 +500,7 @@ impl Workspace {
             } else {
                 Some(variables)
             },
-            data: if total_rows > 0 {
-                data
-            } else {
-                None
-            },
+            data: if total_rows > 0 { data } else { None },
             authorization_id: authorization.map(|a| a.get_id().clone()),
             certificate_id: certificate.map(|a| a.get_id().clone()),
             proxy_id: proxy.map(|p| p.get_id().clone()),
