@@ -10,8 +10,11 @@ use super::{oauth2_client_tokens::TokenResult, ApicizeBody, ApicizeTestResult};
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ApicizeExecution {
-    /// Index of execution (run or row) when applicable
-    pub index: Option<usize>,
+    /// Run number, when applicable
+    pub run_number: Option<usize>,
+
+    /// Row number, when applicable
+    pub row_number: Option<usize>,
 
     /// Execution start (millisecond offset from start)
     pub executed_at: u128,
@@ -25,18 +28,9 @@ pub struct ApicizeExecution {
     /// Variables to update at the end of the group
     pub output_variables: Option<Map<String, Value>>,
 
-    /// URL sent
+    /// Request sent to server
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub url: Option<String>,
-    /// HTTP Method
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub method: Option<String>,
-    /// Headers
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub headers: Option<HashMap<String, String>>,
-    /// Body
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub body: Option<ApicizeBody>,
+    pub request: Option<ApicizeHttpRequest>,
 
     /// Response received from server (if any)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -53,9 +47,9 @@ pub struct ApicizeExecution {
     /// Success is true if all runs are successful
     pub success: bool,
     /// Number of passed tests, if request and tests are succesfully run
-    pub passed_test_count: usize,
+    pub test_pass_count: usize,
     /// Number of failed tests, if request and tests are succesfully run
-    pub failed_test_count: usize,
+    pub test_fail_count: usize,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
@@ -70,9 +64,6 @@ pub struct ApicizeHttpRequest {
     /// Body
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<ApicizeBody>,
-    /// Variables sent to tests
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub variables: Option<Map<String, Value>>,
 }
 
 /// Information about the response to a dispatched Apicize request

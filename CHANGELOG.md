@@ -1,12 +1,18 @@
 # Change Log
 
+# 0.17.0
+
+* BREAKING CHANGE - add support for seed data (i.e. data rows)
+* Update result structure to accomodate rows with multiple runs
+* Refactor execution to accomodate multiple rows and runs
+
 # 0.16.2 / 0.16.3
 
-Store JSON data files in "pretty" format
+* Store JSON data files in "pretty" format
 
 # 0.16.1
 
-Add default implementation to WorkbookDefaultParameters
+* Add default implementation to WorkbookDefaultParameters
 
 # 0.16.0
 

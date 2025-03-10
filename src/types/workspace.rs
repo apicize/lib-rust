@@ -241,6 +241,13 @@ impl Workspace {
     ) -> Result<Vec<SerializationSaveSuccess>, SerializationFailure> {
         let mut successes: Vec<SerializationSaveSuccess> = vec![];
 
+        // Do not save a seed data selection when saving the workbook,
+        // we do not want this to be brought up during a CLI run by default
+        let mut cloned_defaults = self.defaults.clone();
+        if let Some(defaults) = &mut cloned_defaults {
+            defaults.selected_data = None;
+        }
+
         match Workbook::save(
             PathBuf::from(workbook_path),
             self.requests.to_entities(),
@@ -249,7 +256,7 @@ impl Workspace {
             self.certificates.get_workbook(),
             self.proxies.get_workbook(),
             self.data.get_workbook(),
-            self.defaults.clone(),
+            cloned_defaults,
         ) {
             Ok(success) => successes.push(success),
             Err(error) => return Err(error),
@@ -465,27 +472,10 @@ impl Workspace {
         // ... and then data variables
         let (data, total_rows) = match external_data {
             Some(d) => match locked_cache.get_external_data(d) {
-                Ok(valid) => {
-                    let standardized: Vec<Map<String, Value>>;
-                    if let Some(arr) = valid.as_array() {
-                        standardized = arr
-                            .iter()
-                            .map(|item| {
-                                if let Some(obj) = item.as_object() {
-                                    obj.clone()
-                                } else {
-                                    Map::from_iter([("data".to_string(), item.clone())])
-                                }
-                            })
-                            .collect();
-                    } else if let Some(obj) = valid.as_object() {
-                        standardized = vec![obj.clone()];
-                    } else {
-                        standardized =
-                            Vec::from_iter([Map::from_iter([("data".to_string(), valid.clone())])]);
-                    }
-                    let len = standardized.len();
-                    (Some(standardized), len)
+                Ok(rows) => {
+                    let len = rows.len();
+                    // ick - do we really have to clone these?
+                    (Some(rows.clone()), len)
                 }
                 Err(err) => {
                     return Err(err.clone());

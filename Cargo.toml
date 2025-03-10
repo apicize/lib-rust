@@ -1,6 +1,6 @@
 [package]
 name = "apicize_lib"
-version = "0.16.3"
+version = "0.17.0"
 edition = "2021"
 rust-version = "1.82"
 description = "Library supporting Apicize request dispatch, testing and serialization"
@@ -29,6 +29,7 @@ oauth2 = { version = "^5.0.0", features = ["reqwest"] }
 tokio-util = "^0.7.10"
 dirs = "^5.0.1"
 csv = { version = "1.3.1" }
+regex = "1.11.1"
 
 [dev-dependencies]
 base64 = "^0.22.1"

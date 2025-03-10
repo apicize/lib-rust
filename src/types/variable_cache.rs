@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use crate::VariableSourceType;
 use crate::{convert_json, extract_csv, extract_json, ApicizeError};
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 use super::{ExternalData, ExternalDataSourceType, Scenario, Variable};
 
@@ -11,7 +11,7 @@ use super::{ExternalData, ExternalDataSourceType, Scenario, Variable};
 pub struct VariableCache {
     allowed_path: Option<PathBuf>,
     scenario_cache: HashMap<String, HashMap<String, Result<Value, ApicizeError>>>,
-    data_cache: HashMap<String, Result<Value, ApicizeError>>,
+    data_cache: HashMap<String, Result<Vec<Map<String, Value>>, ApicizeError>>,
 }
 
 impl VariableCache {
@@ -56,10 +56,12 @@ impl VariableCache {
             })
     }
 
-    pub fn get_external_data(&mut self, data: &ExternalData) -> &Result<Value, ApicizeError> {
-        self.data_cache
-            .entry(data.name.clone())
-            .or_insert_with(|| match data.source_type {
+    pub fn get_external_data(
+        &mut self,
+        data: &ExternalData,
+    ) -> &Result<Vec<Map<String, Value>>, ApicizeError> {
+        self.data_cache.entry(data.name.clone()).or_insert_with(|| {
+            let source = match data.source_type {
                 ExternalDataSourceType::JSON => convert_json(&data.name, &data.source),
                 ExternalDataSourceType::FileJSON => {
                     extract_json(&data.name, &data.source, &self.allowed_path)
@@ -67,7 +69,33 @@ impl VariableCache {
                 ExternalDataSourceType::FileCSV => {
                     extract_csv(&data.name, &data.source, &self.allowed_path)
                 }
-            })
+            };
+
+            match source {
+                Ok(valid) => {
+                    let standardized: Vec<Map<String, Value>>;
+                    if let Some(arr) = valid.as_array() {
+                        standardized = arr
+                            .iter()
+                            .map(|item| {
+                                if let Some(obj) = item.as_object() {
+                                    obj.clone()
+                                } else {
+                                    Map::from_iter([("data".to_string(), item.clone())])
+                                }
+                            })
+                            .collect();
+                    } else if let Some(obj) = valid.as_object() {
+                        standardized = vec![obj.clone()];
+                    } else {
+                        standardized =
+                            Vec::from_iter([Map::from_iter([("data".to_string(), valid.clone())])]);
+                    }
+                    Ok(standardized)
+                }
+                Err(err) => Err(err)   
+            }
+        })
     }
 }
 

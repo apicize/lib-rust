@@ -12,24 +12,22 @@ use serde_with::serde_as;
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type")]
 pub enum ApicizeResult {
-    Group(Box<ApicizeGroup>),
-    Request(Box<ApicizeRequest>),
-    Rows(ApicizeList<ApicizeRow>),
+    Items(ApicizeList<ApicizeGroupItem>),
+    Rows(ApicizeRowSummary),
 }
 
+/// Summary of rows executed for an external data set
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct ApicizeRow {
-    /// Row number of data
-    pub row_number: usize,
-    // Group or request that was executed
-    pub item: ApicizeGroupItem,
+pub struct ApicizeRowSummary {
+    /// Rows executed
+    pub rows: Vec<ApicizeRow>,
 
     /// Execution start (millisecond offset from start)
     pub executed_at: u128,
     /// Duration of execution (milliseconds)
     pub duration: u128,
-    
+
     /// Success is true if all runs are successful
     pub success: bool,
     /// Number of child requests/groups with successful requests and all tests passed
@@ -39,12 +37,39 @@ pub struct ApicizeRow {
     /// Number of child requests/groups with successful requests and some tests failed
     pub request_error_count: usize,
     /// Number of passed tests, if request and tests are succesfully run
-    pub passed_test_count: usize,
+    pub test_pass_count: usize,
     /// Number of failed tests, if request and tests are succesfully run
-    pub failed_test_count: usize,
-
+    pub test_fail_count: usize,
 }
 
+/// Summary of rows executed for an external data set
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ApicizeRow {
+    /// Row number (if multi-row result)
+    pub row_number: usize,
+
+    /// Groups or requests that were executed
+    pub items: Vec<ApicizeGroupItem>,
+
+    /// Execution start (millisecond offset from start)
+    pub executed_at: u128,
+    /// Duration of execution (milliseconds)
+    pub duration: u128,
+
+    /// Success is true if all runs are successful
+    pub success: bool,
+    /// Number of child requests/groups with successful requests and all tests passed
+    pub request_success_count: usize,
+    /// Number of child requests/groups with successful requests and some tests failed
+    pub request_failure_count: usize,
+    /// Number of child requests/groups with successful requests and some tests failed
+    pub request_error_count: usize,
+    /// Number of passed tests, if request and tests are succesfully run
+    pub test_pass_count: usize,
+    /// Number of failed tests, if request and tests are succesfully run
+    pub test_fail_count: usize,
+}
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type")]
@@ -84,6 +109,9 @@ pub struct ApicizeGroup {
     /// Request group name
     pub name: String,
 
+    /// Row number (if applicable)
+    pub row_number: Option<usize>,
+
     /// Execution start (millisecond offset from start)
     pub executed_at: u128,
     /// Duration of execution (milliseconds)
@@ -103,9 +131,9 @@ pub struct ApicizeGroup {
     /// Number of child requests/groups with successful requests and some tests failed
     pub request_error_count: usize,
     /// Number of passed tests, if request and tests are succesfully run
-    pub passed_test_count: usize,
+    pub test_pass_count: usize,
     /// Number of failed tests, if request and tests are succesfully run
-    pub failed_test_count: usize,
+    pub test_fail_count: usize,
 }
 
 /// Represents executions of a multi-run group
@@ -134,9 +162,9 @@ pub struct ApicizeGroupRun {
     /// Number of child requests/groups with successful requests and some tests failed
     pub request_error_count: usize,
     /// Number of passed tests, if request and tests are succesfully run
-    pub passed_test_count: usize,
+    pub test_pass_count: usize,
     /// Number of failed tests, if request and tests are succesfully run
-    pub failed_test_count: usize,
+    pub test_fail_count: usize,
 }
 
 /// Represents executions of a multi-run row
@@ -166,9 +194,9 @@ pub struct ApicizeRowRuns {
     /// Number of child requests/groups with successful requests and some tests failed
     pub request_error_count: usize,
     /// Number of passed tests, if request and tests are succesfully run
-    pub passed_test_count: usize,
+    pub test_pass_count: usize,
     /// Number of failed tests, if request and tests are succesfully run
-    pub failed_test_count: usize,
+    pub test_fail_count: usize,
 }
 
 /// A summary of a request
@@ -179,6 +207,9 @@ pub struct ApicizeRequest {
     pub id: String,
     /// Request group name
     pub name: String,
+
+    /// Row number (if applicable)
+    pub row_number: Option<usize>,
 
     /// Execution start (millisecond offset from start)
     pub executed_at: u128,
@@ -199,9 +230,9 @@ pub struct ApicizeRequest {
     /// Number of child requests/groups with successful requests and some tests failed
     pub request_error_count: usize,
     /// Number of passed tests, if request and tests are succesfully run
-    pub passed_test_count: usize,
+    pub test_pass_count: usize,
     /// Number of failed tests, if request and tests are succesfully run
-    pub failed_test_count: usize,
+    pub test_fail_count: usize,
 }
 
 /// Body information used when dispatching an Apicize Request

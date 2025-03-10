@@ -1,6 +1,7 @@
 use super::{
     ApicizeExecution, ApicizeExecutionType, ApicizeGroup, ApicizeGroupChildren, ApicizeGroupItem,
-    ApicizeGroupRun, ApicizeList, ApicizeRequest, ApicizeRowRuns,
+    ApicizeGroupRun, ApicizeList, ApicizeRequest, ApicizeResult, ApicizeRow, ApicizeRowRuns,
+    ApicizeRowSummary,
 };
 
 pub trait Tally {
@@ -12,8 +13,8 @@ pub struct Tallies {
     pub request_success_count: usize,
     pub request_failure_count: usize,
     pub request_error_count: usize,
-    pub passed_test_count: usize,
-    pub failed_test_count: usize,
+    pub test_pass_count: usize,
+    pub test_fail_count: usize,
 }
 
 impl Default for Tallies {
@@ -23,8 +24,8 @@ impl Default for Tallies {
             request_success_count: 0,
             request_failure_count: 0,
             request_error_count: 0,
-            passed_test_count: 0,
-            failed_test_count: 0,
+            test_pass_count: 0,
+            test_fail_count: 0,
         }
     }
 }
@@ -35,8 +36,8 @@ impl Tallies {
         self.request_success_count += other.request_success_count;
         self.request_failure_count += other.request_failure_count;
         self.request_error_count += other.request_error_count;
-        self.passed_test_count += other.passed_test_count;
-        self.failed_test_count += other.failed_test_count;
+        self.test_pass_count += other.test_pass_count;
+        self.test_fail_count += other.test_fail_count;
     }
 }
 
@@ -47,8 +48,8 @@ impl Tally for ApicizeGroup {
             request_success_count: self.request_success_count,
             request_failure_count: self.request_failure_count,
             request_error_count: self.request_error_count,
-            passed_test_count: self.passed_test_count,
-            failed_test_count: self.failed_test_count,
+            test_pass_count: self.test_pass_count,
+            test_fail_count: self.test_fail_count,
         }
     }
 }
@@ -73,6 +74,16 @@ impl Tally for Vec<ApicizeGroupItem> {
     }
 }
 
+impl Tally for Vec<ApicizeRow> {
+    fn get_tallies(&self) -> Tallies {
+        let mut tallies = Tallies::default();
+        for summary in self {
+            tallies.add(&summary.items.get_tallies());
+        }
+        tallies
+    }
+}
+
 impl Tally for ApicizeGroupChildren {
     fn get_tallies(&self) -> Tallies {
         match self {
@@ -89,8 +100,8 @@ impl Tally for ApicizeGroupRun {
             request_success_count: self.request_success_count,
             request_failure_count: self.request_failure_count,
             request_error_count: self.request_error_count,
-            passed_test_count: self.passed_test_count,
-            failed_test_count: self.failed_test_count,
+            test_pass_count: self.test_pass_count,
+            test_fail_count: self.test_fail_count,
         }
     }
 }
@@ -98,6 +109,38 @@ impl Tally for ApicizeGroupRun {
 impl Tally for ApicizeList<ApicizeGroupRun> {
     fn get_tallies(&self) -> Tallies {
         self.items.get_tallies()
+    }
+}
+
+impl Tally for ApicizeRowSummary {
+    fn get_tallies(&self) -> Tallies {
+        let mut tallies = Tallies::default();
+        for row in &self.rows {
+            tallies.add(&row.get_tallies());
+        }
+        tallies
+    }
+}
+
+impl Tally for ApicizeRow {
+    fn get_tallies(&self) -> Tallies {
+        Tallies {
+            success: self.success,
+            request_success_count: self.request_success_count,
+            request_failure_count: self.request_failure_count,
+            request_error_count: self.request_error_count,
+            test_pass_count: self.test_pass_count,
+            test_fail_count: self.test_fail_count,
+        }
+    }
+}
+
+impl Tally for ApicizeResult {
+    fn get_tallies(&self) -> Tallies {
+        match self {
+            ApicizeResult::Items(items) => items.get_tallies(),
+            ApicizeResult::Rows(summary) => summary.get_tallies(),
+        }
     }
 }
 
@@ -119,16 +162,16 @@ impl Tally for ApicizeGroupItem {
                 request_success_count: group.request_success_count,
                 request_failure_count: group.request_failure_count,
                 request_error_count: group.request_error_count,
-                passed_test_count: group.passed_test_count,
-                failed_test_count: group.failed_test_count,
+                test_pass_count: group.test_pass_count,
+                test_fail_count: group.test_fail_count,
             },
             ApicizeGroupItem::Request(request) => Tallies {
                 success: request.success,
                 request_success_count: request.request_success_count,
                 request_failure_count: request.request_failure_count,
                 request_error_count: request.request_error_count,
-                passed_test_count: request.passed_test_count,
-                failed_test_count: request.failed_test_count,
+                test_pass_count: request.test_pass_count,
+                test_fail_count: request.test_fail_count,
             },
         }
     }
@@ -141,8 +184,8 @@ impl Tally for ApicizeRequest {
             request_success_count: self.request_success_count,
             request_failure_count: self.request_failure_count,
             request_error_count: self.request_error_count,
-            passed_test_count: self.passed_test_count,
-            failed_test_count: self.failed_test_count,
+            test_pass_count: self.test_pass_count,
+            test_fail_count: self.test_fail_count,
         }
     }
 }
@@ -166,8 +209,8 @@ impl Tally for ApicizeExecution {
             } else {
                 0
             },
-            passed_test_count: self.passed_test_count,
-            failed_test_count: self.failed_test_count,
+            test_pass_count: self.test_pass_count,
+            test_fail_count: self.test_fail_count,
         }
     }
 }
@@ -207,8 +250,8 @@ impl Tally for ApicizeRowRuns {
             request_success_count: self.request_success_count,
             request_failure_count: self.request_failure_count,
             request_error_count: self.request_error_count,
-            passed_test_count: self.passed_test_count,
-            failed_test_count: self.failed_test_count,
+            test_pass_count: self.test_pass_count,
+            test_fail_count: self.test_fail_count,
         }
     }
 }
