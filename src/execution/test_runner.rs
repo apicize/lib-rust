@@ -1590,7 +1590,7 @@ fn execute_request_test(
 ) -> Result<Option<ApicizeTestResponse>, ApicizeError> {
     // Return empty test results if no test
     match execute_test {
-        None => return Ok(None),
+        None => Ok(None),
         Some(test) => {
             // Ensure V8 is initialized
             V8_INIT.call_once(|| {
