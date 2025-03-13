@@ -4,8 +4,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use oauth2::{
-    basic::BasicClient, reqwest, url::ParseError, AuthUrl, AuthorizationCode, ClientId, CsrfToken,
-    PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, Scope, TokenResponse, TokenUrl,
+    basic::BasicClient, reqwest, url::ParseError, AuthType, AuthUrl, AuthorizationCode, ClientId, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, Scope, TokenResponse, TokenUrl
 };
 use reqwest::Url;
 
@@ -16,21 +15,50 @@ pub fn generate_authorization(
     authorize_uri: &str,
     redirect_uri: &str,
     client_id: &str,
-    scopes: Option<Vec<&str>>,
+    send_credentials_in_body: bool,
+    scopes: Option<String>,
+    audience: Option<String>,
 ) -> Result<(Url, CsrfToken, String), ParseError> {
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
-    let (url, csrf_token) = BasicClient::new(ClientId::new(client_id.to_string()))
+    let client = BasicClient::new(ClientId::new(client_id.to_string()))
         .set_auth_uri(AuthUrl::new(authorize_uri.to_string())?)
         .set_redirect_uri(RedirectUrl::new(redirect_uri.to_string())?)
-        .authorize_url(CsrfToken::new_random)
-        .add_scopes(
-            scopes
-                .unwrap_or_default()
-                .into_iter()
-                .map(|s| Scope::new(s.to_string())),
-        )
-        .set_pkce_challenge(pkce_challenge)
-        .url();
+        .set_auth_type(if send_credentials_in_body {
+            AuthType::RequestBody
+        } else {
+            AuthType::BasicAuth
+        });
+
+    let mut auth = client
+        .authorize_url(CsrfToken::new_random);
+
+    if let Some(scope_value) = &scopes {
+        if !scope_value.is_empty() {
+            auth = auth.add_scope(Scope::new(scope_value.clone()));
+        }
+    }
+    
+    if let Some(audience_value) = &audience {
+        if !audience_value.is_empty() {
+            auth = auth.add_extra_param("audience", audience_value);
+        }
+    }
+
+    let (url, csrf_token) = auth.set_pkce_challenge(pkce_challenge).url();
+
+
+    // let (url, csrf_token) = BasicClient::new(ClientId::new(client_id.to_string()))
+    //     .set_auth_uri(AuthUrl::new(authorize_uri.to_string())?)
+    //     .set_redirect_uri(RedirectUrl::new(redirect_uri.to_string())?)
+    //     .authorize_url(CsrfToken::new_random)
+    //     .add_scopes(
+    //         scopes
+    //             .unwrap_or_default()
+    //             .into_iter()
+    //             .map(|s| Scope::new(s.to_string())),
+    //     )
+    //     .set_pkce_challenge(pkce_challenge)
+    //     .url();
     Ok((url, csrf_token, pkce_verifier.into_secret()))
 }
 
@@ -134,6 +162,8 @@ pub mod tests {
             "https://auth.com/",
             "https://localhost:3000/",
             "client1",
+            false,
+            None,
             None,
         )
         .unwrap();
@@ -149,6 +179,8 @@ pub mod tests {
             "https://auth.com/",
             "https://localhost:3000/",
             "client1",
+            false,
+            None,
             None,
         )
         .unwrap();
@@ -164,6 +196,8 @@ pub mod tests {
             "https://auth.com/",
             "https://localhost:3000/",
             "client1",
+            false,
+            None,
             None,
         )
         .unwrap();
@@ -179,6 +213,8 @@ pub mod tests {
             "https://auth.com/?abc=123",
             "https://localhost:3000/",
             "client1",
+            false,
+            None,
             None,
         )
         .unwrap();
@@ -192,7 +228,9 @@ pub mod tests {
             "https://auth.com/?abc=123",
             "https://localhost:3000/",
             "client1",
-            Some(vec!["scope1", "scope2"]),
+            false,
+            Some("scope1 scope2".to_string()),
+            None,
         )
         .unwrap();
         let parsed = Url::parse(url.as_str()).unwrap();
@@ -207,6 +245,8 @@ pub mod tests {
             "https://auth.com/?abc=123",
             "https://localhost:3000/",
             "client1",
+            false,
+            None,
             None,
         )
         .unwrap();
@@ -222,6 +262,8 @@ pub mod tests {
             "https://auth.com/?abc=123",
             "https://localhost:3000/",
             "client1",
+            false,
+            None,
             None,
         )
         .unwrap();
@@ -244,6 +286,8 @@ pub mod tests {
             "https://auth.com/?abc=123",
             "https://localhost:3000/",
             "client1",
+            false,
+            None,
             None,
         )
         .unwrap();

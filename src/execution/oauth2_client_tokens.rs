@@ -1,7 +1,7 @@
 //! This module implements OAuth2 client flow support, including support for caching tokens
 use crate::{ApicizeError, Certificate, Identifable, Proxy};
 use oauth2::basic::BasicClient;
-use oauth2::reqwest;
+use oauth2::{reqwest, AuthType};
 use oauth2::{ClientId, ClientSecret, Scope, TokenResponse, TokenUrl};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -42,19 +42,19 @@ pub struct PkceTokenResult {
 }
 
 /// Return cached oauth2 token, with indicator of whether value was retrieved from cache
-#[allow(clippy::too_many_arguments)] 
+#[allow(clippy::too_many_arguments)]
 pub async fn get_oauth2_client_credentials<'a>(
     id: &str,
     token_url: &str,
     client_id: &str,
     client_secret: &str,
-    scope: &'a Option<String>,
+    send_credentials_in_body: bool,
+    scopes: &'a Option<String>,
+    audience: &'a Option<String>,
     certificate: Option<&'a Certificate>,
     proxy: Option<&'a Proxy>,
     enable_trace: bool,
 ) -> Result<TokenResult, ApicizeError> {
-    let cloned_scope = scope.clone();
-
     // Check cache and return if token found and not expired
     let mut locked_cache = TOKEN_CACHE.lock().await;
     let valid_token = match locked_cache.get(id) {
@@ -82,15 +82,28 @@ pub async fn get_oauth2_client_credentials<'a>(
     // Retrieve an access token
     let mut client = BasicClient::new(ClientId::new(String::from(client_id))).set_token_uri(
         TokenUrl::new(String::from(token_url)).expect("Unable to parse OAuth token URL"),
-    );
+    ).set_auth_type(if send_credentials_in_body {
+        AuthType::RequestBody
+    } else {
+        AuthType::BasicAuth
+    });
 
     if !client_secret.trim().is_empty() {
         client = client.set_client_secret(ClientSecret::new(String::from(client_secret)));
     }
 
     let mut token_request = client.exchange_client_credentials();
-    if let Some(scope_value) = cloned_scope {
-        token_request = token_request.add_scope(Scope::new(scope_value.clone()));
+
+    if let Some(scope_value) = &scopes {
+        if !scope_value.is_empty() {
+            token_request = token_request.add_scope(Scope::new(scope_value.clone()));
+        }
+    }
+    
+    if let Some(audience_value) = &audience {
+        if !audience_value.is_empty() {
+            token_request = token_request.add_extra_param("audience", audience_value);
+        }
     }
 
     let mut reqwest_builder = reqwest::ClientBuilder::new()
@@ -191,10 +204,12 @@ pub mod tests {
             _token_url: &str,
             _client_id: &str,
             _client_secret: &str,
+            _send_credentials_in_body: bool,
             _scope: &'a Option<String>,
+            _audience: &'a Option<String>,
             _certificate: Option<&'a crate::Certificate>,
             _proxy: Option<&'a crate::Proxy>,
-            _enable_trace: bool
+            _enable_trace: bool,
         ) -> Result<TokenResult, crate::ApicizeError> {
             Ok(TokenResult {
                 token: String::from(""),
@@ -234,6 +249,8 @@ pub mod tests {
                 "http://server",
                 "me",
                 "shhh",
+                false,
+                &None,
                 &None,
                 None,
                 None,
@@ -276,6 +293,8 @@ pub mod tests {
             server.url().as_str(),
             "me",
             "shhh",
+            false,
+            &None,
             &None,
             None,
             None,
@@ -336,6 +355,8 @@ pub mod tests {
             server.url().as_str(),
             "me",
             "shhh",
+            false,
+            &None,
             &None,
             None,
             None,
@@ -427,8 +448,19 @@ pub mod tests {
             .with_body(oauth2_response)
             .create();
         assert_eq!(
-            (get_oauth2_client_credentials("abc1", &server.url(), "me", "shhh", &None, None, None, false)
-                .await)
+            (get_oauth2_client_credentials(
+                "abc1",
+                &server.url(),
+                "me",
+                "shhh",
+                false,
+                &None,
+                &None,
+                None,
+                None,
+                false,
+            )
+            .await)
                 .unwrap(),
             TokenResult {
                 token: String::from(FAKE_TOKEN),
@@ -442,8 +474,19 @@ pub mod tests {
 
         // Second attempt will use cache
         assert_eq!(
-            (get_oauth2_client_credentials("abc1", &server.url(), "me", "shhh", &None, None, None, false)
-                .await)
+            (get_oauth2_client_credentials(
+                "abc1",
+                &server.url(),
+                "me",
+                "shhh",
+                false,
+                &None,
+                &None,
+                None,
+                None,
+                false,
+            )
+            .await)
                 .unwrap(),
             TokenResult {
                 token: String::from(FAKE_TOKEN),
@@ -472,8 +515,19 @@ pub mod tests {
             .with_body(oauth2_response)
             .create();
         assert_eq!(
-            (get_oauth2_client_credentials("abc2", &server.url(), "me", "shhh", &None, None, None, false)
-                .await)
+            (get_oauth2_client_credentials(
+                "abc2",
+                &server.url(),
+                "me",
+                "shhh",
+                false,
+                &None,
+                &None,
+                None,
+                None,
+                false,
+            )
+            .await)
                 .unwrap(),
             TokenResult {
                 token: String::from(FAKE_TOKEN),
@@ -487,8 +541,19 @@ pub mod tests {
 
         // Second attempt will use cache
         assert_eq!(
-            (get_oauth2_client_credentials("abc2", &server.url(), "me", "shhh", &None, None, None, false)
-                .await)
+            (get_oauth2_client_credentials(
+                "abc2",
+                &server.url(),
+                "me",
+                "shhh",
+                false,
+                &None,
+                &None,
+                None,
+                None,
+                false,
+            )
+            .await)
                 .unwrap(),
             TokenResult {
                 token: String::from(FAKE_TOKEN),
@@ -517,8 +582,19 @@ pub mod tests {
             .with_body(oauth2_response)
             .create();
         assert_eq!(
-            (get_oauth2_client_credentials("abc3", &server.url(), "me", "shhh", &None, None, None, false)
-                .await)
+            (get_oauth2_client_credentials(
+                "abc3",
+                &server.url(),
+                "me",
+                "shhh",
+                false,
+                &None,
+                &None,
+                None,
+                None,
+                false,
+            )
+            .await)
                 .unwrap(),
             TokenResult {
                 token: String::from(FAKE_TOKEN),
@@ -532,8 +608,19 @@ pub mod tests {
 
         // Second attempt will use cache
         assert_eq!(
-            (get_oauth2_client_credentials("abc3", &server.url(), "me", "shhh", &None, None, None, false)
-                .await)
+            (get_oauth2_client_credentials(
+                "abc3",
+                &server.url(),
+                "me",
+                "shhh",
+                false,
+                &None,
+                &None,
+                None,
+                None,
+                false,
+            )
+            .await)
                 .unwrap(),
             TokenResult {
                 token: String::from(FAKE_TOKEN),

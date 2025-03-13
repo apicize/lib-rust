@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.17.1
+
+* Add Audience and Send Credentials in Body to OAuth2
+
 # 0.17.0
 
 * BREAKING CHANGE - add support for seed data (i.e. data rows)

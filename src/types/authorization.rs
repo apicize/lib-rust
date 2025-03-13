@@ -35,6 +35,9 @@ pub enum Authorization {
         /// Client secret (allowed to be blank)
         client_secret: String,
         #[serde(skip_serializing_if = "Option::is_none")]
+        /// Audience to add to token
+        audience: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         /// Scope to add to token (multiple scopes should be space-delimited)
         scope: Option<String>,
         /// Selected certificate, if applicable
@@ -43,8 +46,8 @@ pub enum Authorization {
         /// Selected proxy, if applicable
         #[serde(skip_serializing_if = "Option::is_none")]
         selected_proxy: Option<Selection>,
-        // #[serde(skip_serializing_if="Option::is_none")]
-        // send_credentials_in_body: Option<bool>,
+        #[serde(skip_serializing_if="Option::is_none")]
+        send_credentials_in_body: Option<bool>,
     },
     /// OAuth2 PKCE flow (note, this can only be used interactively)
     #[serde(rename_all = "camelCase")]
@@ -73,8 +76,8 @@ pub enum Authorization {
         /// Expiration of currently active token in seconds past Unix epoch (needs to be set before usage)
         #[serde(skip_serializing)]
         expiration: Option<u64>,
-        // #[serde(skip_serializing_if="Option::is_none")]
-        // send_credentials_in_body: Option<bool>,
+        #[serde(skip_serializing_if="Option::is_none")]
+        send_credentials_in_body: Option<bool>,
     },    
     /// API key authentication (sent in HTTP header)
     #[serde(rename_all = "camelCase")]

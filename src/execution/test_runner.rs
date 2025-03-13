@@ -994,7 +994,9 @@ async fn dispatch_request(
                     access_token_url,
                     client_id,
                     client_secret,
-                    scope, // send_credentials_in_body: _,
+                    audience,
+                    scope,
+                    send_credentials_in_body,
                     ..
                 }) => {
                     match oauth2::get_oauth2_client_credentials(
@@ -1002,7 +1004,9 @@ async fn dispatch_request(
                         access_token_url.as_str(),
                         client_id.as_str(),
                         client_secret.as_str(),
+                        send_credentials_in_body.unwrap_or(false),
                         scope,
+                        audience,
                         context
                             .workspace
                             .certificates
