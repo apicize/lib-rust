@@ -848,7 +848,11 @@ async fn dispatch_request(
 
     let timeout: Duration;
     if let Some(t) = request.timeout {
-        timeout = Duration::from_millis(t as u64);
+        timeout = if t == 0 {
+            Duration::MAX
+        } else {
+            Duration::from_millis(t as u64)
+        }
     } else {
         timeout = Duration::from_secs(30);
     }
@@ -1066,15 +1070,24 @@ async fn dispatch_request(
                     request_builder = request_builder.body(Body::from(s.clone()));
                 }
                 Some(RequestBody::JSON { data, .. }) => {
-                    let s = RequestEntry::clone_and_sub(
-                        serde_json::to_string(&data).unwrap().as_str(),
-                        &subs,
-                    );
-                    request_builder = request_builder.body(Body::from(s.clone()));
+                    if data.is_string() {
+                        let s = RequestEntry::clone_and_sub(
+                            data.as_str().unwrap(),
+                            &subs,
+                        );
+                        request_builder = request_builder.body(Body::from(s));
+    
+                    } else {
+                        let s = RequestEntry::clone_and_sub(
+                            serde_json::to_string(&data).unwrap().as_str(),
+                            &subs,
+                        );    
+                        request_builder = request_builder.body(Body::from(s));
+                    }
                 }
                 Some(RequestBody::XML { data }) => {
                     let s = RequestEntry::clone_and_sub(data, &subs);
-                    request_builder = request_builder.body(Body::from(s.clone()));
+                    request_builder = request_builder.body(Body::from(s));
                 }
                 Some(RequestBody::Form { data }) => {
                     let form_data = data

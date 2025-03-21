@@ -1,5 +1,10 @@
 # Change Log
 
+# 0.17.2
+
+* Fix timeout handling
+* Update JSON body storage to store string for non-JSON serializable content (ex. when using handlebar scenario vars for insertion)
+
 # 0.17.1
 
 * Add Audience and Send Credentials in Body to OAuth2
