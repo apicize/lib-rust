@@ -114,6 +114,7 @@ impl ApicizeRunner for Arc<TestRunnerContext> {
                             cloned_context.clone(),
                             cloned_id,
                             None,
+                            None,
                         ) => {
                             result
                         }
@@ -160,7 +161,8 @@ impl ApicizeRunner for Arc<TestRunnerContext> {
                             result = run_request_item(
                                 cloned_context.clone(),
                                 cloned_id,
-                                Some(row_number,)
+                                Some(row_number),
+                                None,
                             ) => {
                                 result
                             }
@@ -291,17 +293,18 @@ async fn run_request_item(
     context: Arc<TestRunnerContext>,
     id: String,
     row_number: Option<usize>,
+    active_variables: Option<Arc<Map<String, Value>>>,
 ) -> Result<ApicizeGroupItem, ApicizeError> {
     match context.workspace.requests.get(&id) {
         Some(entry) => {
-            let params = Arc::new(
-                context
-                    .workspace
-                    .retrieve_request_parameters(entry, &context.value_cache)?,
-            );
+            let params = Arc::new(context.workspace.retrieve_request_parameters(
+                entry,
+                &context.value_cache,
+                active_variables,
+            )?);
 
             match entry {
-                RequestEntry::Info(request) => {
+                RequestEntry::Request(request) => {
                     return run_request(
                         context.clone(),
                         Arc::new(request.clone()),
@@ -348,6 +351,7 @@ async fn run_request(
             row_number,
             executed_at,
             duration: 0,
+            variables: None,
             output_variables: None,
             execution: super::ApicizeExecutionType::None,
             success: false,
@@ -374,7 +378,8 @@ async fn run_request(
                 executed_at,
                 duration: started_at.elapsed().as_millis(),
                 execution: ApicizeExecutionType::None,
-                output_variables: execution.get_output_variables(),
+                variables: execution.input_variables.clone(),
+                output_variables: execution.output_variables.clone(),
                 success: execution.success,
                 request_success_count: if execution.success { 1 } else { 0 },
                 request_failure_count: if execution.success {
@@ -462,6 +467,7 @@ async fn run_request(
                 executed_at,
                 duration: started_at.elapsed().as_millis(),
                 execution: ApicizeExecutionType::Runs(ApicizeList { items: result_runs }),
+                variables: None,
                 output_variables,
                 success: tallies.success,
                 request_success_count: tallies.request_success_count,
@@ -484,8 +490,6 @@ async fn run_group_iteration(
     let run_executed_at = context.tests_started.elapsed().as_millis();
     let run_started_at = Instant::now();
 
-    let mut run_params = (*params).clone();
-
     // We have to copy child IDs here because context goes out of scope when we spawn
     let child_ids = context.workspace.requests.child_ids.get(&group.id).cloned();
 
@@ -498,34 +502,27 @@ async fn run_group_iteration(
             // } else {
             match &group.execution {
                 ExecutionConcurrency::Sequential => {
+                    let mut active_vars = match &params.variables {
+                        Some(vars) => Some(Arc::new(vars.clone())),
+                        None => None,
+                    };
+
                     results = Vec::with_capacity(child_ids.len());
                     for child_id in &child_ids {
-                        if let Some(child) = context.workspace.requests.get(child_id) {
-                            let c = match child {
-                                RequestEntry::Info(request) => {
-                                    run_request(
-                                        context.clone(),
-                                        Arc::new(request.clone()),
-                                        Arc::new(run_params.clone()),
-                                        row_number,
-                                    )
-                                    .await
-                                }
-                                RequestEntry::Group(child_group) => {
-                                    run_group(
-                                        context.clone(),
-                                        Arc::new(child_group.clone()),
-                                        Arc::new(run_params.clone()),
-                                        row_number,
-                                    )
-                                    .await
-                                }
+                        let c = run_request_item(
+                            context.clone(),
+                            child_id.clone(),
+                            row_number,
+                            active_vars.clone(),
+                        )
+                        .await;
+                        if let Ok(c_ok) = &c {
+                            active_vars = match c_ok.get_output_variables() {
+                                Some(vars) => Some(Arc::new(vars)),
+                                None => None,
                             };
-                            if let Ok(c_ok) = &c {
-                                run_params.variables = c_ok.get_output_variables();
-                            }
-                            results.push(c);
                         }
+                        results.push(c);
                     }
                     results
                 }
@@ -533,9 +530,15 @@ async fn run_group_iteration(
                     let mut spawned_items: JoinSet<Result<ApicizeGroupItem, ApicizeError>> =
                         JoinSet::new();
 
+                    let active_vars = match &params.variables {
+                        Some(vars) => Some(Arc::new(vars.clone())),
+                        None => None,
+                    };
+
                     for child_id in child_ids {
                         let ccl = context.cancellation.clone();
                         let ctx = context.clone();
+                        let vars = active_vars.clone();
 
                         spawned_items.spawn(async move {
                             select! {
@@ -546,6 +549,7 @@ async fn run_group_iteration(
                                     ctx.clone(),
                                     child_id.clone(),
                                     row_number,
+                                    vars,
                                 ) => {
                                     result
                                 }
@@ -1070,20 +1074,8 @@ async fn dispatch_request(
                     request_builder = request_builder.body(Body::from(s.clone()));
                 }
                 Some(RequestBody::JSON { data, .. }) => {
-                    if data.is_string() {
-                        let s = RequestEntry::clone_and_sub(
-                            data.as_str().unwrap(),
-                            &subs,
-                        );
-                        request_builder = request_builder.body(Body::from(s));
-    
-                    } else {
-                        let s = RequestEntry::clone_and_sub(
-                            serde_json::to_string(&data).unwrap().as_str(),
-                            &subs,
-                        );    
-                        request_builder = request_builder.body(Body::from(s));
-                    }
+                    let s = RequestEntry::clone_and_sub(&data, &subs);
+                    request_builder = request_builder.body(Body::from(s));
                 }
                 Some(RequestBody::XML { data }) => {
                     let s = RequestEntry::clone_and_sub(data, &subs);
@@ -1134,15 +1126,18 @@ async fn dispatch_request(
                                 let request_encoding = UTF_8;
 
                                 let data = bytes.to_vec();
-                                let (decoded, _, malformed) = request_encoding.decode(&data);
-                                Some(ApicizeBody {
-                                    data: Some(data.clone()),
-                                    text: if malformed {
-                                        None
+                                if data.is_empty() {
+                                    None
+                                } else {
+                                    let (decoded, _, malformed) = request_encoding.decode(&data);
+                                    if malformed {
+                                        Some(ApicizeBody::Binary { data })
                                     } else {
-                                        Some(decoded.to_string())
-                                    },
-                                })
+                                        Some(ApicizeBody::Text {
+                                            data: decoded.to_string(),
+                                        })
+                                    }
+                                }
                             }
                         }
                         None => None,
@@ -1155,24 +1150,28 @@ async fn dispatch_request(
                         Ok(response) => {
                             // Collect headers for response
                             let response_headers = response.headers();
-                            let headers =
-                                if response_headers.is_empty() {
-                                    None
-                                } else {
-                                    Some(HashMap::from_iter(
-                                        response_headers
-                                            .iter()
-                                            .map(|(h, v)| {
-                                                (
-                                                    String::from(h.as_str()),
-                                                    String::from(v.to_str().unwrap_or(
-                                                        "(Header Contains Non-ASCII Data)",
-                                                    )),
-                                                )
-                                            })
-                                            .collect::<HashMap<String, String>>(),
-                                    ))
-                                };
+                            let mut may_have_json = false;
+                            let headers = if response_headers.is_empty() {
+                                None
+                            } else {
+                                Some(HashMap::from_iter(
+                                    response_headers
+                                        .iter()
+                                        .map(|(h, v)| {
+                                            let name = h.as_str();
+                                            let value = v
+                                                .to_str()
+                                                .unwrap_or("(Header Contains Non-ASCII Data)");
+                                            if name.eq_ignore_ascii_case("content-type")
+                                                && value.to_ascii_lowercase().contains("json")
+                                            {
+                                                may_have_json = true;
+                                            }
+                                            (name.to_string(), value.to_string())
+                                        })
+                                        .collect::<HashMap<String, String>>(),
+                                ))
+                            };
 
                             // Determine the default text encoding
                             let response_content_type = response_headers
@@ -1205,14 +1204,26 @@ async fn dispatch_request(
                                         let data = Vec::from(bytes.as_ref());
                                         let (decoded, _, malformed) =
                                             response_encoding.decode(&data);
-                                        Some(ApicizeBody {
-                                            data: Some(data.clone()),
-                                            text: if malformed {
-                                                None
+
+                                        if malformed {
+                                            Some(ApicizeBody::Binary { data })
+                                        } else {
+                                            let text = decoded.to_string();
+                                            if may_have_json {
+                                                if let Ok(parsed) =
+                                                    serde_json::from_str::<Value>(&text)
+                                                {
+                                                    Some(ApicizeBody::JSON {
+                                                        text: decoded.to_string(),
+                                                        data: parsed,
+                                                    })
+                                                } else {
+                                                    Some(ApicizeBody::Text { data: text })
+                                                }
                                             } else {
-                                                Some(decoded.to_string())
-                                            },
-                                        })
+                                                Some(ApicizeBody::Text { data: text })
+                                            }
+                                        }
                                     };
 
                                     let response = (

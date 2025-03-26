@@ -10,7 +10,7 @@ use crate::{
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use std::{collections::HashSet, path::PathBuf, sync::Mutex};
+use std::{collections::HashSet, path::PathBuf, sync::{Arc, Mutex}};
 
 use super::{
     indexed_entities::NO_SELECTION_ID, ExternalData, IndexedEntities, Parameters, VariableCache,
@@ -201,8 +201,11 @@ impl Workspace {
         private_parameters: Parameters,
         global_parameters: Parameters,
     ) -> Result<Workspace, SerializationFailure> {
+
+        let workspace_requests = workbook.requests.into_iter().map(|r| r.to_workspace()).collect::<Vec<RequestEntry>>();
+
         let mut workspace = Workspace {
-            requests: IndexedEntities::new(&workbook.requests),
+            requests: IndexedEntities::new(&workspace_requests ),
             scenarios: IndexedEntities::<Scenario>::new(
                 workbook.scenarios.as_deref(),
                 private_parameters.scenarios.as_deref(),
@@ -295,6 +298,7 @@ impl Workspace {
         &self,
         request: &RequestEntry,
         value_cache: &Mutex<VariableCache>,
+        active_variables: Option<Arc<Map<String, Value>>>
     ) -> Result<RequestParameters, ApicizeError> {
         let mut done = false;
 
@@ -388,10 +392,6 @@ impl Workspace {
                 if let Some(found_parent) = parent {
                     let parent_id = found_parent.get_id();
                     if encountered_ids.contains(parent_id) {
-                        println!(
-                            "Recursive parent found at {}, cancelling traversal",
-                            parent_id
-                        );
                         done = true
                     } else {
                         current = found_parent;
@@ -468,6 +468,13 @@ impl Workspace {
                 }
             }
         };
+
+        // ... and then any active variables from previous calls
+        if let Some(vars) = active_variables {
+            for (name, value) in vars.iter() {
+                variables.insert(name.clone(), value.clone());
+            }
+        }
 
         // ... and then data variables
         let (data, total_rows) = match external_data {

@@ -133,7 +133,7 @@ impl IndexedEntities<RequestEntry> {
         let active_parent_id = parent_id.unwrap_or(String::from(""));
         for e in entities.iter() {
             match e {
-                RequestEntry::Info(info) => {
+                RequestEntry::Request(info) => {
                     if active_parent_id.is_empty() {
                         indexed_requests.top_level_ids.push(info.id.clone());
                     } else {
@@ -152,7 +152,7 @@ impl IndexedEntities<RequestEntry> {
                     }
                     indexed_requests
                         .entities
-                        .insert(info.id.clone(), RequestEntry::Info(info.to_owned()));
+                        .insert(info.id.clone(), RequestEntry::Request(info.to_owned()));
                 }
                 RequestEntry::Group(group) => {
                     if active_parent_id.is_empty() {
@@ -197,8 +197,8 @@ impl IndexedEntities<RequestEntry> {
         ids.iter().for_each(|id| {
             if let Some(entry) = self.entities.get(id) {
                 match entry {
-                    RequestEntry::Info(info) => {
-                        results.push(RequestEntry::Info(info.clone()));
+                    RequestEntry::Request(info) => {
+                        results.push(RequestEntry::Request(info.clone()));
                     }
                     RequestEntry::Group(group) => {
                         let mut group_to_add = group.clone();

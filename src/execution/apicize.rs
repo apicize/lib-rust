@@ -5,9 +5,6 @@
 use super::ApicizeExecution;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use serde_with::base64::{Base64, Standard};
-use serde_with::formats::Unpadded;
-use serde_with::serde_as;
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type")]
@@ -215,7 +212,9 @@ pub struct ApicizeRequest {
     pub executed_at: u128,
     /// Duration of execution (milliseconds)
     pub duration: u128,
-    // /// Variables assigned to the group
+    
+    /// Variables assigned to the group
+    pub variables: Option<Map<String, Value>>,
     /// Variables to update at the end of the group
     pub output_variables: Option<Map<String, Value>>,
 
@@ -236,16 +235,21 @@ pub struct ApicizeRequest {
 }
 
 /// Body information used when dispatching an Apicize Request
-#[serde_as]
+// #[serde_as]
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ApicizeBody {
-    /// Body as data (UTF-8 bytes)
-    #[serde_as(as = "Option<Base64<Standard, Unpadded>>")]
-    pub data: Option<Vec<u8>>,
-    /// Reprsents body as text
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub text: Option<String>,
+#[serde(tag = "type")]
+pub enum ApicizeBody {
+    Text {
+        data: String,
+    },
+    JSON {
+        text: String,
+        data: Value,
+    },
+    Binary {
+        // #[serde_as(as = "Base64<Standard, Unpadded>")]
+        data: Vec<u8>,
+    },
 }
 
 /// Response from V8 when executing a request's tests

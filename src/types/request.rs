@@ -1,13 +1,14 @@
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::str::FromStr;
 
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use serde_with::serde_as;
-use serde_with::base64::{Base64, Standard};
-use serde_with::formats::Unpadded;
 use super::{NameValuePair, Selection, Warnings};
 use crate::{utility::*, Identifable, SelectedParameters};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use serde_with::base64::{Base64, Standard};
+use serde_with::formats::Unpadded;
+use serde_with::serde_as;
 
 /// Enumeration of HTTP methods
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
@@ -43,7 +44,7 @@ pub enum RequestBody {
     #[serde(rename = "JSON")]
     JSON {
         /// Text
-        data: Value,
+        data: String,
     },
     /// XML body data
     #[serde(rename = "XML")]
@@ -59,7 +60,7 @@ pub enum RequestBody {
     /// Binary body data serialized as Base64
     Raw {
         /// Base-64 encoded binary data
-        #[serde_as(as = "Base64<Standard, Unpadded>")]
+        // #[serde_as(as = "Base64<Standard, Unpadded>")]
         data: Vec<u8>,
     },
 }
@@ -178,11 +179,10 @@ pub struct RequestGroup {
 #[serde(untagged)]
 pub enum RequestEntry {
     /// Request to run
-    Info(Request),
+    Request(Request),
     /// Group of Apicize Requests
     Group(RequestGroup),
 }
-
 
 impl Identifable for RequestEntry {
     fn get_id(&self) -> &String {
@@ -190,7 +190,7 @@ impl Identifable for RequestEntry {
     }
 
     fn get_name(&self) -> &String {
-        return self.get_name()
+        return self.get_name();
     }
 
     fn get_title(&self) -> String {
@@ -248,7 +248,7 @@ impl RequestEntry {
     /// Retrieve request entry ID
     pub fn get_id(&self) -> &String {
         match self {
-            RequestEntry::Info(info) => &info.id,
+            RequestEntry::Request(info) => &info.id,
             RequestEntry::Group(group) => &group.id,
         }
     }
@@ -256,7 +256,7 @@ impl RequestEntry {
     /// Retrieve request entry name
     pub fn get_name(&self) -> &String {
         match self {
-            RequestEntry::Info(info) => &info.name,
+            RequestEntry::Request(info) => &info.name,
             RequestEntry::Group(group) => &group.name,
         }
     }
@@ -264,7 +264,7 @@ impl RequestEntry {
     /// Retrieve ID and name
     pub fn get_id_and_name(&self) -> (&String, &String) {
         match self {
-            RequestEntry::Info(info) => (&info.id, &info.name),
+            RequestEntry::Request(info) => (&info.id, &info.name),
             RequestEntry::Group(group) => (&group.id, &group.name),
         }
     }
@@ -273,22 +273,21 @@ impl RequestEntry {
     pub fn get_title(&self) -> String {
         let (id, name) = self.get_id_and_name();
         format!("{} ({})", name, id)
-    }    
+    }
 
     /// Retrieve request entry number of runs
     pub fn get_runs(&self) -> usize {
         match self {
-            RequestEntry::Info(info) => info.runs,
+            RequestEntry::Request(info) => info.runs,
             RequestEntry::Group(group) => group.runs,
         }
     }
-
 }
 
 impl Display for RequestEntry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RequestEntry::Info(i) => write!(f, "{}", i.name),
+            RequestEntry::Request(i) => write!(f, "{}", i.name),
             RequestEntry::Group(g) => write!(f, "{}", g.name),
         }
     }
@@ -297,60 +296,59 @@ impl Display for RequestEntry {
 impl SelectedParameters for RequestEntry {
     fn selected_scenario(&self) -> &Option<Selection> {
         match self {
-            RequestEntry::Info(info) => &info.selected_scenario,
+            RequestEntry::Request(info) => &info.selected_scenario,
             RequestEntry::Group(group) => &group.selected_scenario,
         }
     }
 
     fn selected_authorization(&self) -> &Option<Selection> {
         match self {
-            RequestEntry::Info(info) => &info.selected_authorization,
+            RequestEntry::Request(info) => &info.selected_authorization,
             RequestEntry::Group(group) => &group.selected_authorization,
         }
     }
 
     fn selected_certificate(&self) -> &Option<Selection> {
         match self {
-            RequestEntry::Info(info) => &info.selected_certificate,
+            RequestEntry::Request(info) => &info.selected_certificate,
             RequestEntry::Group(group) => &group.selected_certificate,
         }
     }
 
     fn selected_proxy(&self) -> &Option<Selection> {
         match self {
-            RequestEntry::Info(info) => &info.selected_proxy,
+            RequestEntry::Request(info) => &info.selected_proxy,
             RequestEntry::Group(group) => &group.selected_proxy,
         }
     }
 
     fn selected_scenario_as_mut(&mut self) -> &mut Option<Selection> {
         match self {
-            RequestEntry::Info(info) => &mut info.selected_scenario,
+            RequestEntry::Request(info) => &mut info.selected_scenario,
             RequestEntry::Group(group) => &mut group.selected_scenario,
         }
     }
 
     fn selected_authorization_as_mut(&mut self) -> &mut Option<Selection> {
         match self {
-            RequestEntry::Info(info) => &mut info.selected_authorization,
+            RequestEntry::Request(info) => &mut info.selected_authorization,
             RequestEntry::Group(group) => &mut group.selected_authorization,
         }
     }
 
     fn selected_certificate_as_mut(&mut self) -> &mut Option<Selection> {
         match self {
-            RequestEntry::Info(info) => &mut info.selected_certificate,
+            RequestEntry::Request(info) => &mut info.selected_certificate,
             RequestEntry::Group(group) => &mut group.selected_certificate,
         }
     }
 
     fn selected_proxy_as_mut(&mut self) -> &mut Option<Selection> {
         match self {
-            RequestEntry::Info(info) => &mut info.selected_proxy,
+            RequestEntry::Request(info) => &mut info.selected_proxy,
             RequestEntry::Group(group) => &mut group.selected_proxy,
         }
     }
- 
 }
 
 // Implement warnings trait for requests and groups
@@ -358,25 +356,308 @@ impl Warnings for RequestEntry {
     /// Retrieve warnings
     fn get_warnings(&self) -> &Option<Vec<String>> {
         match self {
-            RequestEntry::Info(request) => &request.warnings,
+            RequestEntry::Request(request) => &request.warnings,
             RequestEntry::Group(group) => &group.warnings,
         }
     }
 
     fn add_warning(&mut self, warning: String) {
         match self {
-            RequestEntry::Info(request) => {
-                match &mut request.warnings {
-                    Some(warnings) => warnings.push(warning),
-                    None => request.warnings = Some(vec![warning])
-                }
-            }
-            RequestEntry::Group(group) => {
-                match &mut group.warnings {
-                    Some(warnings) => warnings.push(warning),
-                    None => group.warnings = Some(vec![warning])
-                }
-            }
+            RequestEntry::Request(request) => match &mut request.warnings {
+                Some(warnings) => warnings.push(warning),
+                None => request.warnings = Some(vec![warning]),
+            },
+            RequestEntry::Group(group) => match &mut group.warnings {
+                Some(warnings) => warnings.push(warning),
+                None => group.warnings = Some(vec![warning]),
+            },
+        }
+    }
+}
+
+/// Apicize Request body
+#[serde_as]
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[serde(tag = "type")]
+pub enum StoredRequestBody {
+    /// Text (UTF-8) body data
+    Text {
+        /// Text
+        data: String,
+    },
+    /// JSON body data
+    #[serde(rename = "JSON")]
+    JSON {
+        data: Option<Value>,
+        formatted: Option<String>,
+    },
+    /// XML body data
+    #[serde(rename = "XML")]
+    XML {
+        /// Text
+        data: String,
+    },
+    /// Form (not multipart) body data
+    Form {
+        /// Name/value pairs of form data
+        data: Vec<NameValuePair>,
+    },
+    /// Binary body data serialized as Base64
+    Raw {
+        /// Base-64 encoded binary data
+        #[serde_as(as = "Base64<Standard, Unpadded>")]
+        data: Vec<u8>,
+    },
+}
+
+/// Information required to dispatch and test an Apicize Request
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredRequest {
+    /// Unique identifier (required to keep track of dispatches and test executions)
+    #[serde(default = "generate_uuid")]
+    pub id: String,
+    /// Human-readable name describing the Apicize Request
+    pub name: String,
+    /// Test to execute after dispatching request and receiving response
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub test: Option<String>,
+    /// URL to dispatch the HTTP request to
+    pub url: String,
+    /// HTTP method
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub method: Option<RequestMethod>,
+    /// Timeout, in milliseconds, to wait for a response
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<u32>,
+    /// HTTP headers
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub headers: Option<Vec<NameValuePair>>,
+    /// HTTP query string parameters
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub query_string_params: Option<Vec<NameValuePair>>,
+    /// HTTP body
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body: Option<StoredRequestBody>,
+    /// Keep HTTP connection alive
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keep_alive: Option<bool>,
+    /// Number of runs for the request to execute
+    #[serde(default = "one")]
+    pub runs: usize,
+    /// Execution of multiple runs
+    #[serde(default = "sequential")]
+    pub multi_run_execution: ExecutionConcurrency,
+    /// Selected scenario, if applicable
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_scenario: Option<Selection>,
+    /// Selected authorization, if applicable
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_authorization: Option<Selection>,
+    /// Selected certificate, if applicable
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_certificate: Option<Selection>,
+    /// Selected proxy, if applicable
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_proxy: Option<Selection>,
+    /// Selected external data, if any
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_data: Option<Selection>,
+    /// Populated with any warnings regarding how the request is set up
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warnings: Option<Vec<String>>,
+}
+
+/// A group of Apicize Requests
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredRequestGroup {
+    /// Uniquely identifies group of Apicize requests
+    #[serde(default = "generate_uuid")]
+    pub id: String,
+    /// Human-readable name of group
+    pub name: String,
+    /// Child items
+    pub children: Option<Vec<StoredRequestEntry>>,
+    /// Execution of children
+    #[serde(default = "sequential")]
+    pub execution: ExecutionConcurrency,
+    /// Number of runs for the group to execute
+    #[serde(default = "one")]
+    pub runs: usize,
+    /// Execution of multiple runs
+    #[serde(default = "sequential")]
+    pub multi_run_execution: ExecutionConcurrency,
+    /// Selected scenario, if applicable
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_scenario: Option<Selection>,
+    /// Selected authorization, if applicable
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_authorization: Option<Selection>,
+    /// Selected certificate, if applicable
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_certificate: Option<Selection>,
+    /// Selected proxy, if applicable
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_proxy: Option<Selection>,
+    /// Selected external data, if any
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_data: Option<Selection>,
+    /// Populated with any warnings regarding how the group is set up
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warnings: Option<Vec<String>>,
+}
+
+/// Apcize Request that is either a specific request to run (Info)
+/// or a group of requests (Group)
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[serde(untagged)]
+pub enum StoredRequestEntry {
+    /// Request to run
+    Request(StoredRequest),
+    /// Group of Apicize Requests
+    Group(StoredRequestGroup),
+}
+
+impl StoredRequestEntry {
+    pub fn from_workspace(entry: RequestEntry) -> StoredRequestEntry {
+        match entry {
+            RequestEntry::Request(request) => StoredRequestEntry::Request(StoredRequest {
+                id: request.id,
+                name: request.name,
+                test: request.test,
+                url: request.url,
+                method: request.method,
+                timeout: request.timeout,
+                headers: request.headers,
+                query_string_params: request.query_string_params,
+                body: match request.body {
+                    Some(body) => match body {
+                        RequestBody::Text { data } => Some(StoredRequestBody::Text { data }),
+                        RequestBody::JSON { data } => {
+                            // If the data from the workspace is serializable, then store the serialized version,
+                            // as well as writing the raw data
+                            let data_to_save = match Value::from_str(&data) {
+                                Ok(v) => Some(v),
+                                Err(_) => None,
+                            };
+                            Some(StoredRequestBody::JSON {
+                                data: data_to_save,
+                                formatted: Some(data),
+                            })
+                        }
+                        RequestBody::XML { data } => Some(StoredRequestBody::XML { data }),
+                        RequestBody::Form { data } => Some(StoredRequestBody::Form { data }),
+                        RequestBody::Raw { data } => Some(StoredRequestBody::Raw { data }),
+                    },
+                    None => None,
+                },
+                keep_alive: request.keep_alive,
+                runs: request.runs,
+                multi_run_execution: request.multi_run_execution,
+                selected_scenario: request.selected_scenario,
+                selected_authorization: request.selected_authorization,
+                selected_certificate: request.selected_certificate,
+                selected_proxy: request.selected_proxy,
+                selected_data: request.selected_data,
+                warnings: request.warnings,
+            }),
+            RequestEntry::Group(group) => StoredRequestEntry::Group(StoredRequestGroup {
+                id: group.id,
+                name: group.name,
+                children: match group.children {
+                    Some(children) => Some(
+                        children
+                            .into_iter()
+                            .map(|c| StoredRequestEntry::from_workspace(c))
+                            .collect(),
+                    ),
+                    None => None,
+                },
+                execution: group.execution,
+                runs: group.runs,
+                multi_run_execution: group.multi_run_execution,
+                selected_scenario: group.selected_scenario,
+                selected_authorization: group.selected_authorization,
+                selected_certificate: group.selected_certificate,
+                selected_proxy: group.selected_proxy,
+                selected_data: group.selected_data,
+                warnings: group.warnings,
+            }),
+        }
+    }
+
+    pub fn to_workspace(self) -> RequestEntry {
+        match self {
+            StoredRequestEntry::Request(stored_request) => RequestEntry::Request(Request {
+                id: stored_request.id,
+                name: stored_request.name,
+                test: stored_request.test,
+                url: stored_request.url,
+                method: stored_request.method,
+                timeout: stored_request.timeout,
+                headers: stored_request.headers,
+                query_string_params: stored_request.query_string_params,
+                body: match stored_request.body {
+                    Some(body) => match body {
+                        StoredRequestBody::Text { data } => Some(RequestBody::Text { data }),
+                        StoredRequestBody::JSON { formatted, data } => {
+                            let result_data: Option<String>;
+                            if let Some(s) = formatted {
+                                result_data = Some(s);
+                            } else if let Some(v) = data {
+                                if let Ok(s) = serde_json::to_string_pretty(&v) {
+                                    result_data = Some(s);
+                                } else {
+                                    result_data = None;
+                                }
+                            } else {
+                                result_data = None;
+                            }
+
+                            match result_data {
+                                Some(d) => Some(RequestBody::JSON { data: d }),
+                                None => None,
+                            }
+                        }
+                        StoredRequestBody::XML { data } => Some(RequestBody::XML { data }),
+                        StoredRequestBody::Form { data } => Some(RequestBody::Form { data }),
+                        StoredRequestBody::Raw { data } => Some(RequestBody::Raw { data }),
+                    },
+                    None => None,
+                },
+                keep_alive: stored_request.keep_alive,
+                runs: stored_request.runs,
+                multi_run_execution: stored_request.multi_run_execution,
+                selected_scenario: stored_request.selected_scenario,
+                selected_authorization: stored_request.selected_authorization,
+                selected_certificate: stored_request.selected_certificate,
+                selected_proxy: stored_request.selected_proxy,
+                selected_data: stored_request.selected_data,
+                warnings: stored_request.warnings,
+            }),
+            StoredRequestEntry::Group(group) => RequestEntry::Group(RequestGroup {
+                id: group.id,
+                name: group.name,
+                children: match group.children {
+                    Some(children) => Some(
+                        children
+                            .into_iter()
+                            .map(|c| StoredRequestEntry::to_workspace(c))
+                            .collect(),
+                    ),
+                    None => None,
+                },
+                execution: group.execution,
+                runs: group.runs,
+                multi_run_execution: group.multi_run_execution,
+                selected_scenario: group.selected_scenario,
+                selected_authorization: group.selected_authorization,
+                selected_certificate: group.selected_certificate,
+                selected_proxy: group.selected_proxy,
+                selected_data: group.selected_data,
+                warnings: group.warnings,
+            }),
         }
     }
 }

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use crate::{save_data_file, Authorization, Certificate, Proxy, RequestEntry, Scenario, SerializationFailure, SerializationSaveSuccess};
 use serde::{Deserialize, Serialize};
 
-use super::{ExternalData, WorkbookDefaultParameters};
+use super::{ExternalData, StoredRequestEntry, WorkbookDefaultParameters};
 
 /// Persisted Apcizize requests and scenario definitions
 #[derive(Serialize, Deserialize, PartialEq)]
@@ -13,7 +13,7 @@ pub struct Workbook {
     /// Version of workbook format (should not be changed manually)
     pub version: f32,
     /// List of requests/request groups
-    pub requests: Vec<RequestEntry>,
+    pub requests: Vec<StoredRequestEntry>,
     /// List of scenarios
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scenarios: Option<Vec<Scenario>>,
@@ -99,9 +99,12 @@ impl Workbook {
             None => None,
         };
 
+        let stored_requests = requests.into_iter().map(|r| StoredRequestEntry::from_workspace(r)).collect();
+
+
         let workbook = Workbook {
             version: 1.0,
-            requests,
+            requests: stored_requests,
             scenarios: save_scenarios,
             authorizations: save_authorizations,
             certificates: save_certiificates,
