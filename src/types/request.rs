@@ -3,7 +3,7 @@ use std::fmt::Display;
 use std::str::FromStr;
 
 use super::{NameValuePair, Selection, Warnings};
-use crate::{utility::*, Identifable, SelectedParameters};
+use crate::{utility::*, Identifiable, SelectedParameters};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_with::base64::{Base64, Standard};
@@ -184,21 +184,32 @@ pub enum RequestEntry {
     Group(RequestGroup),
 }
 
-impl Identifable for RequestEntry {
+impl Identifiable for RequestEntry {
     fn get_id(&self) -> &String {
-        return self.get_id();
+        match self {
+            RequestEntry::Request(request) => request.get_id(),
+            RequestEntry::Group(group) => group.get_id(),
+        }
     }
 
     fn get_name(&self) -> &String {
-        return self.get_name();
+        match self {
+            RequestEntry::Request(request) => request.get_name(),
+            RequestEntry::Group(group) => group.get_name(),
+        }
     }
 
     fn get_title(&self) -> String {
-        let (id, name) = self.get_id_and_name();
-        if name.is_empty() {
-            format!("{} (Unnamed)", id)
-        } else {
-            name.to_string()
+        match self {
+            RequestEntry::Request(request) => request.get_title(),
+            RequestEntry::Group(group) => group.get_title(),
+        }
+    }
+
+    fn clone_as_new(&self, new_name: String) -> Self {
+        match self {
+            RequestEntry::Request(request) => RequestEntry::Request(request.clone_as_new(new_name)),
+            RequestEntry::Group(group) => RequestEntry::Group(group.clone_as_new(new_name)),
         }
     }
 }
@@ -231,6 +242,102 @@ impl Display for RequestGroup {
     }
 }
 
+impl Default for Request {
+    fn default() -> Self {
+        Self {
+            id: generate_uuid(),
+            name: Default::default(),
+            test: Default::default(),
+            url: Default::default(),
+            method: Default::default(),
+            timeout: Default::default(),
+            headers: Default::default(),
+            query_string_params: Default::default(),
+            body: Default::default(),
+            keep_alive: Default::default(),
+            runs: 1,
+            multi_run_execution: ExecutionConcurrency::Sequential,
+            selected_scenario: Default::default(),
+            selected_authorization: Default::default(),
+            selected_certificate: Default::default(),
+            selected_proxy: Default::default(),
+            selected_data: Default::default(),
+            warnings: Default::default(),
+        }
+    }
+}
+
+impl Identifiable for Request {
+    fn get_id(&self) -> &String {
+        &self.id
+    }
+
+    fn get_name(&self) -> &String {
+        &self.name
+    }
+
+    fn get_title(&self) -> String {
+        let name = self.get_name();
+        if name.is_empty() {
+            "(Unnamed)".to_string()
+        } else {
+            name.to_string()
+        }
+    }
+
+    fn clone_as_new(&self, new_name: String) -> Self {
+        let mut cloned = self.clone();
+        cloned.id = generate_uuid();
+        cloned.name = new_name;
+        cloned
+    }
+}
+
+impl Identifiable for RequestGroup {
+    fn get_id(&self) -> &String {
+        &self.id
+    }
+
+    fn get_name(&self) -> &String {
+        &self.name
+    }
+
+    fn get_title(&self) -> String {
+        let name = self.get_name();
+        if name.is_empty() {
+            "(Unnamed)".to_string()
+        } else {
+            name.to_string()
+        }
+    }
+
+    fn clone_as_new(&self, new_name: String) -> Self {
+        let mut cloned = self.clone();
+        cloned.id = generate_uuid();
+        cloned.name = new_name;
+        cloned
+    }
+}
+
+impl Default for RequestGroup {
+    fn default() -> Self {
+        Self {
+            id: generate_uuid(),
+            name: Default::default(),
+            children: Default::default(),
+            execution: ExecutionConcurrency::Sequential,
+            runs: 1,
+            multi_run_execution: ExecutionConcurrency::Sequential,
+            selected_scenario: Default::default(),
+            selected_authorization: Default::default(),
+            selected_certificate: Default::default(),
+            selected_proxy: Default::default(),
+            selected_data: Default::default(),
+            warnings: Default::default(),
+        }
+    }
+}
+
 impl RequestEntry {
     /// Utility function to perform string substitution based upon search/replace values in "subs"
     pub fn clone_and_sub(text: &str, subs: &HashMap<String, String>) -> String {
@@ -243,36 +350,6 @@ impl RequestEntry {
             }
             clone
         }
-    }
-
-    /// Retrieve request entry ID
-    pub fn get_id(&self) -> &String {
-        match self {
-            RequestEntry::Request(info) => &info.id,
-            RequestEntry::Group(group) => &group.id,
-        }
-    }
-
-    /// Retrieve request entry name
-    pub fn get_name(&self) -> &String {
-        match self {
-            RequestEntry::Request(info) => &info.name,
-            RequestEntry::Group(group) => &group.name,
-        }
-    }
-
-    /// Retrieve ID and name
-    pub fn get_id_and_name(&self) -> (&String, &String) {
-        match self {
-            RequestEntry::Request(info) => (&info.id, &info.name),
-            RequestEntry::Group(group) => (&group.id, &group.name),
-        }
-    }
-
-    /// Retrieve ID and name
-    pub fn get_title(&self) -> String {
-        let (id, name) = self.get_id_and_name();
-        format!("{} ({})", name, id)
     }
 
     /// Retrieve request entry number of runs
@@ -322,6 +399,13 @@ impl SelectedParameters for RequestEntry {
         }
     }
 
+    fn selected_data(&self) -> &Option<Selection> {
+        match self {
+            RequestEntry::Request(info) => &info.selected_data,
+            RequestEntry::Group(group) => &group.selected_data,
+        }
+    }
+
     fn selected_scenario_as_mut(&mut self) -> &mut Option<Selection> {
         match self {
             RequestEntry::Request(info) => &mut info.selected_scenario,
@@ -347,6 +431,13 @@ impl SelectedParameters for RequestEntry {
         match self {
             RequestEntry::Request(info) => &mut info.selected_proxy,
             RequestEntry::Group(group) => &mut group.selected_proxy,
+        }
+    }
+
+    fn selected_data_as_mut(&mut self) -> &mut Option<Selection> {
+        match self {
+            RequestEntry::Request(info) => &mut info.selected_data,
+            RequestEntry::Group(group) => &mut group.selected_data,
         }
     }
 }
@@ -565,15 +656,12 @@ impl StoredRequestEntry {
             RequestEntry::Group(group) => StoredRequestEntry::Group(StoredRequestGroup {
                 id: group.id,
                 name: group.name,
-                children: match group.children {
-                    Some(children) => Some(
-                        children
-                            .into_iter()
-                            .map(|c| StoredRequestEntry::from_workspace(c))
-                            .collect(),
-                    ),
-                    None => None,
-                },
+                children: group.children.map(|children| {
+                    children
+                        .into_iter()
+                        .map(StoredRequestEntry::from_workspace)
+                        .collect()
+                }),
                 execution: group.execution,
                 runs: group.runs,
                 multi_run_execution: group.multi_run_execution,
@@ -615,10 +703,7 @@ impl StoredRequestEntry {
                                 result_data = None;
                             }
 
-                            match result_data {
-                                Some(d) => Some(RequestBody::JSON { data: d }),
-                                None => None,
-                            }
+                            result_data.map(|d| RequestBody::JSON { data: d })
                         }
                         StoredRequestBody::XML { data } => Some(RequestBody::XML { data }),
                         StoredRequestBody::Form { data } => Some(RequestBody::Form { data }),
@@ -639,15 +724,12 @@ impl StoredRequestEntry {
             StoredRequestEntry::Group(group) => RequestEntry::Group(RequestGroup {
                 id: group.id,
                 name: group.name,
-                children: match group.children {
-                    Some(children) => Some(
-                        children
-                            .into_iter()
-                            .map(|c| StoredRequestEntry::to_workspace(c))
-                            .collect(),
-                    ),
-                    None => None,
-                },
+                children: group.children.map(|children| {
+                    children
+                        .into_iter()
+                        .map(StoredRequestEntry::to_workspace)
+                        .collect()
+                }),
                 execution: group.execution,
                 runs: group.runs,
                 multi_run_execution: group.multi_run_execution,

@@ -1,5 +1,5 @@
 //! This module implements OAuth2 client flow support, including support for caching tokens
-use crate::{ApicizeError, Certificate, Identifable, Proxy};
+use crate::{ApicizeError, Certificate, Identifiable, Proxy};
 use oauth2::basic::BasicClient;
 use oauth2::{reqwest, AuthType};
 use oauth2::{ClientId, ClientSecret, Scope, TokenResponse, TokenUrl};
@@ -7,11 +7,23 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ops::Add;
 use std::sync::LazyLock;
-use std::time::Instant;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 
-pub static TOKEN_CACHE: LazyLock<Mutex<HashMap<String, (Instant, String)>>> =
+pub static TOKEN_CACHE: LazyLock<Mutex<HashMap<String, CachedTokenInfo>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Cached token
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CachedTokenInfo {
+    /// Access token
+    pub access_token: String,
+    /// Refresh token
+    pub refresh_token: Option<String>,
+    /// Expiration of token in seconds past Unix epoch
+    pub expiration: Option<u64>,
+}
 
 /// OAuth2 issued client token result
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -22,10 +34,13 @@ pub struct TokenResult {
     /// Set to True if token was retrieved via cache
     pub cached: bool,
     /// URL used to retrieve token
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
     /// Name of the certificate parameter, if any
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub certificate: Option<String>,
     /// Name of the proxy parameter, if any
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub proxy: Option<String>,
 }
 
@@ -58,20 +73,26 @@ pub async fn get_oauth2_client_credentials<'a>(
     // Check cache and return if token found and not expired
     let mut locked_cache = TOKEN_CACHE.lock().await;
     let valid_token = match locked_cache.get(id) {
-        Some((expiration, cached_token)) => {
-            let now = Instant::now();
-            if expiration.gt(&now) {
-                Some(cached_token.clone())
-            } else {
-                None
+        Some(cached_token) => match cached_token.expiration {
+            Some(expiration) => {
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+                if expiration.gt(&now) {
+                    Some(cached_token.clone())
+                } else {
+                    None
+                }
             }
-        }
+            None => None,
+        },
         None => None,
     };
 
-    if let Some(token) = valid_token {
+    if let Some(cached_token) = valid_token {
         return Ok(TokenResult {
-            token,
+            token: cached_token.access_token,
             cached: true,
             url: None,
             certificate: None,
@@ -80,13 +101,15 @@ pub async fn get_oauth2_client_credentials<'a>(
     }
 
     // Retrieve an access token
-    let mut client = BasicClient::new(ClientId::new(String::from(client_id))).set_token_uri(
-        TokenUrl::new(String::from(token_url)).expect("Unable to parse OAuth token URL"),
-    ).set_auth_type(if send_credentials_in_body {
-        AuthType::RequestBody
-    } else {
-        AuthType::BasicAuth
-    });
+    let mut client = BasicClient::new(ClientId::new(String::from(client_id)))
+        .set_token_uri(
+            TokenUrl::new(String::from(token_url)).expect("Unable to parse OAuth token URL"),
+        )
+        .set_auth_type(if send_credentials_in_body {
+            AuthType::RequestBody
+        } else {
+            AuthType::BasicAuth
+        });
 
     if !client_secret.trim().is_empty() {
         client = client.set_client_secret(ClientSecret::new(String::from(client_secret)));
@@ -99,7 +122,7 @@ pub async fn get_oauth2_client_credentials<'a>(
             token_request = token_request.add_scope(Scope::new(scope_value.clone()));
         }
     }
-    
+
     if let Some(audience_value) = &audience {
         if !audience_value.is_empty() {
             token_request = token_request.add_extra_param("audience", audience_value);
@@ -148,12 +171,22 @@ pub async fn get_oauth2_client_credentials<'a>(
 
     match token_request.request_async(&http_client).await {
         Ok(token_response) => {
-            let expiration = match token_response.expires_in() {
-                Some(token_expires_in) => Instant::now().add(token_expires_in),
-                None => Instant::now(),
-            };
+            let expiration = token_response.expires_in().map(|token_expires_in|
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+                    .add(token_expires_in.as_secs())
+            );
             let token = token_response.access_token().secret().clone();
-            locked_cache.insert(String::from(id), (expiration, token.clone()));
+            locked_cache.insert(
+                String::from(id),
+                CachedTokenInfo {
+                    access_token: token.clone(),
+                    refresh_token: None,
+                    expiration,
+                },
+            );
             Ok(TokenResult {
                 token,
                 cached: false,
@@ -167,6 +200,12 @@ pub async fn get_oauth2_client_credentials<'a>(
             source: Some(Box::new(ApicizeError::from_oauth2(err))),
         }),
     }
+}
+
+/// Store OAuth2 token in cache
+pub async fn store_oauth2_token(authorization_id: &str, token_info: CachedTokenInfo) {
+    let locked_cache = &mut TOKEN_CACHE.lock().await;
+    locked_cache.insert(authorization_id.to_owned(), token_info);
 }
 
 /// Clear all cached OAuth2 tokens
@@ -185,15 +224,15 @@ pub async fn clear_oauth2_token(id: &str) -> bool {
 
 #[cfg(test)]
 pub mod tests {
-
-    use std::time::{Duration, Instant};
+    use std::ops::{Add, Sub};
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     use mockall::automock;
     use serial_test::{parallel, serial};
 
     use crate::oauth2_client_tokens::{
-        clear_all_oauth2_tokens, clear_oauth2_token, get_oauth2_client_credentials, TokenResult,
-        TOKEN_CACHE,
+        clear_all_oauth2_tokens, clear_oauth2_token, get_oauth2_client_credentials,
+        CachedTokenInfo, TokenResult, TOKEN_CACHE,
     };
 
     pub struct OAuth2ClientTokens;
@@ -238,10 +277,21 @@ pub mod tests {
         {
             let mut locked_cache = TOKEN_CACHE.lock().await;
             locked_cache.clear();
-            let expiration = Instant::now()
-                .checked_add(Duration::from_millis(10000))
-                .unwrap();
-            locked_cache.insert(String::from("abc"), (expiration, String::from("123")));
+            let expiration = Some(
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+                    .add(10),
+            );
+            locked_cache.insert(
+                String::from("abc"),
+                CachedTokenInfo {
+                    expiration,
+                    access_token: String::from("123"),
+                    refresh_token: None,
+                },
+            );
         }
         assert_eq!(
             (get_oauth2_client_credentials(
@@ -340,14 +390,20 @@ pub mod tests {
         {
             let mut locked_cache = TOKEN_CACHE.lock().await;
             locked_cache.clear();
-            let expiration = Instant::now()
-                .checked_sub(Duration::from_millis(100000))
-                .unwrap();
-            locked_cache.insert(String::from("abc"), (expiration, String::from("123")));
-            assert_eq!(
-                locked_cache.get(&String::from("abc")),
-                Some(&(expiration, String::from("123")))
+            let expiration = Some(
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+                    .sub(10),
             );
+            let cached_token = CachedTokenInfo {
+                expiration,
+                access_token: String::from("123"),
+                refresh_token: None,
+            };
+            locked_cache.insert(String::from("abc"), cached_token.clone());
+            assert_eq!(locked_cache.get(&String::from("abc")), Some(&cached_token));
         }
 
         let result = get_oauth2_client_credentials(
@@ -388,14 +444,20 @@ pub mod tests {
         {
             let mut locked_cache = TOKEN_CACHE.lock().await;
             locked_cache.clear();
-            let expiration = Instant::now()
-                .checked_add(Duration::from_millis(1000))
-                .unwrap();
-            locked_cache.insert(String::from("abc"), (expiration, String::from("123")));
-            assert_eq!(
-                locked_cache.get(&String::from("abc")),
-                Some(&(expiration, String::from("123")))
+            let expiration = Some(
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+                    .add(10),
             );
+            let cached_token = CachedTokenInfo {
+                expiration,
+                access_token: String::from("123"),
+                refresh_token: None,
+            };
+            locked_cache.insert(String::from("abc"), cached_token.clone());
+            assert_eq!(locked_cache.get(&String::from("abc")), Some(&cached_token));
         }
         assert_eq!(clear_all_oauth2_tokens().await, 1);
         {
@@ -410,14 +472,20 @@ pub mod tests {
         {
             let mut locked_cache = TOKEN_CACHE.lock().await;
             locked_cache.clear();
-            let expiration = Instant::now()
-                .checked_add(Duration::from_millis(1000))
-                .unwrap();
-            locked_cache.insert(String::from("abc"), (expiration, String::from("123")));
-            assert_eq!(
-                locked_cache.get(&String::from("abc")),
-                Some(&(expiration, String::from("123")))
+            let expiration = Some(
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+                    .add(10),
             );
+            let cached_token = CachedTokenInfo {
+                expiration,
+                access_token: String::from("123"),
+                refresh_token: None,
+            };
+            locked_cache.insert(String::from("abc"), cached_token.clone());
+            assert_eq!(locked_cache.get(&String::from("abc")), Some(&cached_token));
         }
         assert_eq!(clear_oauth2_token("abc").await, true);
         {

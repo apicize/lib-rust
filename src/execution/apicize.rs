@@ -6,37 +6,12 @@ use super::ApicizeExecution;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+/// Result of an Apicize execution, either a list of data rows or list of group/item results
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type")]
 pub enum ApicizeResult {
-    Items(ApicizeList<ApicizeGroupItem>),
     Rows(ApicizeRowSummary),
-}
-
-/// Summary of rows executed for an external data set
-#[derive(Serialize, Deserialize, PartialEq, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ApicizeRowSummary {
-    /// Rows executed
-    pub rows: Vec<ApicizeRow>,
-
-    /// Execution start (millisecond offset from start)
-    pub executed_at: u128,
-    /// Duration of execution (milliseconds)
-    pub duration: u128,
-
-    /// Success is true if all runs are successful
-    pub success: bool,
-    /// Number of child requests/groups with successful requests and all tests passed
-    pub request_success_count: usize,
-    /// Number of child requests/groups with successful requests and some tests failed
-    pub request_failure_count: usize,
-    /// Number of child requests/groups with successful requests and some tests failed
-    pub request_error_count: usize,
-    /// Number of passed tests, if request and tests are succesfully run
-    pub test_pass_count: usize,
-    /// Number of failed tests, if request and tests are succesfully run
-    pub test_fail_count: usize,
+    Items(ApicizeList<ApicizeGroupItem>),
 }
 
 /// Summary of rows executed for an external data set
@@ -67,6 +42,31 @@ pub struct ApicizeRow {
     /// Number of failed tests, if request and tests are succesfully run
     pub test_fail_count: usize,
 }
+/// Summary of rows executed for an external data set
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ApicizeRowSummary {
+    /// Rows executed
+    pub rows: Vec<ApicizeRow>,
+
+    /// Execution start (millisecond offset from start)
+    pub executed_at: u128,
+    /// Duration of execution (milliseconds)
+    pub duration: u128,
+
+    /// Success is true if all runs are successful
+    pub success: bool,
+    /// Number of child requests/groups with successful requests and all tests passed
+    pub request_success_count: usize,
+    /// Number of child requests/groups with successful requests and some tests failed
+    pub request_failure_count: usize,
+    /// Number of child requests/groups with successful requests and some tests failed
+    pub request_error_count: usize,
+    /// Number of passed tests, if request and tests are succesfully run
+    pub test_pass_count: usize,
+    /// Number of failed tests, if request and tests are succesfully run
+    pub test_fail_count: usize,
+}
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type")]
@@ -74,6 +74,7 @@ pub enum ApicizeGroupItem {
     Group(Box<ApicizeGroup>),
     Request(Box<ApicizeRequest>),
 }
+
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type")]
@@ -214,7 +215,7 @@ pub struct ApicizeRequest {
     pub duration: u128,
     
     /// Variables assigned to the group
-    pub variables: Option<Map<String, Value>>,
+    pub input_variables: Option<Map<String, Value>>,
     /// Variables to update at the end of the group
     pub output_variables: Option<Map<String, Value>>,
 
@@ -271,7 +272,9 @@ pub struct ApicizeTestResult {
     /// Whether or not the test was successful
     pub success: bool,
     /// Error generated during the test
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     /// Console I/O generated during the test
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub logs: Option<Vec<String>>,
 }

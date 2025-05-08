@@ -1,6 +1,5 @@
 //! Apicize execution error types
 use std::error::Error;
-use std::fmt::Display;
 use std::io;
 
 use oauth2::basic::BasicErrorResponseType;
@@ -13,43 +12,44 @@ use tokio::task::JoinError;
 #[serde(tag = "type")]
 /// Errors that can result from Apicize operations
 pub enum ApicizeError {
+    #[error("{description}")]
     Error {
         description: String,
         source: Option<Box<ApicizeError>>,
     },
+    #[error("HTTP error - {description}")]
     Http {
         description: String,
         source: Option<Box<ApicizeError>>,
         url: Option<String>,
     },
+    #[error("Timeout error - {description}")]
     Timeout {
         description: String,
         source: Option<Box<ApicizeError>>,
         url: Option<String>,
     },
-    Cancelled {
-        description: String,
-        source: Option<Box<ApicizeError>>,
-    },
+    #[error("Cancelled")]
+    Cancelled { source: Option<Box<ApicizeError>> },
+    #[error("OAuth2 Error - {description}")]
     OAuth2Client {
         description: String,
         source: Option<Box<ApicizeError>>,
     },
+    #[error("Async Error - {description}")]
     Async {
-        id: String,
         description: String,
+        id: String,
         source: Option<Box<ApicizeError>>,
     },
-    IO {
-        description: String,
-    },
-    Parse {
-        description: String,
-        name: String,
-    },
-    FailedTest {
-        description: String,
-    },
+    #[error("IO Error - {description}")]
+    IO { description: String },
+    #[error("Parse/Serialization Error - {description}")]
+    Parse { description: String, name: String },
+    #[error("Invalid ID - {description}")]
+    InvalidId { description: String },
+    #[error("Failed Test - {description}")]
+    FailedTest { description: String },
 }
 
 impl ApicizeError {
@@ -73,7 +73,6 @@ impl ApicizeError {
             }
         } else if error.is_timeout() {
             ApicizeError::Cancelled {
-                description: String::from("Cancelled"),
                 source: error
                     .source()
                     .map(|src| Box::new(ApicizeError::from_error(src))),
@@ -128,8 +127,8 @@ impl ApicizeError {
     }
 
     pub fn from_io(error: io::Error) -> ApicizeError {
-        ApicizeError::IO { 
-            description: format!("{}", error)
+        ApicizeError::IO {
+            description: format!("{}", error),
         }
     }
 
@@ -148,84 +147,89 @@ impl ApicizeError {
             ApicizeError::FailedTest { .. } => "Failed Test",
             ApicizeError::IO { .. } => "I/O",
             ApicizeError::Parse { .. } => "Failed Parsing",
+            ApicizeError::InvalidId { .. } => "Invalid ID",
         }
     }
 }
 
-fn format_child_description(
-    parent_description: &str,
-    child: Option<&dyn Error>,
-    f: &mut std::fmt::Formatter<'_>,
-) -> std::fmt::Result {
-    match child {
-        Some(c) => {
-            let child_desc = c.to_string();
-            if parent_description.ends_with(&child_desc) {
-                Ok(())
-            } else {
-                f.write_str(format!(", {}", &child_desc).as_str())
-                    .and_then(|()| format_child_description(&child_desc, c.source(), f))
-            }
-        }
-        None => Ok(()),
-    }
-}
+// fn format_child_description(
+//     parent_description: &str,
+//     child: Option<&dyn Error>,
+//     f: &mut std::fmt::Formatter<'_>,
+// ) -> std::fmt::Result {
+//     match child {
+//         Some(c) => {
+//             let child_desc = c.to_string();
+//             if parent_description.ends_with(&child_desc) {
+//                 Ok(())
+//             } else {
+//                 f.write_str(format!(", {}", &child_desc).as_str())
+//                     .and_then(|()| format_child_description(&child_desc, c.source(), f))
+//             }
+//         }
+//         None => Ok(()),
+//     }
+// }
 
-impl Display for ApicizeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let desc: &String;
-        let suffix: Option<String>;
-        match &self {
-            ApicizeError::Error { description, .. } => {
-                suffix = None;
-                desc = description;
-            }
-            ApicizeError::Http { description, .. } => {
-                suffix = None;
-                desc = description;
-            }
-            ApicizeError::Timeout {
-                description, url, ..
-            } => {
-                suffix = url
-                    .as_ref()
-                    .map_or_else(|| None, |u| Some(format!("calling {}", u)));
-                desc = description;
-            }
-            ApicizeError::Cancelled { description, .. } => {
-                suffix = None;
-                desc = description;
-            }
-            ApicizeError::OAuth2Client { description, .. } => {
-                suffix = None;
-                desc = description;
-            }
-            ApicizeError::Async {
-                description, id, ..
-            } => {
-                suffix = Some(format!("(task {})", id));
-                desc = description;
-            }
-            ApicizeError::IO { description, .. } => {
-                suffix = None;
-                desc = description;
-            }
-            ApicizeError::Parse { description, name } => {
-                suffix = Some(format!("(value \"{}\"", name));
-                desc = description;
-            }
-            ApicizeError::FailedTest { description, .. } => {
-                suffix = None;
-                desc = description;
-            }
-        }
+// impl Display for ApicizeError {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         let desc: &String;
+//         let suffix: Option<String>;
+//         match &self {
+//             ApicizeError::Error { description, .. } => {
+//                 suffix = None;
+//                 desc = description;
+//             }
+//             ApicizeError::Http { description, .. } => {
+//                 suffix = None;
+//                 desc = description;
+//             }
+//             ApicizeError::Timeout {
+//                 description, url, ..
+//             } => {
+//                 suffix = url
+//                     .as_ref()
+//                     .map_or_else(|| None, |u| Some(format!("calling {}", u)));
+//                 desc = description;
+//             }
+//             ApicizeError::Cancelled { description, .. } => {
+//                 suffix = None;
+//                 desc = description;
+//             }
+//             ApicizeError::OAuth2Client { description, .. } => {
+//                 suffix = None;
+//                 desc = description;
+//             }
+//             ApicizeError::Async {
+//                 description, id, ..
+//             } => {
+//                 suffix = Some(format!("(task {})", id));
+//                 desc = description;
+//             }
+//             ApicizeError::IO { description, .. } => {
+//                 suffix = None;
+//                 desc = description;
+//             }
+//             ApicizeError::Parse { description, name } => {
+//                 suffix = Some(format!("(value \"{}\"", name));
+//                 desc = description;
+//             }
+//             ApicizeError::FailedTest { description, .. } => {
+//                 suffix = None;
+//                 desc = description;
+//             }
+//             ApicizeError::InvalidId { description, .. } => {
+//                 suffix = None;
+//                 desc = description;
+//             }
+//         }
 
-        let result = if let Some(sfx) = suffix {
-            f.write_str(format!("{}, {}", desc, sfx,).as_str())
-        } else {
-            f.write_str(desc)
-        };
+//         let result = if let Some(sfx) = suffix {
+//             f.write_str(format!("{}, {}", desc, sfx,).as_str())
+//         } else {
+//             f.write_str(desc)
+//         };
 
-        result.and_then(|()| format_child_description(desc, self.source(), f))
-    }
-}
+//         result.and_then(|()| format_child_description(desc, self.source(), f))
+//     }
+// }

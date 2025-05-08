@@ -13,7 +13,10 @@ pub trait SelectedParameters {
 
     /// Get selected proxy, if any
     fn selected_proxy(&self) -> &Option<Selection>;
-    
+
+    /// Get selected data, if any
+    fn selected_data(&self) -> &Option<Selection>;
+
     /// Get selected scenario, if any
     fn selected_scenario_as_mut(&mut self) -> &mut Option<Selection>;
 
@@ -26,4 +29,6 @@ pub trait SelectedParameters {
     /// Get selected proxy, if any
     fn selected_proxy_as_mut(&mut self) -> &mut Option<Selection>;
 
+    /// Get selected data, if any
+    fn selected_data_as_mut(&mut self) -> &mut Option<Selection>;
 }

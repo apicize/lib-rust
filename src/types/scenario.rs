@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use crate::Identifable;
+use crate::Identifiable;
 use crate::utility::*;
 
 use super::Variable;
@@ -18,7 +18,13 @@ pub struct Scenario {
     pub variables: Option<Vec<Variable>>,
 }
 
-impl Identifable for Scenario {
+impl Default for Scenario {
+    fn default() -> Self {
+        Self { id: generate_uuid(), name: Default::default(), variables: Default::default() }
+    }
+}
+
+impl Identifiable for Scenario {
     fn get_id(&self) -> &String {
         &self.id
     }
@@ -29,9 +35,16 @@ impl Identifable for Scenario {
 
     fn get_title(&self) -> String {
         if self.name.is_empty() {
-            format!("{} (Unnamed)", self.id)
+            "(Unamed)".to_string()
         } else {
             self.name.to_string()
         }
+    }
+
+    fn clone_as_new(&self, new_name: String) -> Self {
+        let mut cloned = self.clone();
+        cloned.id = generate_uuid();
+        cloned.name = new_name;
+        cloned
     }
 }

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::Identifable;
+use crate::Identifiable;
 
 /// Information about a selected entity, include both ID and name
 /// to give the maximum chance of finding a match
@@ -14,7 +14,7 @@ pub struct Selection {
     pub name: String,
 }
 
-impl Identifable for Selection {
+impl Identifiable for Selection {
     fn get_id(&self) -> &String {
         &self.id
     }
@@ -29,6 +29,10 @@ impl Identifable for Selection {
         } else {
             self.name.to_string()
         }
+    }
+
+    fn clone_as_new(&self, _: String) -> Self {
+        self.clone()
     }
 }
 

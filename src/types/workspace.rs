@@ -3,14 +3,18 @@
 //! This submodule defines modules used to manage workspaces
 
 use crate::{
-    open_data_file, ApicizeError, Authorization, Certificate, Identifable, PersistedIndex, Proxy,
-    RequestEntry, Scenario, SelectedParameters, Selection, SerializationFailure,
+    open_data_file, ApicizeError, Authorization, Certificate, FileAccessError, Identifiable,
+    PersistedIndex, Proxy, RequestEntry, Scenario, SelectedParameters, Selection,
     SerializationSaveSuccess, Warnings, Workbook, WorkbookDefaultParameters,
 };
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use std::{collections::HashSet, path::PathBuf, sync::{Arc, Mutex}};
+use std::{
+    collections::HashSet,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 use super::{
     indexed_entities::NO_SELECTION_ID, ExternalData, IndexedEntities, Parameters, VariableCache,
@@ -18,7 +22,7 @@ use super::{
 
 /// Data type for entities used by Apicize during testing and editing.  This will be
 /// the combination of ,  credential and global settings values
-#[derive(Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Workspace {
     /// Requests for the workspace
@@ -37,10 +41,10 @@ pub struct Workspace {
     pub proxies: IndexedEntities<Proxy>,
 
     /// External data for the workspace
-    pub data: IndexedEntities<ExternalData>,
+    pub data: Vec<ExternalData>,
 
     /// Default values for requests and groups
-    pub defaults: Option<WorkbookDefaultParameters>,
+    pub defaults: WorkbookDefaultParameters,
 
     /// Warnings regarding workspace
     pub warnings: Option<Vec<String>>,
@@ -48,7 +52,7 @@ pub struct Workspace {
 
 impl Workspace {
     /// Validate the specified selection, if it is invalid, add a warning and set the selection to Off
-    fn validate_selection<T: Identifable + Clone>(
+    fn validate_selection<T: Identifiable + Clone>(
         selection: &mut Option<Selection>,
         entries: &IndexedEntities<T>,
         warnings: &mut Vec<String>,
@@ -72,38 +76,36 @@ impl Workspace {
 
     /// Validate selections specified for workbook defaults and requests
     pub fn validate_selections(&mut self) {
-        if let Some(defaults) = &mut self.defaults {
-            let mut warnings: Vec<String> = vec![];
+        let mut warnings: Vec<String> = vec![];
 
-            Self::validate_selection(
-                &mut defaults.selected_scenario,
-                &self.scenarios,
-                &mut warnings,
-                "Default",
-            );
-            Self::validate_selection(
-                &mut defaults.selected_authorization,
-                &self.authorizations,
-                &mut warnings,
-                "Default",
-            );
-            Self::validate_selection(
-                &mut defaults.selected_certificate,
-                &self.certificates,
-                &mut warnings,
-                "Default",
-            );
+        Self::validate_selection(
+            &mut self.defaults.selected_scenario,
+            &self.scenarios,
+            &mut warnings,
+            "Default",
+        );
+        Self::validate_selection(
+            &mut self.defaults.selected_authorization,
+            &self.authorizations,
+            &mut warnings,
+            "Default",
+        );
+        Self::validate_selection(
+            &mut self.defaults.selected_certificate,
+            &self.certificates,
+            &mut warnings,
+            "Default",
+        );
 
-            Self::validate_selection(
-                &mut defaults.selected_proxy,
-                &self.proxies,
-                &mut warnings,
-                "Default",
-            );
+        Self::validate_selection(
+            &mut self.defaults.selected_proxy,
+            &self.proxies,
+            &mut warnings,
+            "Default",
+        );
 
-            for warning in warnings {
-                self.add_warning(warning);
-            }
+        for warning in warnings {
+            self.add_warning(warning);
         }
 
         for request in self.requests.entities.values_mut() {
@@ -142,7 +144,7 @@ impl Workspace {
     }
 
     /// Create a new workspace, including globals specified (if any)
-    pub fn new() -> Result<Workspace, SerializationFailure> {
+    pub fn new() -> Result<Workspace, FileAccessError> {
         // Populate parameters from global vault, if available
         let global_parameters = Parameters::open(&Parameters::get_globals_filename(), true)?;
 
@@ -168,14 +170,14 @@ impl Workspace {
                 None,
                 global_parameters.proxies.as_deref(),
             ),
-            data: IndexedEntities::<ExternalData>::new(None, None, None),
-            defaults: None,
+            data: Vec::new(),
+            defaults: WorkbookDefaultParameters::default(),
             warnings: None,
         })
     }
 
     /// Open the specified  and globals file names
-    pub fn open(workbook_file_name: &PathBuf) -> Result<Workspace, SerializationFailure> {
+    pub fn open(workbook_file_name: &PathBuf) -> Result<Workspace, FileAccessError> {
         // Open workbook
         let workbook = match open_data_file(workbook_file_name) {
             Ok(success) => success.data,
@@ -200,12 +202,15 @@ impl Workspace {
         workbook: Workbook,
         private_parameters: Parameters,
         global_parameters: Parameters,
-    ) -> Result<Workspace, SerializationFailure> {
-
-        let workspace_requests = workbook.requests.into_iter().map(|r| r.to_workspace()).collect::<Vec<RequestEntry>>();
+    ) -> Result<Workspace, FileAccessError> {
+        let workspace_requests = workbook
+            .requests
+            .into_iter()
+            .map(|r| r.to_workspace())
+            .collect::<Vec<RequestEntry>>();
 
         let mut workspace = Workspace {
-            requests: IndexedEntities::new(&workspace_requests ),
+            requests: IndexedEntities::new(&workspace_requests),
             scenarios: IndexedEntities::<Scenario>::new(
                 workbook.scenarios.as_deref(),
                 private_parameters.scenarios.as_deref(),
@@ -226,8 +231,8 @@ impl Workspace {
                 private_parameters.proxies.as_deref(),
                 global_parameters.proxies.as_deref(),
             ),
-            data: IndexedEntities::<ExternalData>::new(workbook.data.as_deref(), None, None),
-            defaults: workbook.defaults.clone(),
+            data: workbook.data.unwrap_or_default(),
+            defaults: workbook.defaults.unwrap_or_default(),
             warnings: None,
         };
 
@@ -241,15 +246,13 @@ impl Workspace {
     pub fn save(
         &self,
         workbook_path: &PathBuf,
-    ) -> Result<Vec<SerializationSaveSuccess>, SerializationFailure> {
+    ) -> Result<Vec<SerializationSaveSuccess>, FileAccessError> {
         let mut successes: Vec<SerializationSaveSuccess> = vec![];
 
         // Do not save a seed data selection when saving the workbook,
         // we do not want this to be brought up during a CLI run by default
         let mut cloned_defaults = self.defaults.clone();
-        if let Some(defaults) = &mut cloned_defaults {
-            defaults.selected_data = None;
-        }
+        cloned_defaults.selected_data = None;
 
         match Workbook::save(
             PathBuf::from(workbook_path),
@@ -258,8 +261,16 @@ impl Workspace {
             self.authorizations.get_workbook(),
             self.certificates.get_workbook(),
             self.proxies.get_workbook(),
-            self.data.get_workbook(),
-            cloned_defaults,
+            if self.data.is_empty() {
+                None
+            } else {
+                Some(self.data.clone())
+            },
+            if cloned_defaults.any_values_set() {
+                Some(cloned_defaults)
+            } else {
+                None
+            },
         ) {
             Ok(success) => successes.push(success),
             Err(error) => return Err(error),
@@ -298,7 +309,7 @@ impl Workspace {
         &self,
         request: &RequestEntry,
         value_cache: &Mutex<VariableCache>,
-        active_variables: Option<Arc<Map<String, Value>>>
+        active_variables: Option<Arc<Map<String, Value>>>,
     ) -> Result<RequestParameters, ApicizeError> {
         let mut done = false;
 
@@ -403,33 +414,35 @@ impl Workspace {
         }
 
         // Load from defaults if required
-        if let Some(defaults) = &self.defaults {
-            if scenario.is_none() && allow_scenario {
-                if let SelectedOption::Some(s) = self.scenarios.find(&defaults.selected_scenario) {
-                    scenario = Some(s);
-                }
+        if scenario.is_none() && allow_scenario {
+            if let SelectedOption::Some(s) = self.scenarios.find(&self.defaults.selected_scenario) {
+                scenario = Some(s);
             }
-            if authorization.is_none() && allow_authorization {
-                if let SelectedOption::Some(a) =
-                    self.authorizations.find(&defaults.selected_authorization)
-                {
-                    authorization = Some(a);
-                }
+        }
+        if authorization.is_none() && allow_authorization {
+            if let SelectedOption::Some(a) =
+                self.authorizations.find(&self.defaults.selected_authorization)
+            {
+                authorization = Some(a);
             }
-            if certificate.is_none() && allow_certificate {
-                if let SelectedOption::Some(c) =
-                    self.certificates.find(&defaults.selected_certificate)
-                {
-                    certificate = Some(c);
-                }
+        }
+        if certificate.is_none() && allow_certificate {
+            if let SelectedOption::Some(c) =
+                self.certificates.find(&self.defaults.selected_certificate)
+            {
+                certificate = Some(c);
             }
-            if proxy.is_none() && allow_proxy {
-                if let SelectedOption::Some(p) = self.proxies.find(&defaults.selected_proxy) {
-                    proxy = Some(p);
-                }
+        }
+        if proxy.is_none() && allow_proxy {
+            if let SelectedOption::Some(p) = self.proxies.find(&self.defaults.selected_proxy) {
+                proxy = Some(p);
             }
-            if let SelectedOption::Some(d) = self.data.find(&defaults.selected_data) {
-                external_data = Some(d);
+        }
+        if let Some(selected_data) = &self.defaults.selected_data {
+            if let Some(selected_data) =
+                self.data.iter().find(|data| data.id == selected_data.id)
+            {
+                external_data = Some(selected_data);
             }
         }
 

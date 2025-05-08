@@ -1,16 +1,19 @@
 use std::collections::HashMap;
 
-use crate::{ApicizeError, PersistedIndex, RequestEntry, PERSIST_PRIVATE, PERSIST_VAULT, PERSIST_WORKBOOK};
+use crate::{
+    ApicizeError, PersistedIndex, RequestEntry, PERSIST_PRIVATE, PERSIST_VAULT, PERSIST_WORKBOOK,
+};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    workspace::SelectedOption, Authorization, Certificate, ExternalData, Identifable, Proxy, Scenario, Selection
+    workspace::SelectedOption, Authorization, Certificate, ExternalData, Identifiable, Proxy,
+    Scenario, Selection,
 };
 
 pub const NO_SELECTION_ID: &str = "\tNONE\t";
 
 /// Generic for indexed, ordered entities, optionally with children
-#[derive(Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexedEntities<T> {
     /// Top level entity IDs
@@ -23,7 +26,7 @@ pub struct IndexedEntities<T> {
     pub entities: HashMap<String, T>,
 }
 
-impl<T: Identifable + Clone> Default for IndexedEntities<T> {
+impl<T: Identifiable + Clone> Default for IndexedEntities<T> {
     fn default() -> Self {
         Self {
             top_level_ids: Default::default(),
@@ -33,7 +36,7 @@ impl<T: Identifable + Clone> Default for IndexedEntities<T> {
     }
 }
 
-impl<T: Identifable + Clone> IndexedEntities<T> {
+impl<T: Identifiable + Clone> IndexedEntities<T> {
     /// Find a match based upon ID or name
     pub fn is_valid(&self, selection: &Selection) -> bool {
         selection.id == NO_SELECTION_ID
@@ -45,7 +48,7 @@ impl<T: Identifable + Clone> IndexedEntities<T> {
     }
 
     /// Return entry matched by ID
-    pub fn get(&self, id: &String) -> Option<&T> {
+    pub fn get(&self, id: &str) -> Option<&T> {
         if id == NO_SELECTION_ID {
             None
         } else {
@@ -68,19 +71,24 @@ impl<T: Identifable + Clone> IndexedEntities<T> {
     }
 
     /// Return entry ID matched by ID
-    pub fn find_by_id_or_name(&self, id_or_name: &Option<String>) -> Result<Option<String>, ApicizeError> {
+    pub fn find_by_id_or_name(
+        &self,
+        id_or_name: &Option<String>,
+    ) -> Result<Option<String>, ApicizeError> {
         match id_or_name {
             Some(id_to_find) => {
                 if id_to_find == NO_SELECTION_ID {
                     Ok(None)
                 } else if let Some(found) = self.entities.get(id_to_find) {
                     Ok(Some(found.get_id().clone()))
-                } else if let Some(found_by_name) = self.entities.values().find(|e| e.get_name() == id_to_find) {
+                } else if let Some(found_by_name) =
+                    self.entities.values().find(|e| e.get_name() == id_to_find)
+                {
                     Ok(Some(found_by_name.get_id().clone()))
                 } else {
-                    Err(ApicizeError::Error { 
-                        description: format!("Invalid ID {}", &id_to_find), 
-                        source: None
+                    Err(ApicizeError::Error {
+                        description: format!("Invalid ID {}", &id_to_find),
+                        source: None,
                     })
                 }
             }
@@ -238,7 +246,7 @@ fn to_persisted_list<T: Clone>(index: &IndexedEntities<T>, persistence: &str) ->
 /// Generate indexed entries for parameters stored in workbook, private and/or vault files,
 /// note that we do not set top-level IDs, because we are categorizing into public, private
 /// and vault/globalls
-fn from_persisted_lists<T: Identifable + Clone>(
+fn from_persisted_lists<T: Identifiable + Clone>(
     workbook: Option<&[T]>,
     private: Option<&[T]>,
     vault: Option<&[T]>,
@@ -254,7 +262,7 @@ fn from_persisted_lists<T: Identifable + Clone>(
         entities.extend(
             entries
                 .iter()
-                .filter(|e| ! entities.contains_key(e.get_id()))
+                .filter(|e| !entities.contains_key(e.get_id()))
                 .map(|e| (e.get_id().clone(), e.clone()))
                 .collect::<HashMap<String, T>>(),
         );
@@ -263,7 +271,7 @@ fn from_persisted_lists<T: Identifable + Clone>(
         entities.extend(
             entries
                 .iter()
-                .filter(|e| ! entities.contains_key(e.get_id()))
+                .filter(|e| !entities.contains_key(e.get_id()))
                 .map(|e| (e.get_id().clone(), e.clone()))
                 .collect::<HashMap<String, T>>(),
         );

@@ -83,9 +83,14 @@ impl TestRunnerContext {
 impl ApicizeRunner for Arc<TestRunnerContext> {
     /// Dispatch requests/groups in the specified workspace
     async fn run(&self, request_ids: &[String]) -> Result<ApicizeResult, ApicizeError> {
-        let row_count = match &self.workspace.defaults {
-            Some(defaults) => match self.workspace.data.find(&defaults.selected_data) {
-                crate::workspace::SelectedOption::Some(data) => {
+        let row_count = match &self.workspace.defaults.selected_data {
+            Some(selected_data) => match self
+                .workspace
+                .data
+                .iter()
+                .find(|d| d.id == selected_data.id)
+            {
+                Some(data) => {
                     let mut locked_cache = self.value_cache.lock().unwrap();
                     match locked_cache.get_external_data(data) {
                         Ok(data) => data.len(),
@@ -108,7 +113,7 @@ impl ApicizeRunner for Arc<TestRunnerContext> {
                 executing_items.spawn(async move {
                     select! {
                         _ = cloned_context.cancellation.cancelled() => Err(ApicizeError::Cancelled {
-                            description: String::from("Cancelled"), source: None
+                            source: None
                         }),
                         result = run_request_item(
                             cloned_context.clone(),
@@ -156,7 +161,7 @@ impl ApicizeRunner for Arc<TestRunnerContext> {
                     executing_items.spawn(async move {
                         select! {
                             _ = cloned_context.cancellation.cancelled() => Err(ApicizeError::Cancelled {
-                                description: String::from("Cancelled"), source: None
+                                source: None
                             }),
                             result = run_request_item(
                                 cloned_context.clone(),
@@ -351,7 +356,7 @@ async fn run_request(
             row_number,
             executed_at,
             duration: 0,
-            variables: None,
+            input_variables: None,
             output_variables: None,
             execution: super::ApicizeExecutionType::None,
             success: false,
@@ -378,7 +383,7 @@ async fn run_request(
                 executed_at,
                 duration: started_at.elapsed().as_millis(),
                 execution: ApicizeExecutionType::None,
-                variables: execution.input_variables.clone(),
+                input_variables: execution.input_variables.clone(),
                 output_variables: execution.output_variables.clone(),
                 success: execution.success,
                 request_success_count: if execution.success { 1 } else { 0 },
@@ -431,7 +436,7 @@ async fn run_request(
                         spawned_runs.spawn(async move {
                             select! {
                                 _ = ccl.cancelled() => Err(ApicizeError::Cancelled {
-                                    description: String::from("Cancelled"), source: None
+                                    source: None
                                 }),
                                 result =  dispatch_request_and_test(ctx.clone(), req, prm, Some(run_number), row_number) => {
                                     Ok(result)
@@ -467,7 +472,7 @@ async fn run_request(
                 executed_at,
                 duration: started_at.elapsed().as_millis(),
                 execution: ApicizeExecutionType::Runs(ApicizeList { items: result_runs }),
-                variables: None,
+                input_variables: None,
                 output_variables,
                 success: tallies.success,
                 request_success_count: tallies.request_success_count,
@@ -502,10 +507,8 @@ async fn run_group_iteration(
             // } else {
             match &group.execution {
                 ExecutionConcurrency::Sequential => {
-                    let mut active_vars = match &params.variables {
-                        Some(vars) => Some(Arc::new(vars.clone())),
-                        None => None,
-                    };
+                    let mut active_vars =
+                        params.variables.as_ref().map(|vars| Arc::new(vars.clone()));
 
                     results = Vec::with_capacity(child_ids.len());
                     for child_id in &child_ids {
@@ -517,10 +520,7 @@ async fn run_group_iteration(
                         )
                         .await;
                         if let Ok(c_ok) = &c {
-                            active_vars = match c_ok.get_output_variables() {
-                                Some(vars) => Some(Arc::new(vars)),
-                                None => None,
-                            };
+                            active_vars = c_ok.get_output_variables().map(Arc::new);
                         }
                         results.push(c);
                     }
@@ -530,10 +530,7 @@ async fn run_group_iteration(
                     let mut spawned_items: JoinSet<Result<ApicizeGroupItem, ApicizeError>> =
                         JoinSet::new();
 
-                    let active_vars = match &params.variables {
-                        Some(vars) => Some(Arc::new(vars.clone())),
-                        None => None,
-                    };
+                    let active_vars = params.variables.as_ref().map(|vars| Arc::new(vars.clone()));
 
                     for child_id in child_ids {
                         let ccl = context.cancellation.clone();
@@ -543,7 +540,7 @@ async fn run_group_iteration(
                         spawned_items.spawn(async move {
                             select! {
                                 _ = ccl.cancelled() => Err(ApicizeError::Cancelled {
-                                    description: String::from("Cancelled"), source: None
+                                    source: None
                                 }),
                                 result = run_request_item(
                                     ctx.clone(),
@@ -680,7 +677,7 @@ async fn run_group(
                         spawned_runs.spawn(async move {
                         select! {
                             _ = ccl.cancelled() => Err(ApicizeError::Cancelled {
-                                description: String::from("Cancelled"), source: None
+                                source: None
                             }),
                             result = run_group_iteration(cc.clone(), cg.clone(), cp.clone(), run_number, row_number) => {
                                 result
@@ -1074,7 +1071,7 @@ async fn dispatch_request(
                     request_builder = request_builder.body(Body::from(s.clone()));
                 }
                 Some(RequestBody::JSON { data, .. }) => {
-                    let s = RequestEntry::clone_and_sub(&data, &subs);
+                    let s = RequestEntry::clone_and_sub(data, &subs);
                     request_builder = request_builder.body(Body::from(s));
                 }
                 Some(RequestBody::XML { data }) => {

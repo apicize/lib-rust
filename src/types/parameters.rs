@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     delete_data_file, open_data_file, save_data_file, Authorization, Certificate, Proxy, Scenario,
-    SerializationError, SerializationFailure, SerializationSaveSuccess,
+    SerializationError, FileAccessError, SerializationSaveSuccess,
 };
 
 /// Stored parameters, authorization, client certificates and proxies
@@ -65,14 +65,14 @@ impl Parameters {
     pub fn open(
         file_name: &PathBuf,
         create_new_if_missing: bool,
-    ) -> Result<Parameters, SerializationFailure> {
+    ) -> Result<Parameters, FileAccessError> {
         if Path::new(&file_name).is_file() {
             let params = open_data_file::<Parameters>(file_name)?.data;
             Ok(params)
         } else if create_new_if_missing {
             Ok(Parameters::default())
         } else {
-            Err(SerializationFailure {
+            Err(FileAccessError {
                 file_name: String::from(file_name.to_string_lossy()),
                 error: SerializationError::IO(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
@@ -86,7 +86,7 @@ impl Parameters {
     pub fn save(
         &self,
         file_name: &PathBuf,
-    ) -> Result<SerializationSaveSuccess, SerializationFailure> {
+    ) -> Result<SerializationSaveSuccess, FileAccessError> {
         let scenarios = match &self.scenarios {
             Some(entities) => entities.iter().map(|e| e.to_owned()).collect(),
             None => vec![],

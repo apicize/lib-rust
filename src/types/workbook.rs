@@ -2,7 +2,7 @@
 //!
 //! Storage of workbooks (requests and public parameters)
 use std::path::PathBuf;
-use crate::{save_data_file, Authorization, Certificate, Proxy, RequestEntry, Scenario, SerializationFailure, SerializationSaveSuccess};
+use crate::{save_data_file, Authorization, Certificate, Proxy, RequestEntry, Scenario, FileAccessError, SerializationSaveSuccess};
 use serde::{Deserialize, Serialize};
 
 use super::{ExternalData, StoredRequestEntry, WorkbookDefaultParameters};
@@ -46,7 +46,7 @@ impl Workbook {
         proxies: Option<Vec<Proxy>>,
         data: Option<Vec<ExternalData>>,
         defaults: Option<WorkbookDefaultParameters>
-    ) -> Result<SerializationSaveSuccess, SerializationFailure> {
+    ) -> Result<SerializationSaveSuccess, FileAccessError> {
         let save_scenarios = match scenarios {
             Some(entities) => {
                 if entities.is_empty() {
@@ -99,7 +99,7 @@ impl Workbook {
             None => None,
         };
 
-        let stored_requests = requests.into_iter().map(|r| StoredRequestEntry::from_workspace(r)).collect();
+        let stored_requests = requests.into_iter().map(StoredRequestEntry::from_workspace).collect();
 
 
         let workbook = Workbook {

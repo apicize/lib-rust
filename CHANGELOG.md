@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.18.0
+
+* Use Rust to store workspace status
+
 # 0.17.2
 
 * Fix timeout handling

@@ -17,10 +17,13 @@ pub mod workbook;
 pub mod workbook_default_parameters;
 pub mod workspace;
 
+#[cfg(feature="editing")]
+pub mod editing;
+
 pub use authorization::Authorization;
 pub use certificate::Certificate;
 pub use external_data::*;
-pub use identifiable::Identifable;
+pub use identifiable::Identifiable;
 pub use indexed_entities::IndexedEntities;
 pub use name_value_pair::NameValuePair;
 pub use parameters::Parameters;

@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
-use crate::{utility::*, Identifable};
 use super::Selection;
+use crate::{utility::*, Identifiable};
+use serde::{Deserialize, Serialize};
 
 /// Authorization information used when dispatching an Apicize Request
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
@@ -18,6 +18,8 @@ pub enum Authorization {
         username: String,
         /// Password
         password: String,
+        /// Warning if invalid
+        warning: Option<String>,
     },
     /// OAuth2 client flow (bearer authorization header)
     #[serde(rename_all = "camelCase")]
@@ -46,8 +48,10 @@ pub enum Authorization {
         /// Selected proxy, if applicable
         #[serde(skip_serializing_if = "Option::is_none")]
         selected_proxy: Option<Selection>,
-        #[serde(skip_serializing_if="Option::is_none")]
+        #[serde(skip_serializing_if = "Option::is_none")]
         send_credentials_in_body: Option<bool>,
+        /// Warning if invalid
+        warning: Option<String>,
     },
     /// OAuth2 PKCE flow (note, this can only be used interactively)
     #[serde(rename_all = "camelCase")]
@@ -76,9 +80,11 @@ pub enum Authorization {
         /// Expiration of currently active token in seconds past Unix epoch (needs to be set before usage)
         #[serde(skip_serializing)]
         expiration: Option<u64>,
-        #[serde(skip_serializing_if="Option::is_none")]
+        #[serde(skip_serializing_if = "Option::is_none")]
         send_credentials_in_body: Option<bool>,
-    },    
+        /// Warning if invalid
+        warning: Option<String>,
+    },
     /// API key authentication (sent in HTTP header)
     #[serde(rename_all = "camelCase")]
     ApiKey {
@@ -92,37 +98,77 @@ pub enum Authorization {
         header: String,
         /// Value of key to include as header value
         value: String,
+        /// Warning if invalid
+        warning: Option<String>,
     },
 }
 
-impl Authorization {
-    fn get_id_and_name(&self) -> (&String, &String) {
-        match self {
-            Authorization::Basic { id, name, .. } => (id, name),
-            Authorization::OAuth2Client { id, name, .. } => (id, name),
-            Authorization::OAuth2Pkce { id, name, .. } => (id, name),
-            Authorization::ApiKey { id, name, .. } => (id, name),
+// impl Authorization {
+//     fn get_id_and_name(&self) -> (&String, &String) {
+//         match self {
+//             Authorization::Basic { id, name, .. } => (id, name),
+//             Authorization::OAuth2Client { id, name, .. } => (id, name),
+//             Authorization::OAuth2Pkce { id, name, .. } => (id, name),
+//             Authorization::ApiKey { id, name, .. } => (id, name),
+//         }
+//     }
+// }
+
+impl Default for Authorization {
+    fn default() -> Self {
+        Authorization::ApiKey {
+            id: generate_uuid(),
+            name: String::default(),
+            header: String::default(),
+            value: String::default(),
+            warning: None,
         }
     }
 }
 
-impl Identifable for Authorization {
+impl Identifiable for Authorization {
     fn get_id(&self) -> &String {
-        let (id, _) = self.get_id_and_name();
-        id
+        match self {
+            Authorization::Basic { id, .. } => id,
+            Authorization::OAuth2Client { id,  .. } => id,
+            Authorization::OAuth2Pkce { id,  .. } => id,
+            Authorization::ApiKey { id, .. } => id,
+        }
     }
 
     fn get_name(&self) -> &String {
-        let (_, name) = self.get_id_and_name();
-        name
+        match self {
+            Authorization::Basic { name, .. } => name,
+            Authorization::OAuth2Client { name,  .. } => name,
+            Authorization::OAuth2Pkce { name,  .. } => name,
+            Authorization::ApiKey { name, .. } => name,
+        }
     }
 
     fn get_title(&self) -> String {
-        let (id, name) = self.get_id_and_name();
+        let name = self.get_name();
         if name.is_empty() {
-            format!("{} (Unnamed)", id)
+            "(Unamed)".to_string()
         } else {
             name.to_string()
         }
+    }
+    
+    fn clone_as_new(&self, new_name: String) -> Self {
+        let mut cloned = self.clone();
+        let new_id = generate_uuid();
+        
+        match cloned {
+            Authorization::Basic { ref mut id, ref mut name, ..} => 
+                { *id = new_id; *name = new_name; },
+            Authorization::OAuth2Client { ref mut id, ref mut name, ..} => 
+                { *id = new_id; *name = new_name; },
+            Authorization::OAuth2Pkce { ref mut id, ref mut name, ..} => 
+                { *id = new_id; *name = new_name; },
+            Authorization::ApiKey { ref mut id, ref mut name, ..} => 
+                { *id = new_id; *name = new_name; },
+        }
+
+        cloned
     }
 }
