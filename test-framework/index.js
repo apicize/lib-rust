@@ -24,6 +24,7 @@ function fmtMinSec(value, subZero = null) {
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}${(0.1).toString()[1]}${value.toString().padEnd(3, '0')}`
 }
 
+
 function appendLog(type, message, ...optionalParams) {
     const timestamp = fmtMinSec(Date.now() - testOffset)
     logs.push(`${timestamp} [${type}] ${format(message, ...optionalParams)}`)
@@ -55,6 +56,24 @@ should = chai.should;
 jsonpath = jpp.JSONPath;
 xpath = require('xpath');
 dom = xmldom.DOMParser;
+
+// Helper function to jsonpath-plus
+function jpath(param) {
+    if (typeof param === 'object') {
+        return jpp.JSONPath({...param, json: this})
+    } else if (typeof param === 'string') {
+        const result = jpp.JSONPath({json: this, path: param})
+        return (Array.isArray(result) && result.length === 1) 
+            ? result[0] : result        
+    } else {
+        throw new Error('Argument for jp must be either a JSON path (string) or named parameters')
+    }
+}
+
+Object.prototype.jp = jpath
+Array.prototype.jp = jpath
+String.prototype.jp = jpath
+Number.prototype.jp = jpath
 
 console = {
     log: (msg, ...args) => appendLog('log', msg, ...args),
