@@ -420,8 +420,9 @@ impl Workspace {
             }
         }
         if authorization.is_none() && allow_authorization {
-            if let SelectedOption::Some(a) =
-                self.authorizations.find(&self.defaults.selected_authorization)
+            if let SelectedOption::Some(a) = self
+                .authorizations
+                .find(&self.defaults.selected_authorization)
             {
                 authorization = Some(a);
             }
@@ -439,9 +440,7 @@ impl Workspace {
             }
         }
         if let Some(selected_data) = &self.defaults.selected_data {
-            if let Some(selected_data) =
-                self.data.iter().find(|data| data.id == selected_data.id)
-            {
+            if let Some(selected_data) = self.data.iter().find(|data| data.id == selected_data.id) {
                 external_data = Some(selected_data);
             }
         }
@@ -467,22 +466,7 @@ impl Workspace {
         // Build out variables for the request
         let mut variables = Map::new();
 
-        // ...from the scenario variables
-        if let Some(active_scenario) = scenario {
-            let values = locked_cache.get_scenario_values(active_scenario);
-            for (name, value) in values {
-                match value {
-                    Ok(valid) => {
-                        variables.insert(name.clone(), valid.clone());
-                    }
-                    Err(err) => {
-                        return Err(err.clone());
-                    }
-                }
-            }
-        };
-
-        // ... and then any active variables from previous calls
+        // Start with any active variables from previous calls...
         if let Some(vars) = active_variables {
             for (name, value) in vars.iter() {
                 variables.insert(name.clone(), value.clone());
@@ -502,6 +486,21 @@ impl Workspace {
                 }
             },
             None => (None, 0),
+        };
+
+        // ...from the scenario variables
+        if let Some(active_scenario) = scenario {
+            let values = locked_cache.get_scenario_values(active_scenario);
+            for (name, value) in values {
+                match value {
+                    Ok(valid) => {
+                        variables.insert(name.clone(), valid.clone());
+                    }
+                    Err(err) => {
+                        return Err(err.clone());
+                    }
+                }
+            }
         };
 
         Ok(RequestParameters {

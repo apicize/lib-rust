@@ -1,5 +1,10 @@
 # Change Log
 
+# 0.18.1
+
+* Change order of variable preference to scenario variables (primary), then data, and then last call variables
+* Set up "editable" feature to isolate functionality only used for interactive editing
+
 # 0.18.0
 
 * Use Rust to store workspace status
