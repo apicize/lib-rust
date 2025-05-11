@@ -2,6 +2,8 @@
 //!
 //! This submodule defines models used to execute Apicize tests and report their results
 
+use std::collections::HashMap;
+
 use super::ApicizeExecution;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -74,7 +76,6 @@ pub enum ApicizeGroupItem {
     Group(Box<ApicizeGroup>),
     Request(Box<ApicizeRequest>),
 }
-
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type")]
@@ -213,7 +214,7 @@ pub struct ApicizeRequest {
     pub executed_at: u128,
     /// Duration of execution (milliseconds)
     pub duration: u128,
-    
+
     /// Variables assigned to the group
     pub input_variables: Option<Map<String, Value>>,
     /// Variables to update at the end of the group
@@ -241,11 +242,19 @@ pub struct ApicizeRequest {
 #[serde(tag = "type")]
 pub enum ApicizeBody {
     Text {
-        data: String,
+        text: String,
     },
     JSON {
         text: String,
         data: Value,
+    },
+    XML {
+        text: String,
+        data: Value,
+    },
+    Form {
+        text: String,
+        data: HashMap<String, String>,
     },
     Binary {
         // #[serde_as(as = "Base64<Standard, Unpadded>")]

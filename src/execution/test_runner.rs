@@ -2,6 +2,7 @@
 //!
 //! This library supports dispatching Apicize functional web tests
 use regex::Regex;
+use xmltojson::to_json;
 use std::collections::HashMap;
 use std::net::{TcpStream, ToSocketAddrs};
 use std::path::PathBuf;
@@ -1065,17 +1066,35 @@ async fn dispatch_request(
             }
 
             // Add body, if applicable
+            let mut request_body: Option<ApicizeBody>;
             match &request.body {
                 Some(RequestBody::Text { data }) => {
                     let s = RequestEntry::clone_and_sub(data, &subs);
+                    request_body = Some(ApicizeBody::Text {
+                        text: "".to_string(),
+                    });
                     request_builder = request_builder.body(Body::from(s.clone()));
                 }
                 Some(RequestBody::JSON { data, .. }) => {
                     let s = RequestEntry::clone_and_sub(data, &subs);
+                    request_body = match serde_json::from_str::<Value>(&s) {
+                        Ok(data) => Some(ApicizeBody::JSON {
+                            text: "".to_string(),
+                            data,
+                        }),
+                        Err(_) => Some(ApicizeBody::Text { text: s.clone() }),
+                    };
                     request_builder = request_builder.body(Body::from(s));
                 }
                 Some(RequestBody::XML { data }) => {
                     let s = RequestEntry::clone_and_sub(data, &subs);
+                    request_body = match to_json(data) {
+                        Ok(data) => Some(ApicizeBody::XML {
+                            text: "".to_string(),
+                            data,
+                        }),
+                        Err(_) => Some(ApicizeBody::Text { text: s.clone() }),
+                    };
                     request_builder = request_builder.body(Body::from(s));
                 }
                 Some(RequestBody::Form { data }) => {
@@ -1088,12 +1107,19 @@ async fn dispatch_request(
                             )
                         })
                         .collect::<HashMap<String, String>>();
+                    request_body = Some(ApicizeBody::Form {
+                        text: "".to_string(),
+                        data: form_data.clone(),
+                    });
                     request_builder = request_builder.form(&form_data);
                 }
                 Some(RequestBody::Raw { data }) => {
+                    request_body = Some(ApicizeBody::Binary { data: data.clone() });
                     request_builder = request_builder.body(Body::from(data.clone()));
                 }
-                None => {}
+                None => {
+                    request_body = None;
+                }
             }
 
             // let mut web_request = request_builder.build()?;
@@ -1114,31 +1140,28 @@ async fn dispatch_request(
                         })
                         .collect::<HashMap<String, String>>();
                     let ref_body = web_request.body_mut();
-                    let request_body = match ref_body {
-                        Some(data) => {
-                            let bytes = data.as_bytes().unwrap();
-                            if bytes.is_empty() {
-                                None
-                            } else {
-                                let request_encoding = UTF_8;
-
-                                let data = bytes.to_vec();
-                                if data.is_empty() {
-                                    None
-                                } else {
+                    if let Some(data) = ref_body {
+                        let bytes = data.as_bytes().unwrap();
+                        if !bytes.is_empty() {
+                            let request_encoding = UTF_8;
+                            let data = bytes.to_vec();
+                            match request_body.as_mut() {
+                                None => {}
+                                Some(ApicizeBody::Binary { .. }) => {}
+                                Some(ApicizeBody::Form { text, .. })
+                                | Some(ApicizeBody::JSON { text, .. })
+                                | Some(ApicizeBody::XML { text, .. })
+                                | Some(ApicizeBody::Text { text, .. }) => {
                                     let (decoded, _, malformed) = request_encoding.decode(&data);
-                                    if malformed {
-                                        Some(ApicizeBody::Binary { data })
+                                    *text = if malformed {
+                                        "Malformed UTF8".to_string()
                                     } else {
-                                        Some(ApicizeBody::Text {
-                                            data: decoded.to_string(),
-                                        })
+                                        decoded.to_string()
                                     }
                                 }
                             }
                         }
-                        None => None,
-                    };
+                    }
 
                     // Execute the request
                     let client_response = client.execute(web_request).await;
@@ -1215,10 +1238,10 @@ async fn dispatch_request(
                                                         data: parsed,
                                                     })
                                                 } else {
-                                                    Some(ApicizeBody::Text { data: text })
+                                                    Some(ApicizeBody::Text { text })
                                                 }
                                             } else {
-                                                Some(ApicizeBody::Text { data: text })
+                                                Some(ApicizeBody::Text { text })
                                             }
                                         }
                                     };

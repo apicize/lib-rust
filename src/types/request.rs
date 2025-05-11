@@ -9,6 +9,7 @@ use serde_json::Value;
 use serde_with::base64::{Base64, Standard};
 use serde_with::formats::Unpadded;
 use serde_with::serde_as;
+use xmltojson::to_json;
 
 /// Enumeration of HTTP methods
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
@@ -479,14 +480,16 @@ pub enum StoredRequestBody {
     /// JSON body data
     #[serde(rename = "JSON")]
     JSON {
+        /// Parsed data (if formatted is valid)
         data: Option<Value>,
+        /// Formatted text
         formatted: Option<String>,
     },
     /// XML body data
     #[serde(rename = "XML")]
     XML {
-        /// Text
-        data: String,
+        /// Formatted text
+        formatted: Option<String>,
     },
     /// Form (not multipart) body data
     Form {
@@ -637,7 +640,18 @@ impl StoredRequestEntry {
                                 formatted: Some(data),
                             })
                         }
-                        RequestBody::XML { data } => Some(StoredRequestBody::XML { data }),
+                        RequestBody::XML { data } => {
+                            // If the data from the workspace is serializable, then store the serialized version,
+                            // as well as writing the raw data
+                            let data_to_save = match to_json(&data) {
+                                Ok(v) => Some(v),
+                                Err(_) => None,
+                            };
+                            Some(StoredRequestBody::JSON {
+                                data: data_to_save,
+                                formatted: Some(data),
+                            })
+                        }
                         RequestBody::Form { data } => Some(StoredRequestBody::Form { data }),
                         RequestBody::Raw { data } => Some(StoredRequestBody::Raw { data }),
                     },
@@ -705,7 +719,14 @@ impl StoredRequestEntry {
 
                             result_data.map(|d| RequestBody::JSON { data: d })
                         }
-                        StoredRequestBody::XML { data } => Some(RequestBody::XML { data }),
+                        StoredRequestBody::XML { formatted } => {
+                            Some(RequestBody::XML { 
+                                data:  match formatted {
+                                    Some(text) => text,
+                                    None => "".to_string(),
+                                }
+                            })
+                        }                        
                         StoredRequestBody::Form { data } => Some(RequestBody::Form { data }),
                         StoredRequestBody::Raw { data } => Some(RequestBody::Raw { data }),
                     },

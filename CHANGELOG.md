@@ -1,5 +1,10 @@
 # Change Log
 
+# 0.18.2
+
+* Standardize request/response body info so that `text` is the data that is sent and `data` is a parsed value
+* Improve XML support
+
 # 0.18.1
 
 * Change order of variable preference to scenario variables (primary), then data, and then last call variables

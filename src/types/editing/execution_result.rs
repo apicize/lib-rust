@@ -1,6 +1,14 @@
-use crate::{editing::execution_result_detail::{ExecutionResultDetailGroup, ExecutionResultDetailRequest}, ApicizeGroup, ApicizeGroupChildren, ApicizeGroupItem, ApicizeGroupRun, ApicizeList, ApicizeRequest, ApicizeResult, ApicizeRow, ApicizeRowSummary};
+use crate::{
+    editing::execution_result_detail::{ExecutionResultDetailGroup, ExecutionResultDetailRequest},
+    ApicizeGroup, ApicizeGroupChildren, ApicizeGroupItem, ApicizeGroupRun, ApicizeList,
+    ApicizeRequest, ApicizeResult, ApicizeRow, ApicizeRowSummary,
+};
 
-use super::{execution_result_detail::ExecutionResultDetail, execution_result_summary::ExecutionResultSummary, execution_result_success::ExecutionResultSuccess};
+use super::{
+    execution_result_detail::ExecutionResultDetail,
+    execution_result_success::ExecutionResultSuccess,
+    execution_result_summary::ExecutionResultSummary,
+};
 
 pub type ExecutionResult = (ExecutionResultSummary, ExecutionResultDetail);
 
@@ -105,29 +113,27 @@ impl ApicizeGroup {
             row_count,
         };
 
-        let detail = ExecutionResultDetail::Grouped(
-            Box::new(ExecutionResultDetailGroup {
-                id: self.id.clone(),
-                name: self.name.to_string(),
-                run_number,
-                row_number,
-                executed_at: self.executed_at,
-                duration: self.duration,
-                output_variables: self.output_variables,
-                success: if self.request_error_count > 0 {
-                    ExecutionResultSuccess::Error
-                } else if self.request_failure_count > 0 {
-                    ExecutionResultSuccess::Failure
-                } else {
-                    ExecutionResultSuccess::Success
-                },
-                request_success_count: self.request_success_count,
-                request_failure_count: self.request_failure_count,
-                request_error_count: self.request_error_count,
-                test_pass_count: self.test_pass_count,
-                test_fail_count: self.test_fail_count,
-            }
-        ));
+        let detail = ExecutionResultDetail::Grouped(Box::new(ExecutionResultDetailGroup {
+            id: self.id.clone(),
+            name: self.name.to_string(),
+            run_number,
+            row_number,
+            executed_at: self.executed_at,
+            duration: self.duration,
+            output_variables: self.output_variables,
+            success: if self.request_error_count > 0 {
+                ExecutionResultSuccess::Error
+            } else if self.request_failure_count > 0 {
+                ExecutionResultSuccess::Failure
+            } else {
+                ExecutionResultSuccess::Success
+            },
+            request_success_count: self.request_success_count,
+            request_failure_count: self.request_failure_count,
+            request_error_count: self.request_error_count,
+            test_pass_count: self.test_pass_count,
+            test_fail_count: self.test_fail_count,
+        }));
 
         list.push((summary, detail));
 
@@ -193,17 +199,22 @@ impl ApicizeRequest {
                     duration: self.duration,
                     status,
                     status_text,
-                    has_response_headers: execution.response.as_ref().is_some_and(|r| r.headers.is_some()),
-                    response_body_length: execution.response.as_ref()
+                    has_response_headers: execution
+                        .response
+                        .as_ref()
+                        .is_some_and(|r| r.headers.is_some()),
+                    response_body_length: execution
+                        .response
+                        .as_ref()
                         .map(|r| r.body.as_ref())
                         .unwrap_or(None)
-                        .map(|b| 
-                            match b {
-                                crate::ApicizeBody::Text { data } => data.len(),
-                                crate::ApicizeBody::JSON { text, .. } => text.len(),
-                                crate::ApicizeBody::Binary { data } => data.len(),
-                            }
-                        ),
+                        .map(|b| match b {
+                            crate::ApicizeBody::Text { text, .. } => text.len(),
+                            crate::ApicizeBody::Form { text, .. } => text.len(),
+                            crate::ApicizeBody::JSON { text, .. } => text.len(),
+                            crate::ApicizeBody::XML { text, .. } => text.len(),
+                            crate::ApicizeBody::Binary { data } => data.len(),
+                        }),
                     test_results: execution.tests.clone(),
                     success: if execution.success {
                         ExecutionResultSuccess::Success
@@ -211,7 +222,7 @@ impl ApicizeRequest {
                         ExecutionResultSuccess::Failure
                     } else {
                         ExecutionResultSuccess::Error
-                    },    
+                    },
                     error: execution.error.clone(),
                     run_number: None,
                     run_count: None,
@@ -219,35 +230,33 @@ impl ApicizeRequest {
                     row_count,
                 };
 
-                let detail = ExecutionResultDetail::Request(
-                    ExecutionResultDetailRequest {
-                        id: self.id.clone(),
-                        name: self.name.to_string(),
-                        row_number,
-                        run_number: None,
-                        executed_at: self.executed_at,
-                        duration: self.duration,
-                        input_variables: self.input_variables,
-                        data: execution.data,
-                        output_variables: execution.output_variables,
-                        request: execution.request,
-                        response: execution.response,
-                        tests: execution.tests,
-                        error: execution.error,
-                        success: if self.request_error_count > 0 {
-                            ExecutionResultSuccess::Error
-                        } else if self.request_failure_count > 0 {
-                            ExecutionResultSuccess::Failure
-                        } else {
-                            ExecutionResultSuccess::Success
-                        },
-                        request_success_count: self.request_success_count,
-                        request_failure_count: self.request_failure_count,
-                        request_error_count: self.request_error_count,
-                        test_pass_count: self.test_pass_count,
-                        test_fail_count: self.test_fail_count,
-                    }
-                );
+                let detail = ExecutionResultDetail::Request(ExecutionResultDetailRequest {
+                    id: self.id.clone(),
+                    name: self.name.to_string(),
+                    row_number,
+                    run_number: None,
+                    executed_at: self.executed_at,
+                    duration: self.duration,
+                    input_variables: self.input_variables,
+                    data: execution.data,
+                    output_variables: execution.output_variables,
+                    request: execution.request,
+                    response: execution.response,
+                    tests: execution.tests,
+                    error: execution.error,
+                    success: if self.request_error_count > 0 {
+                        ExecutionResultSuccess::Error
+                    } else if self.request_failure_count > 0 {
+                        ExecutionResultSuccess::Failure
+                    } else {
+                        ExecutionResultSuccess::Success
+                    },
+                    request_success_count: self.request_success_count,
+                    request_failure_count: self.request_failure_count,
+                    request_error_count: self.request_error_count,
+                    test_pass_count: self.test_pass_count,
+                    test_fail_count: self.test_fail_count,
+                });
 
                 list.push((summary, detail));
                 vec![this_index]
@@ -278,12 +287,19 @@ impl ApicizeRequest {
                             duration: self.executed_at,
                             status,
                             status_text,
-                            has_response_headers: execution.response.as_ref().is_some_and(|r| r.headers.is_some()),
-                            response_body_length: execution.response.as_ref().and_then(|r| r.body.as_ref().map(|b| match b {
-                                crate::ApicizeBody::Text { data } => data.len(),
-                                crate::ApicizeBody::JSON { text, .. } => text.len(),
-                                crate::ApicizeBody::Binary { data } => data.len(),
-                            })),        
+                            has_response_headers: execution
+                                .response
+                                .as_ref()
+                                .is_some_and(|r| r.headers.is_some()),
+                            response_body_length: execution.response.as_ref().and_then(|r| {
+                                r.body.as_ref().map(|b| match b {
+                                    crate::ApicizeBody::Text { text, .. } => text.len(),
+                                    crate::ApicizeBody::Form { text, .. } => text.len(),
+                                    crate::ApicizeBody::JSON { text, .. } => text.len(),
+                                    crate::ApicizeBody::XML { text, .. } => text.len(),
+                                    crate::ApicizeBody::Binary { data } => data.len(),
+                                })
+                            }),
                             test_results: execution.tests.clone(),
                             success: if execution.success {
                                 ExecutionResultSuccess::Success
@@ -299,35 +315,33 @@ impl ApicizeRequest {
                             row_count,
                         };
 
-                        let detail = ExecutionResultDetail::Request(
-                            ExecutionResultDetailRequest {
-                                id: self.id.clone(),
-                                name: self.name.to_string(),
-                                row_number,
-                                run_number: Some(run_number),
-                                executed_at: self.executed_at,
-                                duration: self.duration,
-                                input_variables: execution.input_variables,
-                                data: execution.data,
-                                output_variables: execution.output_variables,
-                                request: execution.request,
-                                response: execution.response,
-                                tests: execution.tests,
-                                error: execution.error,
-                                success: if self.request_error_count > 0 {
-                                    ExecutionResultSuccess::Error
-                                } else if self.request_failure_count > 0 {
-                                    ExecutionResultSuccess::Failure
-                                } else {
-                                    ExecutionResultSuccess::Success
-                                },        
-                                request_success_count: self.request_success_count,
-                                request_failure_count: self.request_failure_count,
-                                request_error_count: self.request_error_count,
-                                test_pass_count: self.test_pass_count,
-                                test_fail_count: self.test_fail_count,
-                            }
-                        );
+                        let detail = ExecutionResultDetail::Request(ExecutionResultDetailRequest {
+                            id: self.id.clone(),
+                            name: self.name.to_string(),
+                            row_number,
+                            run_number: Some(run_number),
+                            executed_at: self.executed_at,
+                            duration: self.duration,
+                            input_variables: execution.input_variables,
+                            data: execution.data,
+                            output_variables: execution.output_variables,
+                            request: execution.request,
+                            response: execution.response,
+                            tests: execution.tests,
+                            error: execution.error,
+                            success: if self.request_error_count > 0 {
+                                ExecutionResultSuccess::Error
+                            } else if self.request_failure_count > 0 {
+                                ExecutionResultSuccess::Failure
+                            } else {
+                                ExecutionResultSuccess::Success
+                            },
+                            request_success_count: self.request_success_count,
+                            request_failure_count: self.request_failure_count,
+                            request_error_count: self.request_error_count,
+                            test_pass_count: self.test_pass_count,
+                            test_fail_count: self.test_fail_count,
+                        });
 
                         list.push((summary, detail));
                         run_index
@@ -385,30 +399,27 @@ impl ApicizeList<ApicizeGroupRun> {
                     row_count,
                 };
 
-
-                let detail = ExecutionResultDetail::Grouped(
-                    Box::new(ExecutionResultDetailGroup {
-                        id: request_or_group_id.to_string(),
-                        name: String::default(),
-                        row_number,
-                        run_number: Some(run_number),
-                        executed_at: run.executed_at,
-                        duration: run.duration,
-                        output_variables: run.output_variables,
-                        success: if run.request_error_count > 0 {
-                            ExecutionResultSuccess::Error
-                        } else if run.request_failure_count > 0 {
-                            ExecutionResultSuccess::Failure
-                        } else {
-                            ExecutionResultSuccess::Success
-                        },
-                        request_success_count: run.request_success_count,
-                        request_failure_count: run.request_failure_count,
-                        request_error_count: run.request_error_count,
-                        test_pass_count: run.test_pass_count,
-                        test_fail_count: run.test_fail_count,
-                    })
-                );                
+                let detail = ExecutionResultDetail::Grouped(Box::new(ExecutionResultDetailGroup {
+                    id: request_or_group_id.to_string(),
+                    name: String::default(),
+                    row_number,
+                    run_number: Some(run_number),
+                    executed_at: run.executed_at,
+                    duration: run.duration,
+                    output_variables: run.output_variables,
+                    success: if run.request_error_count > 0 {
+                        ExecutionResultSuccess::Error
+                    } else if run.request_failure_count > 0 {
+                        ExecutionResultSuccess::Failure
+                    } else {
+                        ExecutionResultSuccess::Success
+                    },
+                    request_success_count: run.request_success_count,
+                    request_failure_count: run.request_failure_count,
+                    request_error_count: run.request_error_count,
+                    test_pass_count: run.test_pass_count,
+                    test_fail_count: run.test_fail_count,
+                }));
                 list.push((summary, detail));
 
                 list.get_mut(this_index).unwrap().0.child_indexes = Some(
@@ -475,29 +486,27 @@ impl ApicizeRow {
             row_count: Some(row_count),
         };
 
-        let detail = ExecutionResultDetail::Grouped(
-            Box::new(ExecutionResultDetailGroup {
-                id: request_or_group_id.to_string(),
-                name: String::default(),
-                run_number: None,
-                row_number: None,
-                executed_at: self.executed_at,
-                duration: self.executed_at,
-                output_variables: None,
-                success: if self.request_error_count > 0 {
-                    ExecutionResultSuccess::Error
-                } else if self.request_failure_count > 0 {
-                    ExecutionResultSuccess::Failure
-                } else {
-                    ExecutionResultSuccess::Success
-                },
-                request_success_count: self.request_success_count,
-                request_failure_count: self.request_failure_count,
-                request_error_count: self.request_error_count,
-                test_pass_count: self.test_pass_count,
-                test_fail_count: self.test_fail_count,
-            })
-        );
+        let detail = ExecutionResultDetail::Grouped(Box::new(ExecutionResultDetailGroup {
+            id: request_or_group_id.to_string(),
+            name: String::default(),
+            run_number: None,
+            row_number: None,
+            executed_at: self.executed_at,
+            duration: self.executed_at,
+            output_variables: None,
+            success: if self.request_error_count > 0 {
+                ExecutionResultSuccess::Error
+            } else if self.request_failure_count > 0 {
+                ExecutionResultSuccess::Failure
+            } else {
+                ExecutionResultSuccess::Success
+            },
+            request_success_count: self.request_success_count,
+            request_failure_count: self.request_failure_count,
+            request_error_count: self.request_error_count,
+            test_pass_count: self.test_pass_count,
+            test_fail_count: self.test_fail_count,
+        }));
 
         list.push((result, detail));
 
@@ -563,30 +572,28 @@ impl ApicizeRowSummary {
             row_count: None,
         };
 
-        let detail = ExecutionResultDetail::Grouped(
-            Box::new(ExecutionResultDetailGroup {
-                id: request_or_group_id.to_string(),
-                name: "All Rows".to_string(),
-                run_number: None,
-                row_number: None,
-                executed_at: self.executed_at,
-                duration: self.executed_at,
-                output_variables: None,
-                success: if self.request_error_count > 0 {
-                    ExecutionResultSuccess::Error
-                } else if self.request_failure_count > 0 {
-                    ExecutionResultSuccess::Failure
-                } else {
-                    ExecutionResultSuccess::Success
-                },
-                request_success_count: self.request_success_count,
-                request_failure_count: self.request_failure_count,
-                request_error_count: self.request_error_count,
-                test_pass_count: self.test_pass_count,
-                test_fail_count: self.test_fail_count,
-            })
-        );
-        
+        let detail = ExecutionResultDetail::Grouped(Box::new(ExecutionResultDetailGroup {
+            id: request_or_group_id.to_string(),
+            name: "All Rows".to_string(),
+            run_number: None,
+            row_number: None,
+            executed_at: self.executed_at,
+            duration: self.executed_at,
+            output_variables: None,
+            success: if self.request_error_count > 0 {
+                ExecutionResultSuccess::Error
+            } else if self.request_failure_count > 0 {
+                ExecutionResultSuccess::Failure
+            } else {
+                ExecutionResultSuccess::Success
+            },
+            request_success_count: self.request_success_count,
+            request_failure_count: self.request_failure_count,
+            request_error_count: self.request_error_count,
+            test_pass_count: self.test_pass_count,
+            test_fail_count: self.test_fail_count,
+        }));
+
         list.push((summary, detail));
 
         self.rows
@@ -617,7 +624,10 @@ impl ApicizeRowSummary {
 }
 
 impl ApicizeResult {
-    pub fn assemble_results(self, request_or_group_id: &str) -> (Vec<ExecutionResultSummary>, Vec<ExecutionResultDetail>) {
+    pub fn assemble_results(
+        self,
+        request_or_group_id: &str,
+    ) -> (Vec<ExecutionResultSummary>, Vec<ExecutionResultDetail>) {
         let mut list = Vec::<ExecutionResult>::new();
         match self {
             ApicizeResult::Rows(summary) => {
@@ -630,4 +640,3 @@ impl ApicizeResult {
         list.into_iter().unzip()
     }
 }
-
