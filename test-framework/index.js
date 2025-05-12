@@ -5,7 +5,7 @@ const chai = require('chai');
 const format = require('util').format;
 
 const jpp = require('jsonpath-plus');
-const xmldom = require('@xmldom/xmldom');
+// const xmldom = require('@xmldom/xmldom');
 
 let testOffset = 0;
 let names = [];
@@ -54,8 +54,8 @@ expect = chai.expect;
 should = chai.should;
 
 jsonpath = jpp.JSONPath;
-xpath = require('xpath');
-dom = xmldom.DOMParser;
+// xpath = require('xpath');
+// dom = xmldom.DOMParser;
 
 // Helper function to jsonpath-plus
 function jpath(param) {
