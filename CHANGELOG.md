@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.18.3
+
+* Rename input_variables to variables in execution result
+
 # 0.18.2
 
 * Standardize request/response body info so that `text` is the data that is sent and `data` is a parsed value

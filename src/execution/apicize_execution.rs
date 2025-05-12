@@ -22,7 +22,7 @@ pub struct ApicizeExecution {
     pub duration: u128,
 
     /// Variables assigned to the group
-    pub input_variables: Option<Map<String, Value>>,
+    pub variables: Option<Map<String, Value>>,
     /// Row data assigned to the group
     pub data: Option<Map<String, Value>>,
     /// Variables to update at the end of the group

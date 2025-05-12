@@ -38,7 +38,7 @@ pub struct ExecutionResultDetailRequest {
 
     /// Variables assigned to the request
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub input_variables: Option<Map<String, Value>>,
+    pub variables: Option<Map<String, Value>>,
 
     /// Row data assigned to the request
     #[serde(skip_serializing_if = "Option::is_none")]

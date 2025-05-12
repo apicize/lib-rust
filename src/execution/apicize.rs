@@ -216,7 +216,7 @@ pub struct ApicizeRequest {
     pub duration: u128,
 
     /// Variables assigned to the group
-    pub input_variables: Option<Map<String, Value>>,
+    pub variables: Option<Map<String, Value>>,
     /// Variables to update at the end of the group
     pub output_variables: Option<Map<String, Value>>,
 
