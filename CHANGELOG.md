@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.19.0
+
+* Return test results as a hierarchy of scenarios/behaviors (BREAKING CHANGE)
+
 # 0.18.3
 
 * Rename input_variables to variables in execution result

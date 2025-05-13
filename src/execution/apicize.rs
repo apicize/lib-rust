@@ -272,12 +272,41 @@ pub struct ApicizeTestResponse {
     pub variables: Map<String, Value>,
 }
 
+
+
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[serde(tag="type")]
+pub enum ApicizeTestResult {
+    /// Describe block of a test scenario
+    Scenario(ApicizeTestScenario),
+    /// Behavior test result
+    Behavior(ApicizeTestBehavior),
+}
+
+
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ApicizeTestScenario {
+    /// Human readable name of test scenario
+    pub name: String,
+
+    /// Whether or not all child tests were successful
+    pub success: bool,
+
+    /// Child scenarios or behaviors
+    pub children: Option<Vec<ApicizeTestResult>>,
+
+    pub test_count: usize,
+
+    pub test_fail_count: usize,
+}
+
 /// Test execution results
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct ApicizeTestResult {
+pub struct ApicizeTestBehavior {
     /// Human readable name of the test
-    pub test_name: Vec<String>,
+    pub name: String,
     /// Whether or not the test was successful
     pub success: bool,
     /// Error generated during the test
@@ -286,4 +315,31 @@ pub struct ApicizeTestResult {
     /// Console I/O generated during the test
     #[serde(skip_serializing_if = "Option::is_none")]
     pub logs: Option<Vec<String>>,
+
+    pub test_count: usize,
+
+    pub test_fail_count: usize,
+
+}
+
+pub trait TestCount {
+    fn get_test_count(&self) -> usize;
+
+    fn get_test_fail_count(&self) -> usize;
+}
+
+impl TestCount for ApicizeTestResult {
+    fn get_test_count(&self) -> usize {
+        match self {
+            ApicizeTestResult::Scenario(scenario) => scenario.test_count,
+            ApicizeTestResult::Behavior(behavior) => behavior.test_count,
+        }
+    }
+
+    fn get_test_fail_count(&self) -> usize {
+        match self {
+            ApicizeTestResult::Scenario(scenario) => scenario.test_fail_count,
+            ApicizeTestResult::Behavior(behavior) => behavior.test_fail_count,
+        }
+    }
 }

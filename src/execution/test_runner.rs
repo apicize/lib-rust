@@ -2,12 +2,12 @@
 //!
 //! This library supports dispatching Apicize functional web tests
 use regex::Regex;
-use xmltojson::to_json;
 use std::collections::HashMap;
 use std::net::{TcpStream, ToSocketAddrs};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, Once};
 use std::time::{Duration, Instant};
+use xmltojson::to_json;
 
 use async_recursion::async_recursion;
 use encoding_rs::{Encoding, UTF_8};
@@ -22,7 +22,7 @@ use super::{
     ApicizeBody, ApicizeExecution, ApicizeExecutionType, ApicizeGroup, ApicizeGroupChildren,
     ApicizeGroupRun, ApicizeHttpRequest, ApicizeHttpResponse, ApicizeList, ApicizeRequest,
     ApicizeResult, ApicizeRow, ApicizeRowSummary, ApicizeTestResponse, ApicizeTestResult,
-    OutputVariables, Tally,
+    OutputVariables, Tally, TestCount,
 };
 use crate::oauth2_client_tokens::TokenResult;
 use crate::types::workspace::RequestParameters;
@@ -776,9 +776,14 @@ async fn dispatch_request_and_test(
                         Some(response) => {
                             output_variables = Some(response.variables.clone());
                             if let Some(test_result) = &response.results {
-                                test_count = test_result.len();
-                                test_fail_count +=
-                                    test_result.iter().filter(|r| !r.success).count();
+                                test_count += test_result
+                                    .iter()
+                                    .map(|r| r.get_test_count())
+                                    .sum::<usize>();
+                                test_fail_count += test_result
+                                    .iter()
+                                    .map(|r| r.get_test_fail_count())
+                                    .sum::<usize>();
                             }
                             response.results
                         }
@@ -1704,6 +1709,7 @@ fn execute_request_test(
 
             let result = value.to_string(tc);
             let s = result.unwrap().to_rust_string_lossy(tc);
+            // println!("{}", s);
             let test_response: ApicizeTestResponse = serde_json::from_str(&s).unwrap();
 
             Ok(Some(test_response))

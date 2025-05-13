@@ -8,9 +8,6 @@ const jpp = require('jsonpath-plus');
 // const xmldom = require('@xmldom/xmldom');
 
 let testOffset = 0;
-let names = [];
-let inIt = false;
-let results = [];
 let logs = []
 
 function fmtMinSec(value, subZero = null) {
@@ -32,13 +29,6 @@ function appendLog(type, message, ...optionalParams) {
 
 function clearLog() {
     logs = [];
-}
-
-function pushResult(result) {
-    results.push({
-        ...result,
-        logs: logs.length > 0 ? logs : undefined
-    });
 }
 
 /******************************************************************
@@ -84,30 +74,68 @@ console = {
     debug: (msg, ...args) => appendLog('debug', msg, ...args),
 };
 
-describe = (name, run) => {
-    names.push(name);
+let results = []
+let current_results = results
+let results_queue = [ results ]
+let inIt = false;
+
+function pushResult(result) {
+    current_results.push({
+        ...result,
+        logs: logs.length > 0 ? logs : undefined
+    });
+    clearLog();
+}
+
+function updateTallies(entry) {
+    if (entry.children) {
+        entry.success = true
+        for (const child of entry.children) {
+            updateTallies(child)
+            entry.testCount += child.testCount
+            entry.testFailCount += child.testFailCount
+            entry.success &&= child.success
+        }
+    } else {
+        entry.testCount = 1
+        entry.testFailCount = entry.success ? 0 : 1
+    }
+}
+
+
+describe = (name, run) => {    
+    let entry = {
+        type: 'Scenario', 
+        name,
+        success: true,
+        children: [],
+        testCount: 0,
+        testFailCount: 0,
+    }
+    
+    current_results.push(entry)
+
+    results_queue.push(current_results)
+    current_results = entry.children
+
     try {
         run()
     } finally {
-        names.pop();
+        updateTallies(entry)
+        current_results = results_queue.pop()
     }
 };
 
-it = (behavior, run) => {
+it = (name, run) => {
     try {
         if (inIt) {
             throw new Error('\"it\" cannot be contained in another \"it\" block')
         }
-        if (names.length === 0) {
-            throw new Error('\"it\" must be contained in a \"describe\" block');
-        }
         inIt = true;
         run();
-        pushResult({ testName: [...names, behavior], success: true });
-        clearLog();
+        pushResult({ type: 'Behavior', name, success: true, testCount: 1, testFailCount: 0 });
     } catch (e) {
-        pushResult({ testName: [...names, behavior], success: false, error: e.message })
-        clearLog()
+        pushResult({ type: 'Behavior', name, success: false, testCount: 1, testFailCount: 0, error: e.message })
     } finally {
         inIt = false
     }
@@ -119,9 +147,7 @@ runTestSuite = (request1, response1, variables1, testOffset1, testSuite) => {
     variables = variables1 ?? {}
     testOffset = testOffset1
     // console.log('variables', variables)
-    names = []
     clearLog()
-    results = []
     testSuite()
     return JSON.stringify({
         results,
