@@ -248,7 +248,11 @@ impl Default for Request {
         Self {
             id: generate_uuid(),
             name: Default::default(),
-            test: Default::default(),
+            test: Some(r#"describe('status', () => {
+    it('equals 200', () => {
+        expect(response.status).to.equal(200)
+    })
+})"#.to_string()),
             url: Default::default(),
             method: Default::default(),
             timeout: Default::default(),

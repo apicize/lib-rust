@@ -1,5 +1,13 @@
 # Change Log
 
+# 0.19.10
+
+* Update Request default to include a status 200 test
+
+# 0.19.9
+
+* whoops - typo promoted 0.19.0 to 0.19.9...
+
 # 0.19.0
 
 * Return test results as a hierarchy of scenarios/behaviors (BREAKING CHANGE)
