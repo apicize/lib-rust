@@ -10,31 +10,15 @@ use super::{oauth2_client_tokens::TokenResult, ApicizeBody, ApicizeTestResult};
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ApicizeExecution {
-    /// Run number, when applicable
-    pub run_number: Option<usize>,
+    /// Name of the request being executed
+    pub name: String,
 
-    /// Row number, when applicable
-    pub row_number: Option<usize>,
+    /// Values available to use in the test context
+    pub test_context: ApicizeExecutionTestContext,
 
-    /// Execution start (millisecond offset from start)
-    pub executed_at: u128,
-    /// Duration of execution (milliseconds)
-    pub duration: u128,
-
-    /// Variables assigned to the group
-    pub variables: Option<Map<String, Value>>,
-    /// Row data assigned to the group
-    pub data: Option<Map<String, Value>>,
-    /// Variables to update at the end of the group
-    pub output_variables: Option<Map<String, Value>>,
-
-    /// Request sent to server
+    /// Variables returned at the end of the test for use in next request
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub request: Option<ApicizeHttpRequest>,
-
-    /// Response received from server (if any)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub response: Option<ApicizeHttpResponse>,
+    pub output_variables: Option<Map<String, Value>>,   
 
     /// Test results (if executed)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -51,6 +35,36 @@ pub struct ApicizeExecution {
     /// Number of failed tests, if request and tests are succesfully run
     pub test_fail_count: usize,
 }
+
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ApicizeExecutionTestContext {
+
+    /// Merged variables and data
+    #[serde(skip_serializing_if = "Option::is_none", rename="$")]
+    pub merged: Option<Map<String, Value>>,
+
+    /// Variables available from scenario
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub variables: Option<Map<String, Value>>,
+
+    /// Variables output from previous test
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<Map<String, Value>>,
+
+    /// Row data assigned to the groups' requests (if applicable)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Map<String, Value>>,
+
+    /// Request sent to server
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request: Option<ApicizeHttpRequest>,
+
+    /// Response received from server (if any)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response: Option<ApicizeHttpResponse>,
+}
+
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]

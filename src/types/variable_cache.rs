@@ -45,9 +45,6 @@ impl VariableCache {
                                 VariableSourceType::FileCSV => {
                                     extract_csv(&var.name, &var.value, &self.allowed_path)
                                 }
-                                VariableSourceType::ExternalData => {
-                                    todo!("Add support for External Data")
-                                }
                             }
                         })
                     })
@@ -108,8 +105,5 @@ pub fn extract_value(
         VariableSourceType::JSON => convert_json(&var.name, &var.value),
         VariableSourceType::FileJSON => extract_json(&var.name, &var.value, allowed_path),
         VariableSourceType::FileCSV => extract_csv(&var.name, &var.value, allowed_path),
-        VariableSourceType::ExternalData => {
-            todo!("Add support for External Data")
-        }
     }
 }

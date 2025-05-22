@@ -25,11 +25,11 @@ impl Default for Scenario {
 }
 
 impl Identifiable for Scenario {
-    fn get_id(&self) -> &String {
+    fn get_id(&self) -> &str {
         &self.id
     }
 
-    fn get_name(&self) -> &String {
+    fn get_name(&self) -> &str {
         &self.name
     }
 

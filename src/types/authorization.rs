@@ -127,7 +127,7 @@ impl Default for Authorization {
 }
 
 impl Identifiable for Authorization {
-    fn get_id(&self) -> &String {
+    fn get_id(&self) -> &str {
         match self {
             Authorization::Basic { id, .. } => id,
             Authorization::OAuth2Client { id,  .. } => id,
@@ -136,7 +136,7 @@ impl Identifiable for Authorization {
         }
     }
 
-    fn get_name(&self) -> &String {
+    fn get_name(&self) -> &str {
         match self {
             Authorization::Basic { name, .. } => name,
             Authorization::OAuth2Client { name,  .. } => name,

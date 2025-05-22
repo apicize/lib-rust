@@ -186,14 +186,14 @@ pub enum RequestEntry {
 }
 
 impl Identifiable for RequestEntry {
-    fn get_id(&self) -> &String {
+    fn get_id(&self) -> &str {
         match self {
             RequestEntry::Request(request) => request.get_id(),
             RequestEntry::Group(group) => group.get_id(),
         }
     }
 
-    fn get_name(&self) -> &String {
+    fn get_name(&self) -> &str {
         match self {
             RequestEntry::Request(request) => request.get_name(),
             RequestEntry::Group(group) => group.get_name(),
@@ -273,11 +273,11 @@ impl Default for Request {
 }
 
 impl Identifiable for Request {
-    fn get_id(&self) -> &String {
+    fn get_id(&self) -> &str {
         &self.id
     }
 
-    fn get_name(&self) -> &String {
+    fn get_name(&self) -> &str {
         &self.name
     }
 
@@ -299,11 +299,11 @@ impl Identifiable for Request {
 }
 
 impl Identifiable for RequestGroup {
-    fn get_id(&self) -> &String {
+    fn get_id(&self) -> &str {
         &self.id
     }
 
-    fn get_name(&self) -> &String {
+    fn get_name(&self) -> &str {
         &self.name
     }
 

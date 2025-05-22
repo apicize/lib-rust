@@ -97,7 +97,7 @@ impl Default for Certificate {
 }
 
 impl Identifiable for Certificate {
-    fn get_id(&self) -> &String {
+    fn get_id(&self) -> &str {
         match self {
             Certificate::PEM { id, .. } => id,
             Certificate::PKCS8PEM { id,  .. } => id,
@@ -105,7 +105,7 @@ impl Identifiable for Certificate {
         }
     }
 
-    fn get_name(&self) -> &String {
+    fn get_name(&self) -> &str {
         match self {
             Certificate::PEM { name, .. } => name,
             Certificate::PKCS8PEM { name,  .. } => name,

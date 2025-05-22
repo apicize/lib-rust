@@ -1,5 +1,10 @@
 # Change Log
 
+# 0.20.0
+
+* Significant refactor to support data assignment at request/group level
+* Reorganize test context variables, data and output, with (hopefully) better consistency in how values are passed between requests and children
+
 # 0.19.10
 
 * Update Request default to include a status 200 test

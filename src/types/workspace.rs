@@ -249,11 +249,6 @@ impl Workspace {
     ) -> Result<Vec<SerializationSaveSuccess>, FileAccessError> {
         let mut successes: Vec<SerializationSaveSuccess> = vec![];
 
-        // Do not save a seed data selection when saving the workbook,
-        // we do not want this to be brought up during a CLI run by default
-        let mut cloned_defaults = self.defaults.clone();
-        cloned_defaults.selected_data = None;
-
         match Workbook::save(
             PathBuf::from(workbook_path),
             self.requests.to_entities(),
@@ -266,8 +261,8 @@ impl Workspace {
             } else {
                 Some(self.data.clone())
             },
-            if cloned_defaults.any_values_set() {
-                Some(cloned_defaults)
+            if self.defaults.any_values_set() {
+                Some(self.defaults.clone())
             } else {
                 None
             },
@@ -304,14 +299,17 @@ impl Workspace {
     }
 
     /// Retrieve the parameters IDs and scenario variables for the specified request,
-    /// merging in the specified variables to scenario (if specified)
+    /// merging in the variables and data to scenario (if specified)
     pub fn retrieve_request_parameters(
         &self,
         request: &RequestEntry,
         value_cache: &Mutex<VariableCache>,
-        active_variables: Option<Arc<Map<String, Value>>>,
-    ) -> Result<RequestParameters, ApicizeError> {
+        params: &RequestExecutionParameters,
+    ) -> Result<RequestExecutionParameters, ApicizeError> {
         let mut done = false;
+
+        // let id = request.get_id();
+        // println!("ID: {}", id);
 
         let mut current = request;
 
@@ -319,7 +317,7 @@ impl Workspace {
         let mut authorization: Option<&Authorization> = None;
         let mut certificate: Option<&Certificate> = None;
         let mut proxy: Option<&Proxy> = None;
-        let mut external_data: Option<&ExternalData> = None;
+        let mut data: Option<&ExternalData> = None;
 
         let mut auth_certificate_id: Option<String> = None;
         let mut auth_proxy_id: Option<String> = None;
@@ -328,6 +326,7 @@ impl Workspace {
         let mut allow_authorization = true;
         let mut allow_certificate = true;
         let mut allow_proxy = true;
+        let mut allow_data = true;
 
         let mut encountered_ids = HashSet::<String>::new();
 
@@ -337,7 +336,6 @@ impl Workspace {
                 match self.scenarios.find(current.selected_scenario()) {
                     SelectedOption::UseDefault => {}
                     SelectedOption::Off => {
-                        scenario = None;
                         allow_scenario = false;
                     }
                     SelectedOption::Some(s) => {
@@ -349,7 +347,6 @@ impl Workspace {
                 match self.authorizations.find(current.selected_authorization()) {
                     SelectedOption::UseDefault => {}
                     SelectedOption::Off => {
-                        authorization = None;
                         allow_authorization = false;
                     }
                     SelectedOption::Some(a) => {
@@ -361,7 +358,6 @@ impl Workspace {
                 match self.certificates.find(current.selected_certificate()) {
                     SelectedOption::UseDefault => {}
                     SelectedOption::Off => {
-                        certificate = None;
                         allow_certificate = false;
                     }
                     SelectedOption::Some(c) => {
@@ -373,7 +369,6 @@ impl Workspace {
                 match self.proxies.find(current.selected_proxy()) {
                     SelectedOption::UseDefault => {}
                     SelectedOption::Off => {
-                        proxy = None;
                         allow_proxy = false;
                     }
                     SelectedOption::Some(p) => {
@@ -381,20 +376,30 @@ impl Workspace {
                     }
                 }
             }
-
+            if allow_data && data.is_none() {
+                if let Some(sd) = current.selected_data() {
+                    if sd.id == NO_SELECTION_ID {
+                        allow_data = false;
+                    } else if let Some(matching_data) = self.data.iter().find(|d| d.id == sd.id) {
+                        data = Some(matching_data);
+                    } else {
+                        allow_data = false;
+                    };
+                }
+            }
             done = (scenario.is_some() || !allow_scenario)
                 && (authorization.is_some() || !allow_authorization)
                 && (certificate.is_some() || !allow_certificate)
-                && (proxy.is_some() || !allow_proxy);
+                && (proxy.is_some() || !allow_proxy)
+                && (data.is_some() || !allow_data);
 
             if !done {
                 // Get the parent
-                let id = current.get_id();
-                encountered_ids.insert(id.clone());
+                let id = current.get_id().to_string();
 
                 let mut parent: Option<&RequestEntry> = None;
                 for (parent_id, children) in self.requests.child_ids.iter() {
-                    if children.contains(id) {
+                    if children.contains(&id) {
                         parent = self.requests.entities.get(&parent_id.clone());
                         break;
                     }
@@ -410,6 +415,8 @@ impl Workspace {
                 } else {
                     done = true;
                 }
+
+                encountered_ids.insert(id);
             }
         }
 
@@ -439,9 +446,19 @@ impl Workspace {
                 proxy = Some(p);
             }
         }
-        if let Some(selected_data) = &self.defaults.selected_data {
-            if let Some(selected_data) = self.data.iter().find(|data| data.id == selected_data.id) {
-                external_data = Some(selected_data);
+        if data.is_none() && allow_data {
+            if let Some(selected_data) = &self.defaults.selected_data {
+                if selected_data.id == NO_SELECTION_ID {
+                    allow_data = false;
+                } else if let Some(selected_data) = self
+                    .data
+                    .iter()
+                    .find(|data| data.id == selected_data.id || data.name == selected_data.name)
+                {
+                    data = Some(selected_data);
+                } else {
+                    allow_data = false;
+                }
             }
         }
 
@@ -453,66 +470,72 @@ impl Workspace {
         }) = authorization
         {
             if let SelectedOption::Some(c) = self.certificates.find(selected_certificate) {
-                auth_certificate_id = Some(c.get_id().clone());
+                auth_certificate_id = Some(c.get_id().to_string());
             }
 
             if let SelectedOption::Some(proxy) = self.proxies.find(selected_proxy) {
-                auth_proxy_id = Some(proxy.get_id().clone());
+                auth_proxy_id = Some(proxy.get_id().to_string());
             }
         }
 
         let mut locked_cache = value_cache.lock().unwrap();
 
-        // Build out variables for the request
-        let mut variables = Map::new();
-
-        // Start with any active variables from previous calls...
-        if let Some(vars) = active_variables {
-            for (name, value) in vars.iter() {
-                variables.insert(name.clone(), value.clone());
-            }
-        }
-
-        // ... and then data variables
-        let (data, total_rows) = match external_data {
-            Some(d) => match locked_cache.get_external_data(d) {
-                Ok(rows) => {
-                    let len = rows.len();
-                    // ick - do we really have to clone these?
-                    (Some(rows.clone()), len)
-                }
-                Err(err) => {
-                    return Err(err.clone());
-                }
-            },
-            None => (None, 0),
+        // Build out variables for the request from scenario variables
+        let variables = if let Some(active_scenario) = scenario {
+            Map::from_iter(
+                locked_cache
+                    .get_scenario_values(active_scenario)
+                    .iter()
+                    .filter_map(|(name, value)| match value {
+                        Ok(v) => Some((name.clone(), v.clone())),
+                        Err(_) => None,
+                    }),
+            )
+        } else {
+            Map::new()
         };
 
-        // ...from the scenario variables
-        if let Some(active_scenario) = scenario {
-            let values = locked_cache.get_scenario_values(active_scenario);
-            for (name, value) in values {
-                match value {
-                    Ok(valid) => {
-                        variables.insert(name.clone(), valid.clone());
-                    }
-                    Err(err) => {
-                        return Err(err.clone());
-                    }
+        // Retrieve data set if requested
+        let mut data_enabled = true;
+        let data_set = if allow_data {
+            if params.data_set.is_some() {
+                Arc::new(None)
+            } else {
+                match data {
+                    Some(d) => Arc::new(match locked_cache.get_external_data(d) {
+                        Ok(rows) => {
+                            if rows.is_empty() {
+                                None
+                            } else {
+                                Some(RequestDataSet {
+                                    id: d.id.clone(),
+                                    data: rows.clone(),
+                                })
+                            }
+                        }
+                        Err(err) => {
+                            return Err(err.clone());
+                        }
+                    }),
+                    None => params.data_set.clone(),
                 }
             }
+        } else {
+            data_enabled = false;
+            Arc::new(None)
         };
 
-        Ok(RequestParameters {
+        Ok(RequestExecutionParameters {
             variables: if variables.is_empty() {
                 None
             } else {
                 Some(variables)
             },
-            data: if total_rows > 0 { data } else { None },
-            authorization_id: authorization.map(|a| a.get_id().clone()),
-            certificate_id: certificate.map(|a| a.get_id().clone()),
-            proxy_id: proxy.map(|p| p.get_id().clone()),
+            data_set,
+            data_enabled,
+            authorization_id: authorization.map(|a| a.get_id().to_string()),
+            certificate_id: certificate.map(|a| a.get_id().to_string()),
+            proxy_id: proxy.map(|p| p.get_id().to_string()),
             auth_certificate_id,
             auth_proxy_id,
         })
@@ -532,17 +555,41 @@ impl Warnings for Workspace {
     }
 }
 
-/// Parameters to use when executing a request
-#[derive(Clone)]
-pub struct RequestParameters {
+/// Parameters to use when executing a request/group,
+/// these should not change during execution
+#[derive(Clone, Default)]
+pub struct RequestExecutionParameters {
+    pub data_set: Arc<Option<RequestDataSet>>,
+    pub data_enabled: bool,
     pub variables: Option<Map<String, Value>>,
-    pub data: Option<Vec<Map<String, Value>>>,
     pub authorization_id: Option<String>,
     pub certificate_id: Option<String>,
     pub proxy_id: Option<String>,
     pub auth_certificate_id: Option<String>,
     pub auth_proxy_id: Option<String>,
 }
+
+/// Thse values may change during the execution of a request/group
+#[derive(Default, Clone)]
+pub struct RequestExecutionState {
+    pub row: Option<RequestDataRow>,
+    pub output_variables: Option<RequestDataRow>,
+}
+
+pub type RequestDataRow = Map<String, Value>;
+pub struct RequestDataSet {
+    pub id: String,
+    pub data: Vec<RequestDataRow>,
+}
+
+// impl RequestDataSet {
+//     // If the data set defined for a request/group is not default, is off or does not match
+//     // data that is in use, then turn off data, becuase we currently can only have one
+//     // active data set at a time
+//     fn is_ok_to_use(&self, selected_dataset_id: &str) -> bool {
+//         selected_dataset_id != NO_SELECTION_ID && selected_dataset_id == self.id
+//     }
+// }
 
 /// State of a selected option
 pub enum SelectedOption<T> {

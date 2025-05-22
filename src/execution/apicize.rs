@@ -4,122 +4,52 @@
 
 use std::collections::HashMap;
 
-use super::ApicizeExecution;
+use crate::{Identifiable};
+
+use super::{ApicizeExecution, DataContext};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-/// Result of an Apicize execution, either a list of data rows or list of group/item results
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type")]
 pub enum ApicizeResult {
-    Rows(ApicizeRowSummary),
-    Items(ApicizeList<ApicizeGroupItem>),
-}
-
-/// Summary of rows executed for an external data set
-#[derive(Serialize, Deserialize, PartialEq, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ApicizeRow {
-    /// Row number (if multi-row result)
-    pub row_number: usize,
-
-    /// Groups or requests that were executed
-    pub items: Vec<ApicizeGroupItem>,
-
-    /// Execution start (millisecond offset from start)
-    pub executed_at: u128,
-    /// Duration of execution (milliseconds)
-    pub duration: u128,
-
-    /// Success is true if all runs are successful
-    pub success: bool,
-    /// Number of child requests/groups with successful requests and all tests passed
-    pub request_success_count: usize,
-    /// Number of child requests/groups with successful requests and some tests failed
-    pub request_failure_count: usize,
-    /// Number of child requests/groups with successful requests and some tests failed
-    pub request_error_count: usize,
-    /// Number of passed tests, if request and tests are succesfully run
-    pub test_pass_count: usize,
-    /// Number of failed tests, if request and tests are succesfully run
-    pub test_fail_count: usize,
-}
-/// Summary of rows executed for an external data set
-#[derive(Serialize, Deserialize, PartialEq, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ApicizeRowSummary {
-    /// Rows executed
-    pub rows: Vec<ApicizeRow>,
-
-    /// Execution start (millisecond offset from start)
-    pub executed_at: u128,
-    /// Duration of execution (milliseconds)
-    pub duration: u128,
-
-    /// Success is true if all runs are successful
-    pub success: bool,
-    /// Number of child requests/groups with successful requests and all tests passed
-    pub request_success_count: usize,
-    /// Number of child requests/groups with successful requests and some tests failed
-    pub request_failure_count: usize,
-    /// Number of child requests/groups with successful requests and some tests failed
-    pub request_error_count: usize,
-    /// Number of passed tests, if request and tests are succesfully run
-    pub test_pass_count: usize,
-    /// Number of failed tests, if request and tests are succesfully run
-    pub test_fail_count: usize,
+    Request(Box<ApicizeRequestResult>),
+    Group(Box<ApicizeGroupResult>),
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type")]
-pub enum ApicizeGroupItem {
-    Group(Box<ApicizeGroup>),
-    Request(Box<ApicizeRequest>),
+pub enum ApicizeRequestResultContent {
+    Rows {     
+        /// Rows processed for request
+        rows: Vec<ApicizeRequestResultRow> 
+    },
+    Runs { 
+        /// Runs processed for request
+        runs: Vec<ApicizeRequestResultRun> 
+    },
+    Execution { execution: ApicizeExecution },
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Clone)]
-#[serde(tag = "type")]
-pub enum ApicizeGroupChildren {
-    Items(ApicizeList<ApicizeGroupItem>),
-    Runs(ApicizeList<ApicizeGroupRun>),
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Clone)]
-#[serde(tag = "type")]
-pub enum ApicizeExecutionType {
-    None,
-    Single(ApicizeExecution),
-    Runs(ApicizeList<ApicizeExecution>),
-    // Rows(ApicizeList<ApicizeExecution>),
-    // MultiRunRows(ApicizeList<ApicizeRowRuns>),
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Clone)]
-pub struct ApicizeList<T> {
-    pub items: Vec<T>,
-}
-
-/// A summary of a group
+/// Result for a request has nested runs or rows
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct ApicizeGroup {
-    /// Request group ID
+pub struct ApicizeRequestResult {
+    /// Result ID
     pub id: String,
-    /// Request group name
+    /// Result name
     pub name: String,
 
-    /// Row number (if applicable)
-    pub row_number: Option<usize>,
-
     /// Execution start (millisecond offset from start)
     pub executed_at: u128,
     /// Duration of execution (milliseconds)
     pub duration: u128,
 
-    // Child requests, groups and/or runs
-    pub children: Option<ApicizeGroupChildren>,
-    /// Variables to update at the end of the group
-    pub output_variables: Option<Map<String, Value>>,
+    /// Values applicable to tests
+    pub data_context: DataContext,
+
+    /// Request content (rows, runs or an execution)
+    pub content: ApicizeRequestResultContent,
 
     /// Success is true if all runs are successful
     pub success: bool,
@@ -135,11 +65,51 @@ pub struct ApicizeGroup {
     pub test_fail_count: usize,
 }
 
-/// Represents executions of a multi-run group
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[serde(tag = "type")]
+
+pub enum ApicizeRequestResultRowContent {
+    Runs(Vec<ApicizeRequestResultRun>),
+    Execution(ApicizeExecution),
+}
+
+/// Result for a request row
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct ApicizeGroupRun {
-    // Run number
+pub struct ApicizeRequestResultRow {
+    /// Row number
+    pub row_number: usize,
+
+    /// Execution start (millisecond offset from start)
+    pub executed_at: u128,
+    /// Duration of execution (milliseconds)
+    pub duration: u128,
+
+    /// Values applicable to tests
+    pub data_context: DataContext,
+
+    /// Execution result
+    pub results: ApicizeRequestResultRowContent,
+
+    /// Success is true if all runs are successful
+    pub success: bool,
+    /// Number of child requests/groups with successful requests and all tests passed
+    pub request_success_count: usize,
+    /// Number of child requests/groups with successful requests and some tests failed
+    pub request_failure_count: usize,
+    /// Number of child requests/groups with successful requests and some tests failed
+    pub request_error_count: usize,
+    /// Number of passed tests, if request and tests are succesfully run
+    pub test_pass_count: usize,
+    /// Number of failed tests, if request and tests are succesfully run
+    pub test_fail_count: usize,
+}
+
+/// Result for a request run
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ApicizeRequestResultRun {
+    /// Run number
     pub run_number: usize,
 
     /// Execution start (millisecond offset from start)
@@ -147,10 +117,8 @@ pub struct ApicizeGroupRun {
     /// Duration of execution (milliseconds)
     pub duration: u128,
 
-    /// Each group run
-    pub children: Vec<ApicizeGroupItem>,
-    /// Variables to update at the end of the group
-    pub output_variables: Option<Map<String, Value>>,
+    /// Execution result
+    pub execution: ApicizeExecution,
 
     /// Success is true if all runs are successful
     pub success: bool,
@@ -166,12 +134,62 @@ pub struct ApicizeGroupRun {
     pub test_fail_count: usize,
 }
 
-/// Represents executions of a multi-run row
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[serde(tag = "type")]
+pub enum ApicizeGroupResultContent {
+    Rows { rows: Vec<ApicizeGroupResultRow> },
+    Runs { runs: Vec<ApicizeGroupResultRun> },
+    Entries { entries: Vec<ApicizeResult> },
+}
+
+/// Result for a request group
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct ApicizeGroupResult {
+    /// Group ID
+    pub id: String,
+    /// Group name
+    pub name: String,
+    
+    /// Execution start (millisecond offset from start)
+    pub executed_at: u128,
+    /// Duration of execution (milliseconds)
+    pub duration: u128,
 
-pub struct ApicizeRowRuns {
-    // Row number
+    /// Values applicable to tests
+    pub data_context: DataContext,
+
+    /// Request group rows, runs or executions
+    pub content: ApicizeGroupResultContent,
+
+    /// Success is true if all runs are successful
+    pub success: bool,
+    /// Number of child requests/groups with successful requests and all tests passed
+    pub request_success_count: usize,
+    /// Number of child requests/groups with successful requests and some tests failed
+    pub request_failure_count: usize,
+    /// Number of child requests/groups with successful requests and some tests failed
+    pub request_error_count: usize,
+    /// Number of passed tests, if request and tests are succesfully run
+    pub test_pass_count: usize,
+    /// Number of failed tests, if request and tests are succesfully run
+    pub test_fail_count: usize,
+}
+
+
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[serde(tag = "type")]
+
+pub enum ApicizeGroupResultRowContent {
+    Runs { runs: Vec<ApicizeGroupResultRun> },
+    Entries { entries: Vec<ApicizeResult> },
+}
+
+/// Result for a request row
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ApicizeGroupResultRow {
+    /// Row number
     pub row_number: usize,
 
     /// Execution start (millisecond offset from start)
@@ -179,10 +197,11 @@ pub struct ApicizeRowRuns {
     /// Duration of execution (milliseconds)
     pub duration: u128,
 
-    /// Each row run
-    pub runs: Vec<ApicizeExecution>,
-    /// Variables to update at the end of the group
-    pub output_variables: Option<Map<String, Value>>,
+    /// Values applicable to tests
+    pub data_context: DataContext,
+
+    /// Execution result
+    pub content: ApicizeGroupResultRowContent,
 
     /// Success is true if all runs are successful
     pub success: bool,
@@ -198,29 +217,23 @@ pub struct ApicizeRowRuns {
     pub test_fail_count: usize,
 }
 
-/// A summary of a request
+/// Result for a request run
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct ApicizeRequest {
-    /// Request group ID
-    pub id: String,
-    /// Request group name
-    pub name: String,
-
-    /// Row number (if applicable)
-    pub row_number: Option<usize>,
+pub struct ApicizeGroupResultRun {
+    /// Run number
+    pub run_number: usize,
 
     /// Execution start (millisecond offset from start)
     pub executed_at: u128,
     /// Duration of execution (milliseconds)
     pub duration: u128,
 
-    /// Variables assigned to the group
-    pub variables: Option<Map<String, Value>>,
-    /// Variables to update at the end of the group
-    pub output_variables: Option<Map<String, Value>>,
+    /// Values applicable to tests
+    pub data_context: DataContext,
 
-    pub execution: ApicizeExecutionType,
+    /// Execution results
+    pub results: Vec<ApicizeResult>,
 
     /// Success is true if all runs are successful
     pub success: bool,
@@ -234,6 +247,11 @@ pub struct ApicizeRequest {
     pub test_pass_count: usize,
     /// Number of failed tests, if request and tests are succesfully run
     pub test_fail_count: usize,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+pub struct ApicizeList<T> {
+    pub items: Vec<T>,
 }
 
 /// Body information used when dispatching an Apicize Request
@@ -268,21 +286,18 @@ pub enum ApicizeBody {
 pub struct ApicizeTestResponse {
     /// Results of test
     pub results: Option<Vec<ApicizeTestResult>>,
-    /// Scenario values (if any)
-    pub variables: Map<String, Value>,
+    /// Output values to send to next test
+    pub output: Map<String, Value>,
 }
 
-
-
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
-#[serde(tag="type")]
+#[serde(tag = "type")]
 pub enum ApicizeTestResult {
     /// Describe block of a test scenario
     Scenario(ApicizeTestScenario),
     /// Behavior test result
     Behavior(ApicizeTestBehavior),
 }
-
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -319,7 +334,6 @@ pub struct ApicizeTestBehavior {
     pub test_count: usize,
 
     pub test_fail_count: usize,
-
 }
 
 pub trait TestCount {
@@ -343,3 +357,87 @@ impl TestCount for ApicizeTestResult {
         }
     }
 }
+
+impl Identifiable for ApicizeResult {
+    fn get_id(&self) -> &str {
+        match self {
+            ApicizeResult::Request(request) => request.get_id(),
+            ApicizeResult::Group(group) => group.get_id(),
+        }
+    }
+
+    fn get_name(&self) -> &str {
+        match self {
+            ApicizeResult::Request(request) => request.get_name(),
+            ApicizeResult::Group(group) => group.get_name(),
+        }
+    }
+
+    fn get_title(&self) -> String {
+        match self {
+            ApicizeResult::Request(request) => request.get_title(),
+            ApicizeResult::Group(group) => group.get_title(),
+        }
+    }
+
+    fn clone_as_new(&self, new_name: String) -> Self {
+        match self {
+            ApicizeResult::Request(request) => 
+                ApicizeResult::Request(Box::new(request.clone_as_new(new_name))),
+            ApicizeResult::Group(group) => 
+                ApicizeResult::Group(Box::new(group.clone_as_new(new_name))),
+        }
+
+    }
+}
+
+impl Identifiable for ApicizeRequestResult {
+    fn get_id(&self) -> &str {
+        &self.id
+    }
+
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+
+    fn get_title(&self) -> String {
+        if self.name.is_empty() {
+            "Unnamed".to_string()
+        } else {
+            self.name.clone()
+        }
+    }
+
+    fn clone_as_new(&self, new_name: String) -> Self {
+        let mut cloned = self.clone();
+        cloned.name = new_name;
+        cloned
+
+    }
+}
+
+impl Identifiable for ApicizeGroupResult {
+    fn get_id(&self) -> &str {
+        &self.id
+    }
+
+    fn get_name(&self) -> &str {
+        &self.name
+    }
+
+    fn get_title(&self) -> String {
+        if self.name.is_empty() {
+            "Unnamed".to_string()
+        } else {
+            self.name.clone()
+        }
+    }
+
+    fn clone_as_new(&self, new_name: String) -> Self {
+        let mut cloned = self.clone();
+        cloned.name = new_name;
+        cloned
+
+    }
+}
+

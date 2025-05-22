@@ -11,7 +11,6 @@ pub enum VariableSourceType {
     FileJSON,
     #[serde(rename="FILE-CSV")]
     FileCSV,
-    ExternalData,
 }
 
 

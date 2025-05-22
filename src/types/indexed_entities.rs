@@ -80,11 +80,11 @@ impl<T: Identifiable + Clone> IndexedEntities<T> {
                 if id_to_find == NO_SELECTION_ID {
                     Ok(None)
                 } else if let Some(found) = self.entities.get(id_to_find) {
-                    Ok(Some(found.get_id().clone()))
+                    Ok(Some(found.get_id().to_string()))
                 } else if let Some(found_by_name) =
                     self.entities.values().find(|e| e.get_name() == id_to_find)
                 {
-                    Ok(Some(found_by_name.get_id().clone()))
+                    Ok(Some(found_by_name.get_id().to_string()))
                 } else {
                     Err(ApicizeError::Error {
                         description: format!("Invalid ID {}", &id_to_find),
@@ -254,7 +254,7 @@ fn from_persisted_lists<T: Identifiable + Clone>(
     let mut entities: HashMap<String, T> = match workbook {
         Some(entries) => entries
             .iter()
-            .map(|e| (e.get_id().clone(), e.clone()))
+            .map(|e| (e.get_id().to_string(), e.clone()))
             .collect::<HashMap<String, T>>(),
         None => HashMap::new(),
     };
@@ -263,7 +263,7 @@ fn from_persisted_lists<T: Identifiable + Clone>(
             entries
                 .iter()
                 .filter(|e| !entities.contains_key(e.get_id()))
-                .map(|e| (e.get_id().clone(), e.clone()))
+                .map(|e| (e.get_id().to_string(), e.clone()))
                 .collect::<HashMap<String, T>>(),
         );
     };
@@ -272,7 +272,7 @@ fn from_persisted_lists<T: Identifiable + Clone>(
             entries
                 .iter()
                 .filter(|e| !entities.contains_key(e.get_id()))
-                .map(|e| (e.get_id().clone(), e.clone()))
+                .map(|e| (e.get_id().to_string(), e.clone()))
                 .collect::<HashMap<String, T>>(),
         );
     };
@@ -283,21 +283,21 @@ fn from_persisted_lists<T: Identifiable + Clone>(
             (
                 PERSIST_WORKBOOK.to_string(),
                 match workbook {
-                    Some(entries) => entries.iter().map(|e| e.get_id().clone()).collect(),
+                    Some(entries) => entries.iter().map(|e| e.get_id().to_string()).collect(),
                     None => vec![],
                 },
             ),
             (
                 PERSIST_PRIVATE.to_string(),
                 match private {
-                    Some(entries) => entries.iter().map(|e| e.get_id().clone()).collect(),
+                    Some(entries) => entries.iter().map(|e| e.get_id().to_string()).collect(),
                     None => vec![],
                 },
             ),
             (
                 PERSIST_VAULT.to_string(),
                 match vault {
-                    Some(entries) => entries.iter().map(|e| e.get_id().clone()).collect(),
+                    Some(entries) => entries.iter().map(|e| e.get_id().to_string()).collect(),
                     None => vec![],
                 },
             ),

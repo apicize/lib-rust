@@ -4,23 +4,23 @@ use crate::{indexed_entities::NO_SELECTION_ID, RequestEntry, WorkbookDefaultPara
 
 pub trait ValidatedSelectedParameters {
     /// Validate selected scenario
-    fn validate_scenario(&mut self, valid_ids: &HashSet<String>) -> ();
+    fn validate_scenario(&mut self, valid_ids: &HashSet<String>);
 
     /// Validate selected authorization
-    fn validate_authorization(&mut self, valid_ids: &HashSet<String>) -> ();
+    fn validate_authorization(&mut self, valid_ids: &HashSet<String>);
 
     /// Validate selected certificate
-    fn validate_certificate(&mut self, valid_ids: &HashSet<String>) -> ();
+    fn validate_certificate(&mut self, valid_ids: &HashSet<String>);
 
     /// Validate selected proxy
-    fn validate_proxy(&mut self, valid_ids: &HashSet<String>) -> ();
+    fn validate_proxy(&mut self, valid_ids: &HashSet<String>);
 
     /// Validate selected data
-    fn validate_data(&mut self, valid_ids: &HashSet<String>) -> ();
+    fn validate_data(&mut self, valid_ids: &HashSet<String>);
 }
 
 impl ValidatedSelectedParameters for RequestEntry {
-    fn validate_scenario(&mut self, valid_ids: &HashSet<String>) -> () {
+    fn validate_scenario(&mut self, valid_ids: &HashSet<String>) {
         match self {
             RequestEntry::Request(request) => {
                 if let Some(s) = &request.selected_scenario {
@@ -39,7 +39,7 @@ impl ValidatedSelectedParameters for RequestEntry {
         }
     }
 
-    fn validate_authorization(&mut self, valid_ids: &HashSet<String>) -> () {
+    fn validate_authorization(&mut self, valid_ids: &HashSet<String>) {
         match self {
             RequestEntry::Request(request) => {
                 if let Some(s) = &request.selected_authorization {
@@ -58,7 +58,7 @@ impl ValidatedSelectedParameters for RequestEntry {
         }
     }
 
-    fn validate_certificate(&mut self, valid_ids: &HashSet<String>) -> () {
+    fn validate_certificate(&mut self, valid_ids: &HashSet<String>) {
         match self {
             RequestEntry::Request(request) => {
                 if let Some(s) = &request.selected_certificate {
@@ -77,7 +77,7 @@ impl ValidatedSelectedParameters for RequestEntry {
         }
     }
 
-    fn validate_proxy(&mut self, valid_ids: &HashSet<String>) -> () {
+    fn validate_proxy(&mut self, valid_ids: &HashSet<String>) {
         match self {
             RequestEntry::Request(request) => {
                 if let Some(s) = &request.selected_proxy {
@@ -96,7 +96,7 @@ impl ValidatedSelectedParameters for RequestEntry {
         }
     }
 
-    fn validate_data(&mut self, valid_ids: &HashSet<String>) -> () {
+    fn validate_data(&mut self, valid_ids: &HashSet<String>) {
         match self {
             RequestEntry::Request(request) => {
                 if let Some(s) = &request.selected_data {
@@ -117,7 +117,7 @@ impl ValidatedSelectedParameters for RequestEntry {
 }
 
 impl ValidatedSelectedParameters for WorkbookDefaultParameters {
-    fn validate_scenario(&mut self, valid_ids: &HashSet<String>) -> () {
+    fn validate_scenario(&mut self, valid_ids: &HashSet<String>) {
         if let Some(s) = &mut self.selected_scenario {
             if s.id != NO_SELECTION_ID && !valid_ids.contains(&s.id) {
                 self.selected_scenario = None;
@@ -125,7 +125,7 @@ impl ValidatedSelectedParameters for WorkbookDefaultParameters {
         }
     }
 
-    fn validate_authorization(&mut self, valid_ids: &HashSet<String>) -> () {
+    fn validate_authorization(&mut self, valid_ids: &HashSet<String>) {
         if let Some(s) = &mut self.selected_authorization {
             if s.id != NO_SELECTION_ID && !valid_ids.contains(&s.id) {
                 self.selected_authorization = None;
@@ -133,7 +133,7 @@ impl ValidatedSelectedParameters for WorkbookDefaultParameters {
         }
     }
 
-    fn validate_certificate(&mut self, valid_ids: &HashSet<String>) -> () {
+    fn validate_certificate(&mut self, valid_ids: &HashSet<String>) {
         if let Some(s) = &mut self.selected_certificate {
             if s.id != NO_SELECTION_ID && !valid_ids.contains(&s.id) {
                 self.selected_certificate = None;
@@ -141,7 +141,7 @@ impl ValidatedSelectedParameters for WorkbookDefaultParameters {
         }
     }
 
-    fn validate_proxy(&mut self, valid_ids: &HashSet<String>) -> () {
+    fn validate_proxy(&mut self, valid_ids: &HashSet<String>) {
         if let Some(s) = &mut self.selected_proxy {
             if s.id != NO_SELECTION_ID && !valid_ids.contains(&s.id) {
                 self.selected_proxy = None;
@@ -149,7 +149,7 @@ impl ValidatedSelectedParameters for WorkbookDefaultParameters {
         }
     }
 
-    fn validate_data(&mut self, valid_ids: &HashSet<String>) -> () {
+    fn validate_data(&mut self, valid_ids: &HashSet<String>) {
         if let Some(s) = &mut self.selected_data {
             if s.id != NO_SELECTION_ID && !valid_ids.contains(&s.id) {
                 self.selected_data = None;

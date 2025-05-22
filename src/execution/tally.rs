@@ -1,7 +1,5 @@
 use super::{
-    ApicizeExecution, ApicizeExecutionType, ApicizeGroup, ApicizeGroupChildren, ApicizeGroupItem,
-    ApicizeGroupRun, ApicizeList, ApicizeRequest, ApicizeResult, ApicizeRow, ApicizeRowRuns,
-    ApicizeRowSummary,
+    ApicizeExecution, ApicizeGroupResult, ApicizeGroupResultContent, ApicizeGroupResultRow, ApicizeGroupResultRowContent, ApicizeGroupResultRun, ApicizeRequestResult, ApicizeRequestResultContent, ApicizeRequestResultRow, ApicizeRequestResultRowContent, ApicizeRequestResultRun, ApicizeResult
 };
 
 pub trait Tally {
@@ -41,110 +39,70 @@ impl Tallies {
     }
 }
 
-impl Tally for ApicizeGroup {
-    fn get_tallies(&self) -> Tallies {
-        Tallies {
-            success: self.success,
-            request_success_count: self.request_success_count,
-            request_failure_count: self.request_failure_count,
-            request_error_count: self.request_error_count,
-            test_pass_count: self.test_pass_count,
-            test_fail_count: self.test_fail_count,
-        }
-    }
-}
-
-impl Tally for ApicizeList<ApicizeGroupItem> {
-    fn get_tallies(&self) -> Tallies {
-        self.items.get_tallies()
-    }
-}
-
-impl Tally for Vec<ApicizeGroupItem> {
-    fn get_tallies(&self) -> Tallies {
-        let mut tallies = Tallies::default();
-        for item in self {
-            let item_tallies = match item {
-                ApicizeGroupItem::Group(group) => group.get_tallies(),
-                ApicizeGroupItem::Request(request) => request.get_tallies(),
-            };
-            tallies.add(&item_tallies);
-        }
-        tallies
-    }
-}
-
-impl Tally for Vec<ApicizeRow> {
-    fn get_tallies(&self) -> Tallies {
-        let mut tallies = Tallies::default();
-        for summary in self {
-            tallies.add(&summary.items.get_tallies());
-        }
-        tallies
-    }
-}
-
-impl Tally for ApicizeGroupChildren {
-    fn get_tallies(&self) -> Tallies {
-        match self {
-            ApicizeGroupChildren::Items(children) => children.get_tallies(),
-            ApicizeGroupChildren::Runs(runs) => runs.get_tallies(),
-        }
-    }
-}
-
-impl Tally for ApicizeGroupRun {
-    fn get_tallies(&self) -> Tallies {
-        Tallies {
-            success: self.success,
-            request_success_count: self.request_success_count,
-            request_failure_count: self.request_failure_count,
-            request_error_count: self.request_error_count,
-            test_pass_count: self.test_pass_count,
-            test_fail_count: self.test_fail_count,
-        }
-    }
-}
-
-impl Tally for ApicizeList<ApicizeGroupRun> {
-    fn get_tallies(&self) -> Tallies {
-        self.items.get_tallies()
-    }
-}
-
-impl Tally for ApicizeRowSummary {
-    fn get_tallies(&self) -> Tallies {
-        let mut tallies = Tallies::default();
-        for row in &self.rows {
-            tallies.add(&row.get_tallies());
-        }
-        tallies
-    }
-}
-
-impl Tally for ApicizeRow {
-    fn get_tallies(&self) -> Tallies {
-        Tallies {
-            success: self.success,
-            request_success_count: self.request_success_count,
-            request_failure_count: self.request_failure_count,
-            request_error_count: self.request_error_count,
-            test_pass_count: self.test_pass_count,
-            test_fail_count: self.test_fail_count,
-        }
-    }
-}
-
 impl Tally for ApicizeResult {
     fn get_tallies(&self) -> Tallies {
         match self {
-            ApicizeResult::Items(items) => items.get_tallies(),
-            ApicizeResult::Rows(summary) => summary.get_tallies(),
+            ApicizeResult::Request(request) => request.get_tallies(),
+            ApicizeResult::Group(group) => group.get_tallies(),
         }
     }
 }
 
-impl Tally for Vec<ApicizeGroupRun> {
+impl Tally for Vec<ApicizeResult> {
+    fn get_tallies(&self) -> Tallies {
+        let mut tallies = Tallies::default();
+        for result in self {
+            tallies.add(&result.get_tallies());
+        }
+        tallies
+    }
+}
+impl Tally for ApicizeRequestResultContent {
+    fn get_tallies(&self) -> Tallies {
+        match self {
+            ApicizeRequestResultContent::Rows { rows, .. } => rows.get_tallies(),
+            ApicizeRequestResultContent::Runs { runs, .. } => runs.get_tallies(),
+            ApicizeRequestResultContent::Execution { execution } => execution.get_tallies(),
+        }
+    }
+}
+
+impl Tally for ApicizeRequestResult {
+    fn get_tallies(&self) -> Tallies {
+        Tallies {
+            success: self.success,
+            request_success_count: self.request_success_count,
+            request_failure_count: self.request_failure_count,
+            request_error_count: self.request_error_count,
+            test_pass_count: self.test_pass_count,
+            test_fail_count: self.test_fail_count,
+        }
+    }
+}
+
+impl Tally for ApicizeRequestResultRowContent {
+    fn get_tallies(&self) -> Tallies {
+        match self {
+            ApicizeRequestResultRowContent::Runs(runs) => runs.get_tallies(),
+            ApicizeRequestResultRowContent::Execution(execution) => execution.get_tallies(),
+        }
+    }
+}
+
+impl Tally for ApicizeRequestResultRow {
+    fn get_tallies(&self) -> Tallies {
+        Tallies {
+            success: self.success,
+            request_success_count: self.request_success_count,
+            request_failure_count: self.request_failure_count,
+            request_error_count: self.request_error_count,
+            test_pass_count: self.test_pass_count,
+            test_fail_count: self.test_fail_count,
+        }
+    }
+}
+
+impl Tally for Vec<ApicizeRequestResultRow> {
     fn get_tallies(&self) -> Tallies {
         let mut tallies = Tallies::default();
         for run in self {
@@ -154,30 +112,7 @@ impl Tally for Vec<ApicizeGroupRun> {
     }
 }
 
-impl Tally for ApicizeGroupItem {
-    fn get_tallies(&self) -> Tallies {
-        match self {
-            ApicizeGroupItem::Group(group) => Tallies {
-                success: group.success,
-                request_success_count: group.request_success_count,
-                request_failure_count: group.request_failure_count,
-                request_error_count: group.request_error_count,
-                test_pass_count: group.test_pass_count,
-                test_fail_count: group.test_fail_count,
-            },
-            ApicizeGroupItem::Request(request) => Tallies {
-                success: request.success,
-                request_success_count: request.request_success_count,
-                request_failure_count: request.request_failure_count,
-                request_error_count: request.request_error_count,
-                test_pass_count: request.test_pass_count,
-                test_fail_count: request.test_fail_count,
-            },
-        }
-    }
-}
-
-impl Tally for ApicizeRequest {
+impl Tally for ApicizeRequestResultRun {
     fn get_tallies(&self) -> Tallies {
         Tallies {
             success: self.success,
@@ -187,81 +122,108 @@ impl Tally for ApicizeRequest {
             test_pass_count: self.test_pass_count,
             test_fail_count: self.test_fail_count,
         }
+    }
+}
+
+impl Tally for Vec<ApicizeRequestResultRun> {
+    fn get_tallies(&self) -> Tallies {
+        let mut tallies = Tallies::default();
+        for run in self {
+            tallies.add(&run.get_tallies());
+        }
+        tallies
+    }
+}
+
+impl Tally for ApicizeGroupResultContent {
+    fn get_tallies(&self) -> Tallies {
+        match self {
+            ApicizeGroupResultContent::Rows { rows } => rows.get_tallies(),
+            ApicizeGroupResultContent::Runs { runs } => runs.get_tallies(),
+            ApicizeGroupResultContent::Entries { entries} => entries.get_tallies(),
+        }
+    }
+}
+
+impl Tally for ApicizeGroupResult {
+    fn get_tallies(&self) -> Tallies {
+        Tallies {
+            success: self.success,
+            request_success_count: self.request_success_count,
+            request_failure_count: self.request_failure_count,
+            request_error_count: self.request_error_count,
+            test_pass_count: self.test_pass_count,
+            test_fail_count: self.test_fail_count,
+        }
+    }
+}
+
+impl Tally for ApicizeGroupResultRowContent {
+    fn get_tallies(&self) -> Tallies {
+        match self {
+            ApicizeGroupResultRowContent::Runs { runs } => runs.get_tallies(),
+            ApicizeGroupResultRowContent::Entries { entries } => entries.get_tallies(),
+        }
+    }
+}
+
+impl Tally for ApicizeGroupResultRow {
+    fn get_tallies(&self) -> Tallies {
+        Tallies {
+            success: self.success,
+            request_success_count: self.request_success_count,
+            request_failure_count: self.request_failure_count,
+            request_error_count: self.request_error_count,
+            test_pass_count: self.test_pass_count,
+            test_fail_count: self.test_fail_count,
+        }
+    }
+}
+
+impl Tally for Vec<ApicizeGroupResultRow> {
+    fn get_tallies(&self) -> Tallies {
+        let mut tallies = Tallies::default();
+        for row in self {
+            tallies.add(&row.get_tallies());
+        }
+        tallies
+    }
+}
+
+impl Tally for ApicizeGroupResultRun {
+    fn get_tallies(&self) -> Tallies {
+        Tallies {
+            success: self.success,
+            request_success_count: self.request_success_count,
+            request_failure_count: self.request_failure_count,
+            request_error_count: self.request_error_count,
+            test_pass_count: self.test_pass_count,
+            test_fail_count: self.test_fail_count,
+        }
+    }
+}
+
+impl Tally for Vec<ApicizeGroupResultRun> {
+    fn get_tallies(&self) -> Tallies {
+        let mut tallies = Tallies::default();
+        for row in self {
+            tallies.add(&row.get_tallies());
+        }
+        tallies
     }
 }
 
 impl Tally for ApicizeExecution {
     fn get_tallies(&self) -> Tallies {
+        let has_error = self.error.is_some();
+        let has_failures = self.test_fail_count > 0;
         Tallies {
             success: self.success,
-            request_success_count: if self.success { 1 } else { 0 },
-            request_failure_count: if self.success {
-                0
-            } else if self.error.is_none() {
-                1
-            } else {
-                0
-            },
-            request_error_count: if self.success {
-                0
-            } else if self.error.is_some() {
-                1
-            } else {
-                0
-            },
+            request_success_count: if has_failures || has_error { 0 } else { 1 },
+            request_error_count: if has_error { 1 } else { 0 },
+            request_failure_count: if has_failures { 1 } else { 0 },
             test_pass_count: self.test_pass_count,
             test_fail_count: self.test_fail_count,
         }
-    }
-}
-
-impl Tally for ApicizeExecutionType {
-    fn get_tallies(&self) -> Tallies {
-        match self {
-            ApicizeExecutionType::None => Tallies::default(),
-            ApicizeExecutionType::Single(execution) => execution.get_tallies(),
-            ApicizeExecutionType::Runs(execution) => execution.get_tallies(),
-            // ApicizeExecutionType::Rows(execution) => execution.get_tallies(),
-            // ApicizeExecutionType::MultiRunRows(rows) => rows.get_tallies(),
-        }
-    }
-}
-
-impl Tally for ApicizeList<ApicizeExecution> {
-    fn get_tallies(&self) -> Tallies {
-        self.items.get_tallies()
-    }
-}
-
-impl Tally for Vec<ApicizeExecution> {
-    fn get_tallies(&self) -> Tallies {
-        let mut tallies = Tallies::default();
-        for execution in self {
-            tallies.add(&execution.get_tallies());
-        }
-        tallies
-    }
-}
-
-impl Tally for ApicizeRowRuns {
-    fn get_tallies(&self) -> Tallies {
-        Tallies {
-            success: self.success,
-            request_success_count: self.request_success_count,
-            request_failure_count: self.request_failure_count,
-            request_error_count: self.request_error_count,
-            test_pass_count: self.test_pass_count,
-            test_fail_count: self.test_fail_count,
-        }
-    }
-}
-
-impl Tally for ApicizeList<ApicizeRowRuns> {
-    fn get_tallies(&self) -> Tallies {
-        let mut tallies = Tallies::default();
-        for execution in &self.items {
-            tallies.add(&execution.get_tallies());
-        }
-        tallies
     }
 }

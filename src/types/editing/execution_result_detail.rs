@@ -1,9 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-
-use crate::{ApicizeError, ApicizeHttpRequest, ApicizeHttpResponse, ApicizeTestResult};
-
-use super::execution_result_success::ExecutionResultSuccess;
+use crate::{ApicizeError, ApicizeExecutionTestContext, ApicizeTestResult, DataContext};
+use super::{execution_result_success::ExecutionResultSuccess};
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase", tag = "entityType" )]
@@ -36,25 +34,11 @@ pub struct ExecutionResultDetailRequest {
     /// Duration of execution (milliseconds)
     pub duration: u128,
 
-    /// Variables assigned to the request
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub variables: Option<Map<String, Value>>,
+    /// Variables available within test context
+    pub test_context: ApicizeExecutionTestContext,
 
-    /// Row data assigned to the request
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Map<String, Value>>,
-
-    /// Variables to update at the end of the request
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Output variables for use in next request or group
     pub output_variables: Option<Map<String, Value>>,
-
-    /// Request sent to server
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub request: Option<ApicizeHttpRequest>,
-
-    /// Response received from server (if any)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub response: Option<ApicizeHttpResponse>,
 
     /// Test results (if executed)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -107,9 +91,8 @@ pub struct ExecutionResultDetailGroup {
     /// Duration of execution (milliseconds)
     pub duration: u128,
 
-    /// Variables to update at the end of the grou's requests
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub output_variables: Option<Map<String, Value>>,
+    /// Variables available within test context
+    pub data_context: DataContext,
 
     /// Success is true if all runs are successful
     pub success: ExecutionResultSuccess,

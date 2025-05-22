@@ -15,14 +15,14 @@ pub struct Selection {
 }
 
 impl Identifiable for Selection {
-    fn get_id(&self) -> &String {
+    fn get_id(&self) -> &str {
         &self.id
     }
-    
-    fn get_name(&self) -> &String {
+
+    fn get_name(&self) -> &str {
         &self.name
     }
-    
+
     fn get_title(&self) -> String {
         if self.name.is_empty() {
             format!("{} (Unnamed)", self.id)
@@ -35,5 +35,3 @@ impl Identifiable for Selection {
         self.clone()
     }
 }
-
-
