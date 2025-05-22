@@ -32,12 +32,15 @@ function clearLog() {
 }
 
 /******************************************************************
- * Variables exposed to test runner
+ * Global variables exposed to test runner
  ******************************************************************/
 
 request = {};
 response = {};
 variables = {};
+data = {};
+$ = {};
+outputVars = {};
 
 assert = chai.assert;
 expect = chai.expect;
@@ -141,16 +144,35 @@ it = (name, run) => {
     }
 };
 
-runTestSuite = (request1, response1, variables1, testOffset1, testSuite) => {
+output = (name, value) => {
+    switch (typeof value) {
+        case 'function':
+            throw new Error('Functions cannot be output')
+        case 'symbol':
+            throw new Error('Symbols cannot be output')
+        case 'undefined':
+            delete outputVars[name]
+            break
+        default:
+            outputVars[name] = value
+            break
+    }
+}
+
+runTestSuite = (request1, response1, variables1, data1, output1, testOffset1, testSuite) => {
     request = request1
     response = response1
     variables = variables1 ?? {}
+    data = data1 ?? {}
+    outputVars = output1 ?? {}
+    
+    $ = {...outputVars, ...variables, ...data}
+    
     testOffset = testOffset1
-    // console.log('variables', variables)
     clearLog()
     testSuite()
     return JSON.stringify({
         results,
-        variables
+        output: outputVars
     })
 };
