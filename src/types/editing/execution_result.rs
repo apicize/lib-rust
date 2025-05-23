@@ -481,10 +481,10 @@ impl ListAppendable for ApicizeGroupResult {
                     request_or_group_title,
                 );
             }
-            ApicizeGroupResultContent::Entries { entries } => {
+            ApicizeGroupResultContent::Results { results } => {
                 child_indexes = vec![];
-                for entry in entries {
-                    child_indexes.extend(entry.append_to_list(list, level + 1, Some(parent_index)));
+                for result in results {
+                    child_indexes.extend(result.append_to_list(list, level + 1, Some(parent_index)));
                 }
             }
         }
@@ -646,10 +646,10 @@ impl ListAppendable for Vec<ApicizeGroupResultRow> {
                         request_or_group_title,
                     );
                 }
-                ApicizeGroupResultRowContent::Entries { entries } => {
+                ApicizeGroupResultRowContent::Results { results } => {
                     child_indexes = vec![];
-                    for entry in entries {
-                        child_indexes.extend(entry.append_to_list(list, level + 1, Some(index)));
+                    for result in results {
+                        child_indexes.extend(result.append_to_list(list, level + 1, Some(index)));
                     }
                 }
             }

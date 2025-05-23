@@ -513,7 +513,7 @@ async fn run_group(
         let data_context = entries.generate_data_context();
         let tallies = entries.get_tallies();
         (
-            ApicizeGroupResultContent::Entries { entries },
+            ApicizeGroupResultContent::Results { results: entries },
             data_context,
             tallies,
         )
@@ -669,7 +669,7 @@ async fn run_group_rows(
                 let tallies = entries.get_tallies();
                 let data_context = entries.generate_data_context();
                 (
-                    ApicizeGroupResultRowContent::Entries { entries },
+                    ApicizeGroupResultRowContent::Results { results: entries },
                     tallies,
                     data_context,
                 )

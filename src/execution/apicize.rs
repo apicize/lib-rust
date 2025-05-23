@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use crate::{Identifiable};
+use crate::Identifiable;
 
 use super::{ApicizeExecution, DataContext};
 use serde::{Deserialize, Serialize};
@@ -20,15 +20,17 @@ pub enum ApicizeResult {
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type")]
 pub enum ApicizeRequestResultContent {
-    Rows {     
+    Rows {
         /// Rows processed for request
-        rows: Vec<ApicizeRequestResultRow> 
+        rows: Vec<ApicizeRequestResultRow>,
     },
-    Runs { 
+    Runs {
         /// Runs processed for request
-        runs: Vec<ApicizeRequestResultRun> 
+        runs: Vec<ApicizeRequestResultRun>,
     },
-    Execution { execution: ApicizeExecution },
+    Execution {
+        execution: ApicizeExecution,
+    },
 }
 
 /// Result for a request has nested runs or rows
@@ -139,7 +141,7 @@ pub struct ApicizeRequestResultRun {
 pub enum ApicizeGroupResultContent {
     Rows { rows: Vec<ApicizeGroupResultRow> },
     Runs { runs: Vec<ApicizeGroupResultRun> },
-    Entries { entries: Vec<ApicizeResult> },
+    Results { results: Vec<ApicizeResult> },
 }
 
 /// Result for a request group
@@ -150,7 +152,7 @@ pub struct ApicizeGroupResult {
     pub id: String,
     /// Group name
     pub name: String,
-    
+
     /// Execution start (millisecond offset from start)
     pub executed_at: u128,
     /// Duration of execution (milliseconds)
@@ -176,13 +178,12 @@ pub struct ApicizeGroupResult {
     pub test_fail_count: usize,
 }
 
-
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type")]
 
 pub enum ApicizeGroupResultRowContent {
     Runs { runs: Vec<ApicizeGroupResultRun> },
-    Entries { entries: Vec<ApicizeResult> },
+    Results { results: Vec<ApicizeResult> },
 }
 
 /// Result for a request row
@@ -382,12 +383,13 @@ impl Identifiable for ApicizeResult {
 
     fn clone_as_new(&self, new_name: String) -> Self {
         match self {
-            ApicizeResult::Request(request) => 
-                ApicizeResult::Request(Box::new(request.clone_as_new(new_name))),
-            ApicizeResult::Group(group) => 
-                ApicizeResult::Group(Box::new(group.clone_as_new(new_name))),
+            ApicizeResult::Request(request) => {
+                ApicizeResult::Request(Box::new(request.clone_as_new(new_name)))
+            }
+            ApicizeResult::Group(group) => {
+                ApicizeResult::Group(Box::new(group.clone_as_new(new_name)))
+            }
         }
-
     }
 }
 
@@ -412,7 +414,6 @@ impl Identifiable for ApicizeRequestResult {
         let mut cloned = self.clone();
         cloned.name = new_name;
         cloned
-
     }
 }
 
@@ -437,7 +438,5 @@ impl Identifiable for ApicizeGroupResult {
         let mut cloned = self.clone();
         cloned.name = new_name;
         cloned
-
     }
 }
-

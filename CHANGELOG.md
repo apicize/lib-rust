@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.21.1
+
+* Changed "entries" to "results" in groups
+
 # 0.20.0
 
 * Significant refactor to support data assignment at request/group level

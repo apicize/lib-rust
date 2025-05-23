@@ -1,5 +1,8 @@
 use super::{
-    ApicizeExecution, ApicizeGroupResult, ApicizeGroupResultContent, ApicizeGroupResultRow, ApicizeGroupResultRowContent, ApicizeGroupResultRun, ApicizeRequestResult, ApicizeRequestResultContent, ApicizeRequestResultRow, ApicizeRequestResultRowContent, ApicizeRequestResultRun, ApicizeResult
+    ApicizeExecution, ApicizeGroupResult, ApicizeGroupResultContent, ApicizeGroupResultRow,
+    ApicizeGroupResultRowContent, ApicizeGroupResultRun, ApicizeRequestResult,
+    ApicizeRequestResultContent, ApicizeRequestResultRow, ApicizeRequestResultRowContent,
+    ApicizeRequestResultRun, ApicizeResult,
 };
 
 pub trait Tally {
@@ -140,7 +143,7 @@ impl Tally for ApicizeGroupResultContent {
         match self {
             ApicizeGroupResultContent::Rows { rows } => rows.get_tallies(),
             ApicizeGroupResultContent::Runs { runs } => runs.get_tallies(),
-            ApicizeGroupResultContent::Entries { entries} => entries.get_tallies(),
+            ApicizeGroupResultContent::Results { results: entries } => entries.get_tallies(),
         }
     }
 }
@@ -162,7 +165,7 @@ impl Tally for ApicizeGroupResultRowContent {
     fn get_tallies(&self) -> Tallies {
         match self {
             ApicizeGroupResultRowContent::Runs { runs } => runs.get_tallies(),
-            ApicizeGroupResultRowContent::Entries { entries } => entries.get_tallies(),
+            ApicizeGroupResultRowContent::Results { results: entries } => entries.get_tallies(),
         }
     }
 }
