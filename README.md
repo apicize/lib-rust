@@ -33,12 +33,11 @@ The following variables and functions are available in the testing sandbox:
 
 * **request**:  A variable containing the submitted HTTP request
 * **response**:  A variable containing the HTTP response
-* **variables**:  A variable containing key-value pairs originally sourced from the assigned Scenario parameter, but can be updated to pass values to subsequent and child requests in a group
+* **scenario**:  A variable containing key-value pairs originally sourced from the active Scenario request parameter (legacy value `variables` is also available)
 * **assert**:  An exported function of [Chai's Node assertion style](https://www.chaijs.com/api/assert/)
 * **expect** / **should**:  Exported functions of [Chai's BDD assertion style](https://www.chaijs.com/api/bdd/)
-* **jsonpath**:  An exported function of [JSONPath Plus](https://www.npmjs.com/package/jsonpath-plus)
-* **xpath**:  An exported function of [XPath](https://www.npmjs.com/package/xpath)
-* **dom**:  An exported function of [xmldom](https://www.npmjs.com/package/@xmldom/xmldom)
+* **jsonpath**:  An exported function of [JSONPath Plus](https://www.npmjs.com/package/jsonpath-plus); also added as a `jp` function to JavaScript types
+* **output**: Call to output a value and make available to the next request in a group (ex. `output('id', 12345)`)
 
 ### Buliding JavaScript Dependencies
 

@@ -289,7 +289,7 @@ async fn run_request_rows(
                     .await?;
 
                     let data_context = DataContext {
-                        variables: params.variables.clone(),
+                        scenario: params.variables.clone(),
                         data: row_state.row.clone(),
                         output: row_state.output_variables.clone(),
                         output_result: execution.output_variables.clone(),
@@ -919,7 +919,7 @@ async fn dispatch_request_and_test(
         name,
         test_context: ApicizeExecutionTestContext {
             merged,
-            variables: params.variables.clone(),
+            scenario: params.variables.clone(),
             output: state.output_variables.clone(),
             data: state.row.clone(),
             request: execution_request,

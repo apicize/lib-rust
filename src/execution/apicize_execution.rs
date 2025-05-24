@@ -46,7 +46,7 @@ pub struct ApicizeExecutionTestContext {
 
     /// Variables available from scenario
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub variables: Option<Map<String, Value>>,
+    pub scenario: Option<Map<String, Value>>,
 
     /// Variables output from previous test
     #[serde(skip_serializing_if = "Option::is_none")]

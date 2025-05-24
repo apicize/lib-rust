@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.21.2
+
+* Deprecate "variables" in place of unambigous "scenario" variable (retain "variables" for backward compatibility)
+
 # 0.21.1
 
 * Changed "entries" to "results" in groups

@@ -10,7 +10,7 @@ use serde_json::{Map, Value};
 pub struct DataContext {
     /// Variables available from scenario
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub variables: Option<Map<String, Value>>,
+    pub scenario: Option<Map<String, Value>>,
 
     /// Variables output from previous test
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -93,7 +93,7 @@ impl DataContextGenerator for Vec<ApicizeRequestResultRun> {
             let first_execution = &first.execution;
             let last_execution = &self.last().unwrap().execution;
             DataContext {
-                variables: first_execution.test_context.variables.clone(),
+                scenario: first_execution.test_context.scenario.clone(),
                 data: first_execution.test_context.data.clone(),
                 output: first_execution.test_context.output.clone(),
                 output_result: last_execution.output_variables.clone()
@@ -120,6 +120,6 @@ impl DataContextGenerator for Vec<ApicizeResult> {
 
 impl DataContextGenerator for ApicizeExecution {
     fn generate_data_context(&self) -> DataContext {
-        DataContext { variables: self.test_context.variables.clone(), output: self.test_context.output.clone(), data: self.test_context.data.clone(), output_result: self.output_variables.clone() }
+        DataContext { scenario: self.test_context.scenario.clone(), output: self.test_context.output.clone(), data: self.test_context.data.clone(), output_result: self.output_variables.clone() }
     }
 }

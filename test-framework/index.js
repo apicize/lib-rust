@@ -38,6 +38,7 @@ function clearLog() {
 request = {};
 response = {};
 variables = {};
+scenario = {};
 data = {};
 $ = {};
 outputVars = {};
@@ -162,12 +163,13 @@ output = (name, value) => {
 runTestSuite = (request1, response1, variables1, data1, output1, testOffset1, testSuite) => {
     request = request1
     response = response1
-    variables = variables1 ?? {}
+    scenario = variables1 ?? {}
     data = data1 ?? {}
     outputVars = output1 ?? {}
     
     $ = {...outputVars, ...variables, ...data}
-    
+    variables = $ // retain variables for some level of backward compatibility
+
     testOffset = testOffset1
     clearLog()
     testSuite()
