@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::Identifiable;
 
+use super::identifiable::CloneIdentifiable;
+
 /// Information about a selected entity, include both ID and name
 /// to give the maximum chance of finding a match
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
@@ -30,7 +32,9 @@ impl Identifiable for Selection {
             self.name.to_string()
         }
     }
+}
 
+impl CloneIdentifiable for Selection {
     fn clone_as_new(&self, _: String) -> Self {
         self.clone()
     }

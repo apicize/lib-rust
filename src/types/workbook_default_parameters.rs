@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{indexed_entities::NO_SELECTION_ID, SelectedParameters, Selection};
+use super::{indexed_entities::NO_SELECTION_ID, EditableWarnings, SelectedParameters, Selection, Warnings};
 
 /// Default parameters for the workbook
 #[derive(Serialize, Deserialize, PartialEq, Clone, Default)]
@@ -21,6 +21,8 @@ pub struct WorkbookDefaultParameters {
     /// Selected external data, if applicable
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selected_data: Option<Selection>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warnings: Option<Vec<String>>,
 }
 
 impl WorkbookDefaultParameters {
@@ -30,6 +32,18 @@ impl WorkbookDefaultParameters {
             && self.selected_certificate.as_ref().is_none_or(|s| s.id == NO_SELECTION_ID)
             && self.selected_proxy.as_ref().is_none_or(|s| s.id == NO_SELECTION_ID)
             && self.selected_data.as_ref().is_none_or(|s| s.id == NO_SELECTION_ID))
+    }
+}
+
+impl Warnings for WorkbookDefaultParameters {
+    fn get_warnings(&self) -> &Option<Vec<String>> {
+        &self.warnings
+    }
+}
+
+impl EditableWarnings for WorkbookDefaultParameters {
+    fn set_warnings(&mut self, warnings: Option<Vec<String>>) {
+        self.warnings = warnings;
     }
 }
 
@@ -74,3 +88,4 @@ impl SelectedParameters for WorkbookDefaultParameters {
         &mut self.selected_data
     }
 }
+

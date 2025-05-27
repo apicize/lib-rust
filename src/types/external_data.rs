@@ -1,4 +1,6 @@
-use super::Identifiable;
+use std::collections::HashMap;
+
+use super::{identifiable::CloneIdentifiable, Identifiable};
 use crate::utility::*;
 use serde::{Deserialize, Serialize};
 
@@ -14,12 +16,18 @@ pub enum ExternalDataSourceType {
 /// Data that may be sourced from text, JSON, a JSON File or a CSV file
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 pub struct ExternalData {
+    /// Uniquely identifies external data
     #[serde(default = "generate_uuid")]
     pub id: String,
+    /// Names external data
     pub name: String,
+    /// Source type of the external data
     #[serde(rename = "type")]
     pub source_type: ExternalDataSourceType,
+    /// Source of the external data
     pub source: String,
+    /// Validation errors
+    validation_errors: Option<HashMap<String, String>>,
 }
 
 impl Default for ExternalData {
@@ -29,6 +37,7 @@ impl Default for ExternalData {
             name: String::default(),
             source_type: ExternalDataSourceType::FileJSON,
             source: String::default(),
+            validation_errors: None,
         }
     }
 }
@@ -49,7 +58,9 @@ impl Identifiable for ExternalData {
             self.name.to_string()
         }
     }
+}
 
+impl CloneIdentifiable for ExternalData {
     fn clone_as_new(&self, new_name: String) -> Self {
         let mut cloned = self.clone();
         cloned.id = generate_uuid();

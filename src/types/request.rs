@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::str::FromStr;
 
-use super::{NameValuePair, Selection, Warnings};
+use super::identifiable::CloneIdentifiable;
+use super::{EditableWarnings, NameValuePair, Selection, ValidationErrors, Warnings};
 use crate::{utility::*, Identifiable, SelectedParameters};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -129,9 +130,12 @@ pub struct Request {
     /// Selected external data, if any
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selected_data: Option<Selection>,
-    /// Populated with any warnings regarding how the request is set up
+    /// Populated with any warnings regarding how the request is set up upon load
     #[serde(skip_serializing_if = "Option::is_none")]
     pub warnings: Option<Vec<String>>,
+    /// Validation errors
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validation_errors: Option<HashMap<String, String>>,
 }
 
 /// A group of Apicize Requests
@@ -172,6 +176,9 @@ pub struct RequestGroup {
     /// Populated with any warnings regarding how the group is set up
     #[serde(skip_serializing_if = "Option::is_none")]
     pub warnings: Option<Vec<String>>,
+    /// Validation errors
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validation_errors: Option<HashMap<String, String>>,
 }
 
 /// Apcize Request that is either a specific request to run (Info)
@@ -206,11 +213,22 @@ impl Identifiable for RequestEntry {
             RequestEntry::Group(group) => group.get_title(),
         }
     }
+}
 
+impl CloneIdentifiable for RequestEntry {
     fn clone_as_new(&self, new_name: String) -> Self {
         match self {
             RequestEntry::Request(request) => RequestEntry::Request(request.clone_as_new(new_name)),
             RequestEntry::Group(group) => RequestEntry::Group(group.clone_as_new(new_name)),
+        }
+    }
+}
+
+impl ValidationErrors for RequestEntry {
+    fn get_validation_errors(&self) -> &Option<HashMap<String, String>> {
+        match self {
+            RequestEntry::Request(request) => &request.validation_errors,
+            RequestEntry::Group(group) => &group.validation_errors,
         }
     }
 }
@@ -248,11 +266,14 @@ impl Default for Request {
         Self {
             id: generate_uuid(),
             name: Default::default(),
-            test: Some(r#"describe('status', () => {
+            test: Some(
+                r#"describe('status', () => {
     it('equals 200', () => {
         expect(response.status).to.equal(200)
     })
-})"#.to_string()),
+})"#
+                .to_string(),
+            ),
             url: Default::default(),
             method: Default::default(),
             timeout: Default::default(),
@@ -268,6 +289,7 @@ impl Default for Request {
             selected_proxy: Default::default(),
             selected_data: Default::default(),
             warnings: Default::default(),
+            validation_errors: None,
         }
     }
 }
@@ -289,7 +311,9 @@ impl Identifiable for Request {
             name.to_string()
         }
     }
+}
 
+impl CloneIdentifiable for Request {
     fn clone_as_new(&self, new_name: String) -> Self {
         let mut cloned = self.clone();
         cloned.id = generate_uuid();
@@ -315,7 +339,9 @@ impl Identifiable for RequestGroup {
             name.to_string()
         }
     }
+}
 
+impl CloneIdentifiable for RequestGroup {
     fn clone_as_new(&self, new_name: String) -> Self {
         let mut cloned = self.clone();
         cloned.id = generate_uuid();
@@ -339,6 +365,7 @@ impl Default for RequestGroup {
             selected_proxy: Default::default(),
             selected_data: Default::default(),
             warnings: Default::default(),
+            validation_errors: None,
         }
     }
 }
@@ -456,18 +483,42 @@ impl Warnings for RequestEntry {
             RequestEntry::Group(group) => &group.warnings,
         }
     }
+}
 
-    fn add_warning(&mut self, warning: String) {
+impl EditableWarnings for RequestEntry {
+    fn set_warnings(&mut self, warnings: Option<Vec<String>>) {
         match self {
-            RequestEntry::Request(request) => match &mut request.warnings {
-                Some(warnings) => warnings.push(warning),
-                None => request.warnings = Some(vec![warning]),
-            },
-            RequestEntry::Group(group) => match &mut group.warnings {
-                Some(warnings) => warnings.push(warning),
-                None => group.warnings = Some(vec![warning]),
-            },
+            RequestEntry::Request(request) => request.set_warnings(warnings),
+            RequestEntry::Group(group) => group.set_warnings(warnings),
         }
+    }
+}
+
+// Implement warnings trait for requests
+impl Warnings for Request {
+    /// Retrieve warnings
+    fn get_warnings(&self) -> &Option<Vec<String>> {
+        &self.warnings
+    }
+}
+
+impl EditableWarnings for Request {
+    fn set_warnings(&mut self, warnings: Option<Vec<String>>) {
+        self.warnings = warnings;
+    }
+}
+
+// Implement warnings trait for groups
+impl Warnings for RequestGroup {
+    /// Retrieve warnings
+    fn get_warnings(&self) -> &Option<Vec<String>> {
+        &self.warnings
+    }
+}
+
+impl EditableWarnings for RequestGroup {
+    fn set_warnings(&mut self, warnings: Option<Vec<String>>) {
+        self.warnings = warnings;
     }
 }
 
@@ -723,14 +774,12 @@ impl StoredRequestEntry {
 
                             result_data.map(|d| RequestBody::JSON { data: d })
                         }
-                        StoredRequestBody::XML { formatted } => {
-                            Some(RequestBody::XML { 
-                                data:  match formatted {
-                                    Some(text) => text,
-                                    None => "".to_string(),
-                                }
-                            })
-                        }                        
+                        StoredRequestBody::XML { formatted } => Some(RequestBody::XML {
+                            data: match formatted {
+                                Some(text) => text,
+                                None => "".to_string(),
+                            },
+                        }),
                         StoredRequestBody::Form { data } => Some(RequestBody::Form { data }),
                         StoredRequestBody::Raw { data } => Some(RequestBody::Raw { data }),
                     },
@@ -745,6 +794,7 @@ impl StoredRequestEntry {
                 selected_proxy: stored_request.selected_proxy,
                 selected_data: stored_request.selected_data,
                 warnings: stored_request.warnings,
+                validation_errors: None,
             }),
             StoredRequestEntry::Group(group) => RequestEntry::Group(RequestGroup {
                 id: group.id,
@@ -764,6 +814,7 @@ impl StoredRequestEntry {
                 selected_proxy: group.selected_proxy,
                 selected_data: group.selected_data,
                 warnings: group.warnings,
+                validation_errors: None,
             }),
         }
     }

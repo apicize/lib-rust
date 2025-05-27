@@ -1,9 +1,14 @@
+use std::collections::HashMap;
+
 use crate::{utility::*, ApicizeError, Identifiable};
 use reqwest::{ClientBuilder, Identity};
 use serde::{Deserialize, Serialize};
 use serde_with::base64::{Base64, Standard};
 use serde_with::formats::Unpadded;
 use serde_with::serde_as;
+
+use super::identifiable::CloneIdentifiable;
+use super::{ValidationErrors, Warnings};
 
 /// Client certificate used to identify caller
 #[serde_as]
@@ -24,6 +29,8 @@ pub enum Certificate {
         /// Password
         #[serde(skip_serializing_if = "Option::is_none")]
         password: Option<String>,
+        /// Validation errors
+        validation_errors: Option<HashMap<String, String>>,
     },
     /// PEM-encoded certificate and PKCS8 encoded private key files
     #[serde(rename = "PKCS8_PEM")]
@@ -39,6 +46,8 @@ pub enum Certificate {
         /// Optional key file, if not combining in PKCS8 format
         #[serde_as(as = "Base64<Standard, Unpadded>")]
         key: Vec<u8>,
+        /// Validation errors
+        validation_errors: Option<HashMap<String, String>>,
     },
     /// PEM encoded certificate and key file
     #[serde(rename = "PEM")]
@@ -51,18 +60,12 @@ pub enum Certificate {
         /// Certificate information
         #[serde_as(as = "Base64<Standard, Unpadded>")]
         pem: Vec<u8>,
+        /// Validation errors
+        validation_errors: Option<HashMap<String, String>>,
     },
 }
 
 impl Certificate {
-    // fn get_id_and_name(&self) -> (&String, &String) {
-    //     match self {
-    //         Certificate::PKCS8PEM { id, name, .. } => (id, name),
-    //         Certificate::PEM { id, name, .. } => (id, name),
-    //         Certificate::PKCS12 { id, name, .. } => (id, name),
-    //     }
-    // }
-
     /// Append certificate to builder
     pub fn append_to_builder(&self, builder: ClientBuilder) -> Result<ClientBuilder, ApicizeError> {
         let identity_result = match self {
@@ -92,6 +95,7 @@ impl Default for Certificate {
             id: generate_uuid(),
             name: String::default(),
             pem: Vec::default(),
+            validation_errors: None,
         }
     }
 }
@@ -100,16 +104,16 @@ impl Identifiable for Certificate {
     fn get_id(&self) -> &str {
         match self {
             Certificate::PEM { id, .. } => id,
-            Certificate::PKCS8PEM { id,  .. } => id,
-            Certificate::PKCS12 { id,  .. } => id,
+            Certificate::PKCS8PEM { id, .. } => id,
+            Certificate::PKCS12 { id, .. } => id,
         }
     }
 
     fn get_name(&self) -> &str {
         match self {
             Certificate::PEM { name, .. } => name,
-            Certificate::PKCS8PEM { name,  .. } => name,
-            Certificate::PKCS12 { name,  .. } => name,
+            Certificate::PKCS8PEM { name, .. } => name,
+            Certificate::PKCS12 { name, .. } => name,
         }
     }
 
@@ -121,20 +125,62 @@ impl Identifiable for Certificate {
             name.to_string()
         }
     }
+}
 
+impl CloneIdentifiable for Certificate {
     fn clone_as_new(&self, new_name: String) -> Self {
         let mut cloned = self.clone();
         let new_id = generate_uuid();
-        
+
         match cloned {
-            Certificate::PEM { ref mut id, ref mut name, ..} => 
-                { *id = new_id; *name = new_name; },
-            Certificate::PKCS8PEM { ref mut id, ref mut name, ..} => 
-                { *id = new_id; *name = new_name; },
-            Certificate::PKCS12 { ref mut id, ref mut name, ..} => 
-                { *id = new_id; *name = new_name; },
+            Certificate::PEM {
+                ref mut id,
+                ref mut name,
+                ..
+            } => {
+                *id = new_id;
+                *name = new_name;
+            }
+            Certificate::PKCS8PEM {
+                ref mut id,
+                ref mut name,
+                ..
+            } => {
+                *id = new_id;
+                *name = new_name;
+            }
+            Certificate::PKCS12 {
+                ref mut id,
+                ref mut name,
+                ..
+            } => {
+                *id = new_id;
+                *name = new_name;
+            }
         }
 
         cloned
-    }    
+    }
+}
+
+impl Warnings for Certificate {
+    fn get_warnings(&self) -> &Option<Vec<String>> {
+        &None
+    }
+}
+
+impl ValidationErrors for Certificate {
+    fn get_validation_errors(&self) -> &Option<HashMap<String, String>> {
+        match self {
+            Certificate::PKCS12 {
+                validation_errors, ..
+            } => validation_errors,
+            Certificate::PKCS8PEM {
+                validation_errors, ..
+            } => validation_errors,
+            Certificate::PEM {
+                validation_errors, ..
+            } => validation_errors,
+        }
+    }
 }

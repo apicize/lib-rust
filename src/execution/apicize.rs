@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use crate::Identifiable;
+use crate::{identifiable::CloneIdentifiable, Identifiable};
 
 use super::{ApicizeExecution, DataContext};
 use serde::{Deserialize, Serialize};
@@ -380,7 +380,9 @@ impl Identifiable for ApicizeResult {
             ApicizeResult::Group(group) => group.get_title(),
         }
     }
+}
 
+impl CloneIdentifiable for ApicizeResult {
     fn clone_as_new(&self, new_name: String) -> Self {
         match self {
             ApicizeResult::Request(request) => {
@@ -409,7 +411,9 @@ impl Identifiable for ApicizeRequestResult {
             self.name.clone()
         }
     }
+}
 
+impl CloneIdentifiable for ApicizeRequestResult {
     fn clone_as_new(&self, new_name: String) -> Self {
         let mut cloned = self.clone();
         cloned.name = new_name;
@@ -433,7 +437,9 @@ impl Identifiable for ApicizeGroupResult {
             self.name.clone()
         }
     }
+}
 
+impl CloneIdentifiable for ApicizeGroupResult {
     fn clone_as_new(&self, new_name: String) -> Self {
         let mut cloned = self.clone();
         cloned.name = new_name;

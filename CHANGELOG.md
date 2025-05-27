@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.22.0
+
+* Add validation errors and restore warning (parameter selection) functionality
+
 # 0.21.2
 
 * Deprecate "variables" in place of unambigous "scenario" variable (retain "variables" for backward compatibility)

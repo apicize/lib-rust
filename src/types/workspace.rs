@@ -4,19 +4,20 @@
 
 use crate::{
     open_data_file, ApicizeError, Authorization, Certificate, FileAccessError, Identifiable,
-    PersistedIndex, Proxy, RequestEntry, Scenario, SelectedParameters, Selection,
-    SerializationSaveSuccess, Warnings, Workbook, WorkbookDefaultParameters,
+    PersistedIndex, Proxy, RequestEntry, Scenario, SelectedParameters, SerializationSaveSuccess,
+    Workbook, WorkbookDefaultParameters,
 };
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     path::PathBuf,
     sync::{Arc, Mutex},
 };
 
 use super::{
+    validated_selected_parameters::ValidatedSelectedParameters,
     indexed_entities::NO_SELECTION_ID, ExternalData, IndexedEntities, Parameters, VariableCache,
 };
 
@@ -45,104 +46,9 @@ pub struct Workspace {
 
     /// Default values for requests and groups
     pub defaults: WorkbookDefaultParameters,
-
-    /// Warnings regarding workspace
-    pub warnings: Option<Vec<String>>,
 }
 
 impl Workspace {
-    /// Validate the specified selection, if it is invalid, add a warning and set the selection to Off
-    fn validate_selection<T: Identifiable + Clone>(
-        selection: &mut Option<Selection>,
-        entries: &IndexedEntities<T>,
-        warnings: &mut Vec<String>,
-        title: &str,
-    ) {
-        if let Some(s) = selection {
-            let ok = entries.is_valid(s);
-            if !ok {
-                warnings.push(format!(
-                    "{} selected entry {} not found, defaulting to Off",
-                    title,
-                    s.get_title(),
-                ));
-                *selection = Some(Selection {
-                    id: String::from(NO_SELECTION_ID),
-                    name: String::from("Off"),
-                });
-            }
-        }
-    }
-
-    /// Validate selections specified for workbook defaults and requests
-    pub fn validate_selections(&mut self) {
-        let mut warnings: Vec<String> = vec![];
-
-        Self::validate_selection(
-            &mut self.defaults.selected_scenario,
-            &self.scenarios,
-            &mut warnings,
-            "Default",
-        );
-        Self::validate_selection(
-            &mut self.defaults.selected_authorization,
-            &self.authorizations,
-            &mut warnings,
-            "Default",
-        );
-        Self::validate_selection(
-            &mut self.defaults.selected_certificate,
-            &self.certificates,
-            &mut warnings,
-            "Default",
-        );
-
-        Self::validate_selection(
-            &mut self.defaults.selected_proxy,
-            &self.proxies,
-            &mut warnings,
-            "Default",
-        );
-
-        for warning in warnings {
-            self.add_warning(warning);
-        }
-
-        for request in self.requests.entities.values_mut() {
-            let title = format!("Request {}", request.get_id());
-            let mut warnings: Vec<String> = vec![];
-
-            Self::validate_selection(
-                request.selected_scenario_as_mut(),
-                &self.scenarios,
-                &mut warnings,
-                &title,
-            );
-            Self::validate_selection(
-                request.selected_authorization_as_mut(),
-                &self.authorizations,
-                &mut warnings,
-                &title,
-            );
-            Self::validate_selection(
-                request.selected_certificate_as_mut(),
-                &self.certificates,
-                &mut warnings,
-                &title,
-            );
-            Self::validate_selection(
-                request.selected_proxy_as_mut(),
-                &self.proxies,
-                &mut warnings,
-                &title,
-            );
-
-            for warning in warnings {
-                request.add_warning(warning);
-            }
-        }
-    }
-
     /// Create a new workspace, including globals specified (if any)
     pub fn new() -> Result<Workspace, FileAccessError> {
         // Populate parameters from global vault, if available
@@ -172,7 +78,6 @@ impl Workspace {
             ),
             data: Vec::new(),
             defaults: WorkbookDefaultParameters::default(),
-            warnings: None,
         })
     }
 
@@ -233,14 +138,64 @@ impl Workspace {
             ),
             data: workbook.data.unwrap_or_default(),
             defaults: workbook.defaults.unwrap_or_default(),
-            warnings: None,
         };
 
-        // Validate the default  scenarios, etc. selected for testing
         workspace.validate_selections();
+
 
         Ok(workspace)
     }
+
+    pub fn validate_selections(
+        &mut self
+    ) {
+        // Validate the default scenarios, etc. selected for testing
+        let scenarios = self
+            .scenarios
+            .entities
+            .iter()
+            .map(|(id, e)| (id.clone(), e.get_name().to_string()))
+            .collect::<HashMap<String, String>>();
+        let authorizations = self
+            .authorizations
+            .entities
+            .iter()
+            .map(|(id, e)| (id.clone(), e.get_name().to_string()))
+            .collect::<HashMap<String, String>>();
+        let certificates = self
+            .certificates
+            .entities
+            .iter()
+            .map(|(id, e)| (id.clone(), e.get_name().to_string()))
+            .collect::<HashMap<String, String>>();
+        let proxies = self
+            .proxies
+            .entities
+            .iter()
+            .map(|(id, e)| (id.clone(), e.get_name().to_string()))
+            .collect::<HashMap<String, String>>();
+        let data = self
+            .data
+            .iter()
+            .map(|d| (d.id.clone(), d.name.clone()))
+            .collect::<HashMap<String, String>>();
+
+        self.defaults.validate_scenario(&scenarios);
+        self.defaults.validate_authorization(&authorizations);
+        self.defaults.validate_certificate(&certificates);
+        self.defaults.validate_proxy(&proxies);
+        self.defaults.validate_data(&data);
+
+        for entity in self.requests.entities.values_mut() {
+            entity.validate_scenario(&scenarios);
+            entity.validate_authorization(&authorizations);
+            entity.validate_certificate(&certificates);
+            entity.validate_proxy(&proxies);
+            entity.validate_data(&data);
+        }
+
+    }
+    
 
     /// Save workspace to specified path, including private and global parameters
     pub fn save(
@@ -539,19 +494,6 @@ impl Workspace {
             auth_certificate_id,
             auth_proxy_id,
         })
-    }
-}
-
-impl Warnings for Workspace {
-    fn get_warnings(&self) -> &Option<Vec<String>> {
-        &self.warnings
-    }
-
-    fn add_warning(&mut self, warning: String) {
-        match &mut self.warnings {
-            Some(warnings) => warnings.push(warning),
-            None => self.warnings = Some(vec![warning]),
-        }
     }
 }
 

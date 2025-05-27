@@ -1,7 +1,13 @@
+use std::collections::HashMap;
+
 use crate::utility::*;
 use crate::Identifiable;
 use reqwest::{ClientBuilder, Error};
 use serde::{Deserialize, Serialize};
+
+use super::identifiable::CloneIdentifiable;
+use super::ValidationErrors;
+use super::Warnings;
 
 /// An HTTP or SOCKS5 proxy that can be used to tunnel requests
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
@@ -13,8 +19,8 @@ pub struct Proxy {
     pub name: String,
     /// Location of proxy (URL for HTTP proxy, IP for SOCKS)
     pub url: String,
-    /// Warning if invalid
-    pub warning: Option<String>,
+    /// Validation errors
+    validation_errors: Option<HashMap<String, String>>,
 }
 
 impl Proxy {
@@ -29,11 +35,11 @@ impl Proxy {
 
 impl Default for Proxy {
     fn default() -> Self {
-        Self { 
+        Self {
             id: generate_uuid(),
             name: Default::default(),
-            url: Default::default(), 
-            warning: Default::default() 
+            url: Default::default(),
+            validation_errors: Default::default(),
         }
     }
 }
@@ -54,11 +60,24 @@ impl Identifiable for Proxy {
             self.name.to_string()
         }
     }
-
+}
+impl CloneIdentifiable for Proxy {
     fn clone_as_new(&self, new_name: String) -> Self {
         let mut cloned = self.clone();
         cloned.id = generate_uuid();
         cloned.name = new_name;
         cloned
+    }
+}
+
+impl Warnings for Proxy {
+    fn get_warnings(&self) -> &Option<Vec<String>> {
+        &None
+    }
+}
+
+impl ValidationErrors for Proxy {
+    fn get_validation_errors(&self) -> &Option<HashMap<String, String>> {
+        &self.validation_errors
     }
 }
