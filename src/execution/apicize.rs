@@ -323,7 +323,7 @@ pub struct ApicizeTestScenario {
 pub struct ApicizeTestBehavior {
     /// Human readable name of the test
     pub name: String,
-    /// Whether or not the test was successful
+    /// Whether or not the test executed and passed successful
     pub success: bool,
     /// Error generated during the test
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -331,32 +331,6 @@ pub struct ApicizeTestBehavior {
     /// Console I/O generated during the test
     #[serde(skip_serializing_if = "Option::is_none")]
     pub logs: Option<Vec<String>>,
-
-    pub test_count: usize,
-
-    pub test_fail_count: usize,
-}
-
-pub trait TestCount {
-    fn get_test_count(&self) -> usize;
-
-    fn get_test_fail_count(&self) -> usize;
-}
-
-impl TestCount for ApicizeTestResult {
-    fn get_test_count(&self) -> usize {
-        match self {
-            ApicizeTestResult::Scenario(scenario) => scenario.test_count,
-            ApicizeTestResult::Behavior(behavior) => behavior.test_count,
-        }
-    }
-
-    fn get_test_fail_count(&self) -> usize {
-        match self {
-            ApicizeTestResult::Scenario(scenario) => scenario.test_fail_count,
-            ApicizeTestResult::Behavior(behavior) => behavior.test_fail_count,
-        }
-    }
 }
 
 impl Identifiable for ApicizeResult {

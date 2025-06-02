@@ -52,6 +52,7 @@ pub enum ApicizeError {
     FailedTest { description: String },
 }
 
+
 impl ApicizeError {
     fn from_error(error: &dyn Error) -> ApicizeError {
         ApicizeError::Error {

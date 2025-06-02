@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.23.0
+
+* Add CSV reporting output
+
 # 0.22.0
 
 * Add validation errors and restore warning (parameter selection) functionality

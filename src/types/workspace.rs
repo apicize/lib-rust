@@ -3,22 +3,22 @@
 //! This submodule defines modules used to manage workspaces
 
 use crate::{
-    open_data_file, ApicizeError, Authorization, Certificate, FileAccessError, Identifiable,
-    PersistedIndex, Proxy, RequestEntry, Scenario, SelectedParameters, SerializationSaveSuccess,
-    Workbook, WorkbookDefaultParameters,
+    open_data_file, ApicizeError, Authorization, Certificate, ExecutionReportCsv,
+    ExecutionReportFormat, ExecutionReportJson, ExecutionResultSummary, FileAccessError,
+    Identifiable, PersistedIndex, Proxy, RequestEntry, Scenario, SelectedParameters,
+    SerializationSaveSuccess, Workbook, WorkbookDefaultParameters,
 };
 
+use csv::WriterBuilder;
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use serde_json::{ser::PrettyFormatter, Map, Value};
 use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-    sync::{Arc, Mutex},
+    collections::{HashMap, HashSet}, path::PathBuf, sync::{Arc, Mutex}
 };
 
 use super::{
-    validated_selected_parameters::ValidatedSelectedParameters,
-    indexed_entities::NO_SELECTION_ID, ExternalData, IndexedEntities, Parameters, VariableCache,
+    indexed_entities::NO_SELECTION_ID, validated_selected_parameters::ValidatedSelectedParameters,
+    ExternalData, IndexedEntities, Parameters, VariableCache,
 };
 
 /// Data type for entities used by Apicize during testing and editing.  This will be
@@ -142,13 +142,10 @@ impl Workspace {
 
         workspace.validate_selections();
 
-
         Ok(workspace)
     }
 
-    pub fn validate_selections(
-        &mut self
-    ) {
+    pub fn validate_selections(&mut self) {
         // Validate the default scenarios, etc. selected for testing
         let scenarios = self
             .scenarios
@@ -193,9 +190,7 @@ impl Workspace {
             entity.validate_proxy(&proxies);
             entity.validate_data(&data);
         }
-
     }
-    
 
     /// Save workspace to specified path, including private and global parameters
     pub fn save(
@@ -495,6 +490,197 @@ impl Workspace {
             auth_proxy_id,
         })
     }
+
+    /// Append specified index, including children, to the results
+    fn generate_json(
+        summary_index: usize,
+        summaries: &Vec<ExecutionResultSummary>,
+        report: &mut Vec<ExecutionReportJson>,
+    ) -> Result<(), ApicizeError> {
+        match summaries.get(summary_index) {
+            Some(summary) => {
+                if summary.error.is_some() {
+                    // Deal with summaries with errors
+                    report.push(ExecutionReportJson {
+                        name: summary.name.clone(),
+                        executed_at: summary.executed_at,
+                        duration: summary.duration,
+                        success: summary.success.clone(),
+                        status: summary.status,
+                        status_text: summary.status_text.clone(),
+                        error: summary.error.clone(),
+                        test_results: None,
+                        run_number: summary.run_number,
+                        run_count: summary.run_count,
+                        row_number: summary.row_number,
+                        row_count: summary.row_count,
+                        children: None,
+                    });
+                    Ok(())
+                } else if let Some(child_indexes) = &summary.child_indexes {
+                    let mut children = Vec::<ExecutionReportJson>::new();
+                    for child_index in child_indexes {
+                        Self::generate_json(*child_index, summaries, &mut children)?;
+                    }
+                    report.push(ExecutionReportJson {
+                        name: summary.name.clone(),
+                        executed_at: summary.executed_at,
+                        duration: summary.duration,
+                        success: summary.success.clone(),
+                        status: summary.status,
+                        status_text: summary.status_text.clone(),
+                        error: summary.error.clone(),
+                        test_results: None,
+                        run_number: summary.run_number,
+                        run_count: summary.run_count,
+                        row_number: summary.row_number,
+                        row_count: summary.row_count,
+                        children: Some(children),
+                    });
+                    Ok(())
+                } else {
+                    // Deal with executed behavior results
+                    report.push(ExecutionReportJson {
+                        name: summary.name.clone(),
+                        executed_at: summary.executed_at,
+                        duration: summary.duration,
+                        success: summary.success.clone(),
+                        status: summary.status,
+                        status_text: summary.status_text.clone(),
+                        error: summary.error.clone(),
+                        test_results: summary.test_results.clone(),
+                        run_number: summary.run_number,
+                        run_count: summary.run_count,
+                        row_number: summary.row_number,
+                        row_count: summary.row_count,
+                        children: None,
+                    });
+
+                    Ok(())
+                }
+            }
+            None => Err(ApicizeError::Error {
+                description: "Invalid summary index".to_string(),
+                source: None,
+            }),
+        }
+    }
+
+    // Append specified index, including children, to the results
+    fn generate_csv(
+        summary_index: usize,
+        summaries: &Vec<ExecutionResultSummary>,
+        parent_names: &[&str],
+        report: &mut Vec<ExecutionReportCsv>,
+    ) -> Result<(), ApicizeError> {
+        match summaries.get(summary_index) {
+            Some(summary) => {
+                let mut name_parts = Vec::from(parent_names);
+                let is_first = parent_names.is_empty();
+                let name_part = if ! is_first && summary.row_number.is_some() && summary.row_count.is_some() {
+                    &format!("Row {} of {}", &summary.row_number.unwrap(), &summary.row_count.unwrap())
+                } else if ! is_first && summary.run_number.is_some() && summary.run_count.is_some() {
+                    &format!("Run {} of {}", &summary.run_number.unwrap(), &summary.run_count.unwrap())
+                } else {
+                    &summary.name
+                };
+
+                name_parts.push(&name_part);
+
+                if summary.error.is_some() {
+                    // Deal with summaries with errors
+                    report.push(ExecutionReportCsv {
+                        name: name_parts.join(", "),
+                        executed_at: summary.executed_at,
+                        duration: summary.duration,
+                        success: summary.success.clone(),
+                        status: summary.status,
+                        status_text: summary.status_text.clone(),
+                        test_name: None,
+                        test_success: None,
+                        test_logs: None,
+                        test_error: None,
+                        error: summary.error.clone(),
+                    });
+                } else if let Some(child_indexes) = &summary.child_indexes {
+                    // Deal with "parent" scenarois
+                    for child_index in child_indexes {
+                        Self::generate_csv(*child_index, summaries, &name_parts, report)?;
+                    }
+                } else if let Some(test_results) = &summary.test_results {
+                    // Deal with executed behavior results with tests
+                    for test_result in test_results {
+                        report.push(ExecutionReportCsv {
+                            name: name_parts.join(", "),
+                            executed_at: summary.executed_at,
+                            duration: summary.duration,
+                            success: summary.success.clone(),
+                            status: summary.status,
+                            status_text: summary.status_text.clone(),
+                            error: summary.error.clone(),
+                            test_name: Some(test_result.name.clone()),
+                            test_success: Some(test_result.success),
+                            test_logs: test_result.logs.as_ref().map(|l| l.join("; ")),
+                            test_error: test_result.error.clone(),
+                        });
+                    }
+                } else {
+                    // Deal with executed behavior results without tests
+                    report.push(ExecutionReportCsv {
+                        name: name_parts.join(", "),
+                        executed_at: summary.executed_at,
+                        duration: summary.duration,
+                        success: summary.success.clone(),
+                        status: summary.status,
+                        status_text: summary.status_text.clone(),
+                        error: summary.error.clone(),
+                        test_name: None,
+                        test_success: None,
+                        test_logs: None,
+                        test_error: None,
+                    });
+                }
+                Ok(())
+            }
+            None => Err(ApicizeError::Error {
+                description: "Invalid summary index".to_string(),
+                source: None,
+            }),
+        }
+    }
+
+    /// Generate a report from summarized execution results
+    pub fn geneate_report(
+        summary_index: usize,
+        summaries: &Vec<ExecutionResultSummary>,
+        format: ExecutionReportFormat,
+    ) -> Result<String, ApicizeError> {
+        match format {
+            ExecutionReportFormat::JSON => {
+                let mut data = Vec::<ExecutionReportJson>::new();
+                Self::generate_json(summary_index, summaries, &mut data)?;
+                let mut buf = Vec::new();
+                let formatter = PrettyFormatter::with_indent(b"    ");
+                let mut ser = serde_json::Serializer::with_formatter(&mut buf, formatter);
+                data.serialize(&mut ser).unwrap();
+                Ok(String::from_utf8(buf).unwrap())
+            }
+            ExecutionReportFormat::CSV => {
+                let mut data = Vec::<ExecutionReportCsv>::new();
+                Self::generate_csv(summary_index, summaries, &[], &mut data)?;
+                let mut writer =  WriterBuilder::new().from_writer(Vec::new());
+                for d in data {
+                    if let Err(err) = writer.serialize(d) {
+                        return Err(ApicizeError::Error {
+                            description: format!("{}", &err),
+                            source: None,
+                        });
+                    }
+                }
+                Ok(String::from_utf8(writer.into_inner().unwrap()).unwrap())
+            }
+        }
+    }
 }
 
 /// Parameters to use when executing a request/group,
@@ -523,15 +709,6 @@ pub struct RequestDataSet {
     pub id: String,
     pub data: Vec<RequestDataRow>,
 }
-
-// impl RequestDataSet {
-//     // If the data set defined for a request/group is not default, is off or does not match
-//     // data that is in use, then turn off data, becuase we currently can only have one
-//     // active data set at a time
-//     fn is_ok_to_use(&self, selected_dataset_id: &str) -> bool {
-//         selected_dataset_id != NO_SELECTION_ID && selected_dataset_id == self.id
-//     }
-// }
 
 /// State of a selected option
 pub enum SelectedOption<T> {

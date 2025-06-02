@@ -22,8 +22,8 @@ use super::{
     ApicizeBody, ApicizeExecution, ApicizeExecutionTestContext, ApicizeGroupResult,
     ApicizeGroupResultContent, ApicizeGroupResultRow, ApicizeGroupResultRun, ApicizeHttpRequest,
     ApicizeHttpResponse, ApicizeRequestResult, ApicizeRequestResultRun, ApicizeResult,
-    ApicizeTestResponse, ApicizeTestResult, DataContext, DataContextGenerator, GetDataContext,
-    Tally, TestCount,
+    ApicizeTestBehavior, ApicizeTestResponse, ApicizeTestResult, DataContext, DataContextGenerator,
+    GetDataContext, Tally,
 };
 use crate::oauth2_client_tokens::TokenResult;
 use crate::types::workspace::RequestExecutionParameters;
@@ -835,9 +835,7 @@ async fn dispatch_request_and_test(
     let mut execution_request: Option<ApicizeHttpRequest> = None;
     let mut execution_response: Option<ApicizeHttpResponse> = None;
     let mut output_variables: Option<Map<String, Value>> = None;
-    let mut tests: Option<Vec<ApicizeTestResult>> = None;
-    let mut test_count = 0;
-    let mut test_fail_count = 0;
+    let mut tests: Option<Vec<ApicizeTestBehavior>> = None;
     let mut error: Option<ApicizeError> = None;
 
     let name: String;
@@ -860,6 +858,9 @@ async fn dispatch_request_and_test(
         false => Some(merged_vars),
     };
 
+    let mut test_count: usize = 0;
+    let mut test_fail_count: usize = 0;
+
     match dispatch_request(context.clone(), &request_id, &params, &merged).await {
         Ok((name_with_subs, http_request, http_response, _)) => {
             name = name_with_subs;
@@ -874,29 +875,32 @@ async fn dispatch_request_and_test(
                 &context.tests_started,
             ) {
                 Ok(test_response) => {
-                    tests = match test_response {
+                    (tests, output_variables) = match test_response {
                         Some(response) => {
-                            output_variables = if response.output.is_empty() {
+                            let output = if response.output.is_empty() {
                                 None
                             } else {
                                 Some(response.output)
                             };
-                            if let Some(test_result) = &response.results {
-                                test_count += test_result
-                                    .iter()
-                                    .map(|r| r.get_test_count())
-                                    .sum::<usize>();
-                                test_fail_count += test_result
-                                    .iter()
-                                    .map(|r| r.get_test_fail_count())
-                                    .sum::<usize>();
-                            }
-                            response.results
+
+                            // Flatten test neted responses into behaviors
+                            let mut behaviors = Vec::<ApicizeTestBehavior>::new();
+                            flatten_test_results(&response.results, &mut behaviors, &[]);
+                            let test_results = if behaviors.is_empty() {
+                                None
+                            } else {
+                                for b in &behaviors {
+                                    test_count += 1;
+                                    if !b.success {
+                                        test_fail_count += 1;
+                                    }
+                                }
+                                Some(behaviors)
+                            };
+
+                            (test_results, output)
                         }
-                        None => {
-                            output_variables = None;
-                            None
-                        }
+                        None => (None, None),
                     };
                 }
                 Err(err) => {
@@ -1458,6 +1462,36 @@ fn execute_request_test(
             let test_response: ApicizeTestResponse = serde_json::from_str(&s).unwrap();
 
             Ok(Some(test_response))
+        }
+    }
+}
+
+fn flatten_test_results(
+    results: &Option<Vec<ApicizeTestResult>>,
+    behaviors: &mut Vec<ApicizeTestBehavior>,
+    parents: &[String],
+) {
+    if let Some(r) = results {
+        for result in r {
+            match &result {
+                ApicizeTestResult::Scenario(scenario) => {
+                    if scenario.children.is_some() {
+                        let mut new_parents = Vec::from(parents);
+                        new_parents.push(scenario.name.clone());
+                        flatten_test_results(&scenario.children, behaviors, &new_parents);
+                    }
+                }
+                ApicizeTestResult::Behavior(behavior) => {
+                    let mut name = Vec::from(parents);
+                    name.push(behavior.name.clone());
+                    behaviors.push(ApicizeTestBehavior {
+                        name: name.join(" "),
+                        success: behavior.success,
+                        error: behavior.error.clone(),
+                        logs: behavior.logs.clone(),
+                    });
+                }
+            }
         }
     }
 }

@@ -20,7 +20,7 @@ pub struct Proxy {
     /// Location of proxy (URL for HTTP proxy, IP for SOCKS)
     pub url: String,
     /// Validation errors
-    validation_errors: Option<HashMap<String, String>>,
+    pub validation_errors: Option<HashMap<String, String>>,
 }
 
 impl Proxy {

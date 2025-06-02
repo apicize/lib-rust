@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "UPPERCASE")]
 pub enum ExecutionResultSuccess {
-    Success = 0,
-    Failure = 1,
-    Error = 2
+    Success,
+    Failure,
+    Error
 }

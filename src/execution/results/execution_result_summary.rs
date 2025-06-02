@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{ApicizeError, 
-    ApicizeTestResult}
-;
+use crate::{ApicizeError, ApicizeTestBehavior};
 
 use super::execution_result_success::ExecutionResultSuccess;
 
@@ -54,11 +52,12 @@ pub struct ExecutionResultSummary {
     pub success: ExecutionResultSuccess,
 
     // Indicates an error
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<ApicizeError>,
 
     /// Executed test results, if any
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub test_results: Option<Vec<ApicizeTestResult>>,
+    pub test_results: Option<Vec<ApicizeTestBehavior>>,
 
     /// Ordinal run number, if mult-run result
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -76,4 +75,3 @@ pub struct ExecutionResultSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub row_count: Option<usize>,
 }
-

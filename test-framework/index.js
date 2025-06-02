@@ -93,16 +93,16 @@ function pushResult(result) {
 
 function updateTallies(entry) {
     if (entry.children) {
-        entry.success = true
+        entry.passed = true
         for (const child of entry.children) {
             updateTallies(child)
             entry.testCount += child.testCount
             entry.testFailCount += child.testFailCount
-            entry.success &&= child.success
+            entry.passed &&= child.passed
         }
     } else {
         entry.testCount = 1
-        entry.testFailCount = entry.success ? 0 : 1
+        entry.testFailCount = entry.passed ? 0 : 1
     }
 }
 

@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use crate::{ApicizeError, ApicizeExecutionTestContext, ApicizeTestResult, DataContext};
-use super::{execution_result_success::ExecutionResultSuccess};
+use crate::{ApicizeError, ApicizeExecutionTestContext, ApicizeTestBehavior, DataContext};
+
+use super::ExecutionResultSuccess;
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase", tag = "entityType" )]
@@ -42,7 +43,7 @@ pub struct ExecutionResultDetailRequest {
 
     /// Test results (if executed)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tests: Option<Vec<ApicizeTestResult>>,
+    pub tests: Option<Vec<ApicizeTestBehavior>>,
 
     /// Error on dispatch or error execution
     #[serde(skip_serializing_if = "Option::is_none")]

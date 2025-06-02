@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use crate::ApicizeError;
 
-use super::{oauth2_client_tokens::TokenResult, ApicizeBody, ApicizeTestResult};
+use super::{oauth2_client_tokens::TokenResult, ApicizeBody, ApicizeTestBehavior};
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -22,16 +22,18 @@ pub struct ApicizeExecution {
 
     /// Test results (if executed)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tests: Option<Vec<ApicizeTestResult>>,
+    pub tests: Option<Vec<ApicizeTestBehavior>>,
 
     /// Error on dispatch or error execution
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<ApicizeError>,
 
-    /// Success is true if all runs are successful
+    /// Success is rrequest executes and tests all pass
     pub success: bool,
+
     /// Number of passed tests, if request and tests are succesfully run
     pub test_pass_count: usize,
+    
     /// Number of failed tests, if request and tests are succesfully run
     pub test_fail_count: usize,
 }

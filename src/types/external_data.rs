@@ -27,7 +27,7 @@ pub struct ExternalData {
     /// Source of the external data
     pub source: String,
     /// Validation errors
-    validation_errors: Option<HashMap<String, String>>,
+    pub validation_errors: Option<HashMap<String, String>>,
 }
 
 impl Default for ExternalData {

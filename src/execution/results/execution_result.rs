@@ -1,16 +1,8 @@
 use crate::{
-    editing::execution_result_detail::{ExecutionResultDetailGroup, ExecutionResultDetailRequest},
-    ApicizeBody, ApicizeExecution, ApicizeGroupResult, ApicizeGroupResultContent,
-    ApicizeGroupResultRow, ApicizeGroupResultRowContent, ApicizeGroupResultRun,
-    ApicizeRequestResult, ApicizeRequestResultContent, ApicizeRequestResultRow,
-    ApicizeRequestResultRowContent, ApicizeRequestResultRun, ApicizeResult, Identifiable, Tally,
+    execution_result_detail::ExecutionResultDetailRequest, ApicizeBody, ApicizeExecution, ApicizeGroupResult, ApicizeGroupResultContent, ApicizeGroupResultRow, ApicizeGroupResultRowContent, ApicizeGroupResultRun, ApicizeRequestResult, ApicizeRequestResultContent, ApicizeRequestResultRow, ApicizeRequestResultRowContent, ApicizeRequestResultRun, ApicizeResult, Identifiable, Tally
 };
 
-use super::{
-    execution_result_detail::ExecutionResultDetail,
-    execution_result_success::ExecutionResultSuccess,
-    execution_result_summary::ExecutionResultSummary,
-};
+use super::{ExecutionResultDetail, ExecutionResultDetailGroup, ExecutionResultSuccess, ExecutionResultSummary};
 
 pub type ExecutionResult = (ExecutionResultSummary, ExecutionResultDetail);
 
