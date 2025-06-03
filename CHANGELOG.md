@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.23.2
+
+* Fix mult-run reporting
+
 # 0.23.1
 
 * Add multi-run reporting functionality

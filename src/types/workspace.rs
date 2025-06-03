@@ -13,7 +13,9 @@ use csv::WriterBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json::{ser::PrettyFormatter, Map, Value};
 use std::{
-    collections::{HashMap, HashSet}, path::PathBuf, sync::{Arc, Mutex}
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+    sync::{Arc, Mutex},
 };
 
 use super::{
@@ -258,8 +260,6 @@ impl Workspace {
     ) -> Result<RequestExecutionParameters, ApicizeError> {
         let mut done = false;
 
-        // let id = request.get_id();
-        // println!("ID: {}", id);
 
         let mut current = request;
 
@@ -578,10 +578,21 @@ impl Workspace {
             Some(summary) => {
                 let mut name_parts = Vec::from(parent_names);
                 let is_first = parent_names.is_empty();
-                let name_part = if ! is_first && summary.row_number.is_some() && summary.row_count.is_some() {
-                    &format!("Row {} of {}", &summary.row_number.unwrap(), &summary.row_count.unwrap())
-                } else if ! is_first && summary.run_number.is_some() && summary.run_count.is_some() {
-                    &format!("Run {} of {}", &summary.run_number.unwrap(), &summary.run_count.unwrap())
+                let name_part = if !is_first
+                    && summary.row_number.is_some()
+                    && summary.row_count.is_some()
+                {
+                    &format!(
+                        "Row {} of {}",
+                        &summary.row_number.unwrap(),
+                        &summary.row_count.unwrap()
+                    )
+                } else if !is_first && summary.run_number.is_some() && summary.run_count.is_some() {
+                    &format!(
+                        "Run {} of {}",
+                        &summary.run_number.unwrap(),
+                        &summary.run_count.unwrap()
+                    )
                 } else {
                     &summary.name
                 };
@@ -607,7 +618,13 @@ impl Workspace {
                 } else if let Some(child_indexes) = &summary.child_indexes {
                     // Deal with "parent" scenarois
                     for child_index in child_indexes {
-                        Self::generate_csv(run_number, *child_index, summaries, &name_parts, report)?;
+                        Self::generate_csv(
+                            run_number,
+                            *child_index,
+                            summaries,
+                            &name_parts,
+                            report,
+                        )?;
                     }
                 } else if let Some(test_results) = &summary.test_results {
                     // Deal with executed behavior results with tests
@@ -672,7 +689,7 @@ impl Workspace {
             ExecutionReportFormat::CSV => {
                 let mut data = Vec::<ExecutionReportCsv>::new();
                 Self::generate_csv(None, summary_index, summaries, &[], &mut data)?;
-                let mut writer =  WriterBuilder::new().from_writer(Vec::new());
+                let mut writer = WriterBuilder::new().from_writer(Vec::new());
                 for d in data {
                     if let Err(err) = writer.serialize(d) {
                         return Err(ApicizeError::Error {
@@ -687,21 +704,37 @@ impl Workspace {
     }
 
     /// Generate a report from summarized execution results
-    pub fn geneate_multirun_report(
-        run_summaries: &[Vec<ExecutionResultSummary>],
+    pub fn generate_multirun_report(
+        run_summaries: HashMap<usize, Vec<Vec<ExecutionResultSummary>>>,
         format: ExecutionReportFormat,
     ) -> Result<String, ApicizeError> {
         match format {
             ExecutionReportFormat::JSON => {
-                let mut all_data = HashMap::<usize, Vec::<ExecutionReportJson>>::new();
+                let mut all_data = HashMap::<usize, Vec<ExecutionReportJson>>::new();
 
-                for run in 0..run_summaries.len() {
-                    let summaries = run_summaries.get(run).unwrap();
-                    let mut data = Vec::<ExecutionReportJson>::new();
-                    for summary_index in 0..summaries.len() {
-                        Self::generate_json(summary_index, summaries, &mut data)?;
+                for (run_number, summary_set) in run_summaries.into_iter() {
+                    for summaries in summary_set {
+                        let mut data = Vec::<ExecutionReportJson>::new();
+                        let root_indexes: Vec<usize> = summaries
+                            .iter()
+                            .filter_map(|s| {
+                                if s.parent_index.is_none() {
+                                    Some(s.index)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        for index in root_indexes {
+                            Self::generate_json(index, &summaries, &mut data)?;
+                        }
+
+                        if let Some(entry) = all_data.get_mut(&run_number) {
+                            entry.extend(data);
+                        } else {
+                            all_data.insert(run_number, data);
+                        }
                     }
-                    all_data.insert(run + 1, data);
                 }
 
                 let mut buf = Vec::new();
@@ -712,15 +745,32 @@ impl Workspace {
             }
             ExecutionReportFormat::CSV => {
                 let mut data = Vec::<ExecutionReportCsv>::new();
-                
-                for run in 0..run_summaries.len() {
-                    let summaries = run_summaries.get(run).unwrap();
-                    for summary_index in 0..summaries.len() {
-                        Self::generate_csv(Some(run + 1), summary_index, summaries, &[], &mut data)?;
+
+                for (run_number, summary_set) in run_summaries.into_iter() {
+                    for summaries in summary_set {
+                        let root_indexes: Vec<usize> = summaries
+                            .iter()
+                            .filter_map(|s| {
+                                if s.parent_index.is_none() {
+                                    Some(s.index)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        for index in root_indexes {
+                            Self::generate_csv(
+                                Some(run_number),
+                                index,
+                                &summaries,
+                                &[],
+                                &mut data,
+                            )?;
+                        }
                     }
                 }
 
-                let mut writer =  WriterBuilder::new().from_writer(Vec::new());
+                let mut writer = WriterBuilder::new().from_writer(Vec::new());
                 for d in data {
                     if let Err(err) = writer.serialize(d) {
                         return Err(ApicizeError::Error {
@@ -732,7 +782,7 @@ impl Workspace {
                 Ok(String::from_utf8(writer.into_inner().unwrap()).unwrap())
             }
         }
-    }    
+    }
 }
 
 /// Parameters to use when executing a request/group,

@@ -1,8 +1,15 @@
 use crate::{
-    execution_result_detail::ExecutionResultDetailRequest, ApicizeBody, ApicizeExecution, ApicizeGroupResult, ApicizeGroupResultContent, ApicizeGroupResultRow, ApicizeGroupResultRowContent, ApicizeGroupResultRun, ApicizeRequestResult, ApicizeRequestResultContent, ApicizeRequestResultRow, ApicizeRequestResultRowContent, ApicizeRequestResultRun, ApicizeResult, Identifiable, Tally
+    execution_result_detail::ExecutionResultDetailRequest, ApicizeBody, ApicizeExecution,
+    ApicizeGroupResult, ApicizeGroupResultContent, ApicizeGroupResultRow,
+    ApicizeGroupResultRowContent, ApicizeGroupResultRun, ApicizeRequestResult,
+    ApicizeRequestResultContent, ApicizeRequestResultRow, ApicizeRequestResultRowContent,
+    ApicizeRequestResultRun, ApicizeResult, Identifiable, Tally,
 };
 
-use super::{ExecutionResultDetail, ExecutionResultDetailGroup, ExecutionResultSuccess, ExecutionResultSummary};
+use super::{
+    ExecutionResultDetail, ExecutionResultDetailGroup, ExecutionResultSuccess,
+    ExecutionResultSummary,
+};
 
 pub type ExecutionResult = (ExecutionResultSummary, ExecutionResultDetail);
 
@@ -476,7 +483,11 @@ impl ListAppendable for ApicizeGroupResult {
             ApicizeGroupResultContent::Results { results } => {
                 child_indexes = vec![];
                 for result in results {
-                    child_indexes.extend(result.append_to_list(list, level + 1, Some(parent_index)));
+                    child_indexes.extend(result.append_to_list(
+                        list,
+                        level + 1,
+                        Some(parent_index),
+                    ));
                 }
             }
         }
