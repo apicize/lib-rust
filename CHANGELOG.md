@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.23.1
+
+* Add multi-run reporting functionality
+
 # 0.23.0
 
 * Add CSV reporting output

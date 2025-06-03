@@ -568,6 +568,7 @@ impl Workspace {
 
     // Append specified index, including children, to the results
     fn generate_csv(
+        run_number: Option<usize>,
         summary_index: usize,
         summaries: &Vec<ExecutionResultSummary>,
         parent_names: &[&str],
@@ -585,11 +586,12 @@ impl Workspace {
                     &summary.name
                 };
 
-                name_parts.push(&name_part);
+                name_parts.push(name_part);
 
                 if summary.error.is_some() {
                     // Deal with summaries with errors
                     report.push(ExecutionReportCsv {
+                        run_number,
                         name: name_parts.join(", "),
                         executed_at: summary.executed_at,
                         duration: summary.duration,
@@ -605,12 +607,13 @@ impl Workspace {
                 } else if let Some(child_indexes) = &summary.child_indexes {
                     // Deal with "parent" scenarois
                     for child_index in child_indexes {
-                        Self::generate_csv(*child_index, summaries, &name_parts, report)?;
+                        Self::generate_csv(run_number, *child_index, summaries, &name_parts, report)?;
                     }
                 } else if let Some(test_results) = &summary.test_results {
                     // Deal with executed behavior results with tests
                     for test_result in test_results {
                         report.push(ExecutionReportCsv {
+                            run_number,
                             name: name_parts.join(", "),
                             executed_at: summary.executed_at,
                             duration: summary.duration,
@@ -627,6 +630,7 @@ impl Workspace {
                 } else {
                     // Deal with executed behavior results without tests
                     report.push(ExecutionReportCsv {
+                        run_number,
                         name: name_parts.join(", "),
                         executed_at: summary.executed_at,
                         duration: summary.duration,
@@ -667,7 +671,7 @@ impl Workspace {
             }
             ExecutionReportFormat::CSV => {
                 let mut data = Vec::<ExecutionReportCsv>::new();
-                Self::generate_csv(summary_index, summaries, &[], &mut data)?;
+                Self::generate_csv(None, summary_index, summaries, &[], &mut data)?;
                 let mut writer =  WriterBuilder::new().from_writer(Vec::new());
                 for d in data {
                     if let Err(err) = writer.serialize(d) {
@@ -681,6 +685,54 @@ impl Workspace {
             }
         }
     }
+
+    /// Generate a report from summarized execution results
+    pub fn geneate_multirun_report(
+        run_summaries: &[Vec<ExecutionResultSummary>],
+        format: ExecutionReportFormat,
+    ) -> Result<String, ApicizeError> {
+        match format {
+            ExecutionReportFormat::JSON => {
+                let mut all_data = HashMap::<usize, Vec::<ExecutionReportJson>>::new();
+
+                for run in 0..run_summaries.len() {
+                    let summaries = run_summaries.get(run).unwrap();
+                    let mut data = Vec::<ExecutionReportJson>::new();
+                    for summary_index in 0..summaries.len() {
+                        Self::generate_json(summary_index, summaries, &mut data)?;
+                    }
+                    all_data.insert(run + 1, data);
+                }
+
+                let mut buf = Vec::new();
+                let formatter = PrettyFormatter::with_indent(b"    ");
+                let mut ser = serde_json::Serializer::with_formatter(&mut buf, formatter);
+                all_data.serialize(&mut ser).unwrap();
+                Ok(String::from_utf8(buf).unwrap())
+            }
+            ExecutionReportFormat::CSV => {
+                let mut data = Vec::<ExecutionReportCsv>::new();
+                
+                for run in 0..run_summaries.len() {
+                    let summaries = run_summaries.get(run).unwrap();
+                    for summary_index in 0..summaries.len() {
+                        Self::generate_csv(Some(run + 1), summary_index, summaries, &[], &mut data)?;
+                    }
+                }
+
+                let mut writer =  WriterBuilder::new().from_writer(Vec::new());
+                for d in data {
+                    if let Err(err) = writer.serialize(d) {
+                        return Err(ApicizeError::Error {
+                            description: format!("{}", &err),
+                            source: None,
+                        });
+                    }
+                }
+                Ok(String::from_utf8(writer.into_inner().unwrap()).unwrap())
+            }
+        }
+    }    
 }
 
 /// Parameters to use when executing a request/group,

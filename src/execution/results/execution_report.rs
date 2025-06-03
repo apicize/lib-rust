@@ -67,6 +67,10 @@ pub struct ExecutionReportJson {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionReportCsv {
+    /// Set to run number if a multi-run execution from CLI tool
+    #[serde(rename = "Run #", skip_serializing_if = "Option::is_none")]
+    pub run_number: Option<usize>,
+    
     /// Fully qualified request name
     #[serde(rename = "Name")]
     pub name: String,
