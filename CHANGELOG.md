@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.23.4
+
+* Add substitution to test text
+
 # 0.23.3
 
 * Fix populating form data

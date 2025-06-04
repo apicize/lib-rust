@@ -858,53 +858,76 @@ async fn dispatch_request_and_test(
         false => Some(merged_vars),
     };
 
+    let subs = match &merged {
+        Some(m) => m
+            .iter()
+            .map(|(name, value)| {
+                let v = if let Some(s) = value.as_str() {
+                    String::from(s)
+                } else {
+                    format!("{}", value)
+                };
+                (format!("{{{{{}}}}}", name), v)
+            })
+            .collect::<HashMap<String, String>>(),
+        None => HashMap::new(),
+    };
+
     let mut test_count: usize = 0;
     let mut test_fail_count: usize = 0;
 
-    match dispatch_request(context.clone(), &request_id, &params, &merged).await {
+    match dispatch_request(context.clone(), &request_id, &params, &subs).await {
         Ok((name_with_subs, http_request, http_response, _)) => {
             name = name_with_subs;
 
-            match execute_request_test(
-                &request.test,
-                &http_request,
-                &http_response,
-                &params.variables,
-                &state.row,
-                &state.output_variables,
-                &context.tests_started,
-            ) {
-                Ok(test_response) => {
-                    (tests, output_variables) = match test_response {
-                        Some(response) => {
-                            let output = if response.output.is_empty() {
-                                None
-                            } else {
-                                Some(response.output)
-                            };
+            match &request.test {
+                Some(t) => {
+                    match execute_request_test(
+                        RequestEntry::clone_and_sub(t, &subs).as_str(),
+                        &http_request,
+                        &http_response,
+                        &params.variables,
+                        &state.row,
+                        &state.output_variables,
+                        &context.tests_started,
+                    ) {
+                        Ok(test_response) => {
+                            (tests, output_variables) = match test_response {
+                                Some(response) => {
+                                    let output = if response.output.is_empty() {
+                                        None
+                                    } else {
+                                        Some(response.output)
+                                    };
 
-                            // Flatten test neted responses into behaviors
-                            let mut behaviors = Vec::<ApicizeTestBehavior>::new();
-                            flatten_test_results(&response.results, &mut behaviors, &[]);
-                            let test_results = if behaviors.is_empty() {
-                                None
-                            } else {
-                                for b in &behaviors {
-                                    test_count += 1;
-                                    if !b.success {
-                                        test_fail_count += 1;
-                                    }
+                                    // Flatten test neted responses into behaviors
+                                    let mut behaviors = Vec::<ApicizeTestBehavior>::new();
+                                    flatten_test_results(&response.results, &mut behaviors, &[]);
+                                    let test_results = if behaviors.is_empty() {
+                                        None
+                                    } else {
+                                        for b in &behaviors {
+                                            test_count += 1;
+                                            if !b.success {
+                                                test_fail_count += 1;
+                                            }
+                                        }
+                                        Some(behaviors)
+                                    };
+
+                                    (test_results, output)
                                 }
-                                Some(behaviors)
+                                None => (None, None),
                             };
-
-                            (test_results, output)
                         }
-                        None => (None, None),
-                    };
+                        Err(err) => {
+                            error = Some(err);
+                        }
+                    }
                 }
-                Err(err) => {
-                    error = Some(err);
+                None => {
+                    tests = None;
+                    output_variables = None;
                 }
             }
 
@@ -943,7 +966,7 @@ async fn dispatch_request(
     context: Arc<TestRunnerContext>,
     request_id: &str,
     params: &RequestExecutionParameters,
-    merged: &Option<Map<String, Value>>,
+    subs: &HashMap<String, String>,
 ) -> Result<
     (
         String,
@@ -984,21 +1007,6 @@ async fn dispatch_request(
     //     keep_alive = true;
     // }
 
-    let subs = match merged {
-        Some(m) => m
-            .iter()
-            .map(|(name, value)| {
-                let v = if let Some(s) = value.as_str() {
-                    String::from(s)
-                } else {
-                    format!("{}", value)
-                };
-                (format!("{{{{{}}}}}", name), v)
-            })
-            .collect::<HashMap<String, String>>(),
-        None => HashMap::new(),
-    };
-
     // Build the reqwest client and request
     let mut reqwest_builder = Client::builder()
         // .http2_keep_alive_while_idle(keep_alive)
@@ -1028,11 +1036,11 @@ async fn dispatch_request(
     let builder_result = reqwest_builder.build();
     let mut oauth2_token: Option<TokenResult> = None;
 
-    let name = RequestEntry::clone_and_sub(&request.name, &subs);
+    let name = RequestEntry::clone_and_sub(&request.name, subs);
 
     match builder_result {
         Ok(client) => {
-            let mut url = RequestEntry::clone_and_sub(request.url.as_str(), &subs)
+            let mut url = RequestEntry::clone_and_sub(request.url.as_str(), subs)
                 .trim()
                 .to_string();
             if !(url.starts_with("https://") || url.starts_with("http://")) {
@@ -1067,11 +1075,11 @@ async fn dispatch_request(
                     if nvp.disabled != Some(true) {
                         headers.insert(
                             reqwest::header::HeaderName::try_from(RequestEntry::clone_and_sub(
-                                &nvp.name, &subs,
+                                &nvp.name, subs,
                             ))
                             .unwrap(),
                             reqwest::header::HeaderValue::try_from(RequestEntry::clone_and_sub(
-                                &nvp.value, &subs,
+                                &nvp.value, subs,
                             ))
                             .unwrap(),
                         );
@@ -1157,8 +1165,8 @@ async fn dispatch_request(
                 for nvp in q {
                     if nvp.disabled != Some(true) {
                         query.push((
-                            RequestEntry::clone_and_sub(&nvp.name, &subs),
-                            RequestEntry::clone_and_sub(&nvp.value, &subs),
+                            RequestEntry::clone_and_sub(&nvp.name, subs),
+                            RequestEntry::clone_and_sub(&nvp.value, subs),
                         ));
                     }
                 }
@@ -1169,14 +1177,14 @@ async fn dispatch_request(
             let mut request_body: Option<ApicizeBody>;
             match &request.body {
                 Some(RequestBody::Text { data }) => {
-                    let s = RequestEntry::clone_and_sub(data, &subs);
+                    let s = RequestEntry::clone_and_sub(data, subs);
                     request_body = Some(ApicizeBody::Text {
                         text: "".to_string(),
                     });
                     request_builder = request_builder.body(Body::from(s.clone()));
                 }
                 Some(RequestBody::JSON { data, .. }) => {
-                    let s = RequestEntry::clone_and_sub(data, &subs);
+                    let s = RequestEntry::clone_and_sub(data, subs);
                     request_body = match serde_json::from_str::<Value>(&s) {
                         Ok(data) => Some(ApicizeBody::JSON {
                             text: "".to_string(),
@@ -1187,7 +1195,7 @@ async fn dispatch_request(
                     request_builder = request_builder.body(Body::from(s));
                 }
                 Some(RequestBody::XML { data }) => {
-                    let s = RequestEntry::clone_and_sub(data, &subs);
+                    let s = RequestEntry::clone_and_sub(data, subs);
                     request_body = match to_json(data) {
                         Ok(data) => Some(ApicizeBody::XML {
                             text: "".to_string(),
@@ -1202,8 +1210,8 @@ async fn dispatch_request(
                         .iter()
                         .map(|pair| {
                             (
-                                RequestEntry::clone_and_sub(&pair.name, &subs),
-                                RequestEntry::clone_and_sub(&pair.value, &subs),
+                                RequestEntry::clone_and_sub(&pair.name, subs),
+                                RequestEntry::clone_and_sub(&pair.value, subs),
                             )
                         })
                         .collect::<HashMap<String, String>>();
@@ -1390,7 +1398,7 @@ async fn dispatch_request(
 
 /// Execute the specified request's tests
 fn execute_request_test(
-    execute_test: &Option<String>,
+    test: &str,
     request: &ApicizeHttpRequest,
     response: &ApicizeHttpResponse,
     variables: &Option<Map<String, Value>>,
@@ -1398,72 +1406,66 @@ fn execute_request_test(
     output: &Option<Map<String, Value>>,
     tests_started: &Instant,
 ) -> Result<Option<ApicizeTestResponse>, ApicizeError> {
-    // Return empty test results if no test
-    match execute_test {
-        None => Ok(None),
-        Some(test) => {
-            // Ensure V8 is initialized
-            V8_INIT.call_once(|| {
-                let platform = v8::new_unprotected_default_platform(0, false).make_shared();
-                v8::V8::initialize_platform(platform);
-                v8::V8::initialize();
-            });
+    // Ensure V8 is initialized
+    V8_INIT.call_once(|| {
+        let platform = v8::new_unprotected_default_platform(0, false).make_shared();
+        v8::V8::initialize_platform(platform);
+        v8::V8::initialize();
+    });
 
-            // Create a new Isolate and make it the current one.
-            let isolate = &mut v8::Isolate::new(v8::CreateParams::default());
+    // Create a new Isolate and make it the current one.
+    let isolate = &mut v8::Isolate::new(v8::CreateParams::default());
 
-            // Create a stack-allocated handle scope.
-            let scope = &mut v8::HandleScope::new(isolate);
-            let context = v8::Context::new(scope, Default::default());
-            let scope = &mut v8::ContextScope::new(scope, context);
+    // Create a stack-allocated handle scope.
+    let scope = &mut v8::HandleScope::new(isolate);
+    let context = v8::Context::new(scope, Default::default());
+    let scope = &mut v8::ContextScope::new(scope, context);
 
-            let mut init_code = String::new();
-            init_code.push_str(include_str!(concat!(env!("OUT_DIR"), "/framework.min.js")));
+    let mut init_code = String::new();
+    init_code.push_str(include_str!(concat!(env!("OUT_DIR"), "/framework.min.js")));
 
-            // Compile the source code
-            let v8_code = v8::String::new(scope, &init_code).unwrap();
-            let script = v8::Script::compile(scope, v8_code, None).unwrap();
-            script.run(scope).unwrap();
+    // Compile the source code
+    let v8_code = v8::String::new(scope, &init_code).unwrap();
+    let script = v8::Script::compile(scope, v8_code, None).unwrap();
+    script.run(scope).unwrap();
 
-            let tc = &mut v8::TryCatch::new(scope);
+    let tc = &mut v8::TryCatch::new(scope);
 
-            let cloned_tests_started = tests_started;
+    let cloned_tests_started = tests_started;
 
-            let mut init_code = String::new();
-            init_code.push_str(&format!(
-                "runTestSuite({}, {}, {}, {}, {}, {}, () => {{{}}})",
-                serde_json::to_string(request).unwrap(),
-                serde_json::to_string(response).unwrap(),
-                serde_json::to_string(&variables).unwrap(),
-                serde_json::to_string(&data).unwrap(),
-                serde_json::to_string(&output).unwrap(),
-                std::time::UNIX_EPOCH.elapsed().unwrap().as_millis()
-                    - cloned_tests_started.elapsed().as_millis()
-                    + 1,
-                test,
-            ));
+    let mut init_code = String::new();
+    init_code.push_str(&format!(
+        "runTestSuite({}, {}, {}, {}, {}, {}, () => {{{}}})",
+        serde_json::to_string(request).unwrap(),
+        serde_json::to_string(response).unwrap(),
+        serde_json::to_string(&variables).unwrap(),
+        serde_json::to_string(&data).unwrap(),
+        serde_json::to_string(&output).unwrap(),
+        std::time::UNIX_EPOCH.elapsed().unwrap().as_millis()
+            - cloned_tests_started.elapsed().as_millis()
+            + 1,
+        test,
+    ));
 
-            let v8_code = v8::String::new(tc, &init_code).unwrap();
+    let v8_code = v8::String::new(tc, &init_code).unwrap();
 
-            let Some(script) = v8::Script::compile(tc, v8_code, None) else {
-                let message = tc.message().unwrap();
-                let message = message.get(tc).to_rust_string_lossy(tc);
-                return Err(ApicizeError::from_failed_test(message));
-            };
+    let Some(script) = v8::Script::compile(tc, v8_code, None) else {
+        let message = tc.message().unwrap();
+        let message = message.get(tc).to_rust_string_lossy(tc);
+        return Err(ApicizeError::from_failed_test(message));
+    };
 
-            let Some(value) = script.run(tc) else {
-                let message = tc.message().unwrap();
-                let message = message.get(tc).to_rust_string_lossy(tc);
-                return Err(ApicizeError::from_failed_test(message));
-            };
+    let Some(value) = script.run(tc) else {
+        let message = tc.message().unwrap();
+        let message = message.get(tc).to_rust_string_lossy(tc);
+        return Err(ApicizeError::from_failed_test(message));
+    };
 
-            let result = value.to_string(tc);
-            let s = result.unwrap().to_rust_string_lossy(tc);
-            let test_response: ApicizeTestResponse = serde_json::from_str(&s).unwrap();
+    let result = value.to_string(tc);
+    let s = result.unwrap().to_rust_string_lossy(tc);
+    let test_response: ApicizeTestResponse = serde_json::from_str(&s).unwrap();
 
-            Ok(Some(test_response))
-        }
-    }
+    Ok(Some(test_response))
 }
 
 fn flatten_test_results(
