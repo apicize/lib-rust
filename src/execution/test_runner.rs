@@ -1202,8 +1202,8 @@ async fn dispatch_request(
                         .iter()
                         .map(|pair| {
                             (
-                                String::from(pair.name.as_str()),
-                                String::from(pair.value.as_str()),
+                                RequestEntry::clone_and_sub(&pair.name, &subs),
+                                RequestEntry::clone_and_sub(&pair.value, &subs),
                             )
                         })
                         .collect::<HashMap<String, String>>();
