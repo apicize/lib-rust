@@ -2,6 +2,7 @@
 //!
 //! This library supports dispatching Apicize functional web tests
 use regex::Regex;
+use reqwest::redirect::Policy;
 use std::collections::HashMap;
 use std::net::{TcpStream, ToSocketAddrs};
 use std::path::PathBuf;
@@ -1000,16 +1001,15 @@ async fn dispatch_request(
         Duration::from_secs(30)
     };
 
-    // let keep_alive: bool;
-    // if let Some(b) = request.keep_alive {
-    //     keep_alive = b;
-    // } else {
-    //     keep_alive = true;
-    // }
-
     // Build the reqwest client and request
     let mut reqwest_builder = Client::builder()
-        // .http2_keep_alive_while_idle(keep_alive)
+        .http2_keep_alive_while_idle(request.keep_alive)
+        .danger_accept_invalid_certs(request.accept_invalid_certs)
+        .redirect(if request.number_of_redirects == 0 {
+            Policy::none()
+        } else {
+            Policy::limited(request.number_of_redirects)
+        })
         .timeout(timeout)
         .connection_verbose(context.enable_trace);
 

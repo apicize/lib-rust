@@ -12,6 +12,23 @@ use serde_with::formats::Unpadded;
 use serde_with::serde_as;
 use xmltojson::to_json;
 
+
+pub fn default_runs() -> usize {
+    1
+}
+
+pub fn is_default_runs(value: &usize) -> bool {
+    *value == 1
+}
+
+fn default_redirects() -> usize {
+    10
+}
+
+fn is_default_redirects(value: &usize) -> bool {
+    *value == 10
+}
+
 /// Enumeration of HTTP methods
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "UPPERCASE")]
@@ -77,6 +94,18 @@ pub enum ExecutionConcurrency {
     Concurrent,
 }
 
+impl Default for ExecutionConcurrency {
+    fn default() -> Self {
+        ExecutionConcurrency::Sequential
+    }
+}
+
+impl ExecutionConcurrency {
+    fn is_default(value: &ExecutionConcurrency) -> bool {
+        *value == ExecutionConcurrency::Sequential
+    }
+}
+
 /// Information required to dispatch and test an Apicize Request
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -107,13 +136,19 @@ pub struct Request {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<RequestBody>,
     /// Keep HTTP connection alive
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub keep_alive: Option<bool>,
+    #[serde(default = "bool::default", skip_serializing_if = "std::ops::Not::not")]
+    pub keep_alive: bool,
+    /// Allow invalid certificates (default is false)
+    #[serde(default = "bool::default", skip_serializing_if = "std::ops::Not::not")]
+    pub accept_invalid_certs: bool,
+    /// Number redirects (default = 10)
+    #[serde(default = "default_redirects", skip_serializing_if = "is_default_redirects")]
+    pub number_of_redirects: usize,
     /// Number of runs for the request to execute
-    #[serde(default = "one")]
+    #[serde(default = "default_runs", skip_serializing_if = "is_default_runs")]
     pub runs: usize,
     /// Execution of multiple runs
-    #[serde(default = "sequential")]
+    #[serde(skip_serializing_if = "ExecutionConcurrency::is_default")]
     pub multi_run_execution: ExecutionConcurrency,
     /// Selected scenario, if applicable
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -150,13 +185,13 @@ pub struct RequestGroup {
     /// Child items
     pub children: Option<Vec<RequestEntry>>,
     /// Execution of children
-    #[serde(default = "sequential")]
+    #[serde(skip_serializing_if = "ExecutionConcurrency::is_default")]
     pub execution: ExecutionConcurrency,
     /// Number of runs for the group to execute
-    #[serde(default = "one")]
+    #[serde(default = "default_runs", skip_serializing_if = "is_default_runs")]
     pub runs: usize,
     /// Execution of multiple runs
-    #[serde(default = "sequential")]
+    #[serde(skip_serializing_if = "ExecutionConcurrency::is_default")]
     pub multi_run_execution: ExecutionConcurrency,
     /// Selected scenario, if applicable
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -290,6 +325,8 @@ impl Default for Request {
             selected_data: Default::default(),
             warnings: Default::default(),
             validation_errors: None,
+            accept_invalid_certs: false,
+            number_of_redirects: default_redirects(),
         }
     }
 }
@@ -589,10 +626,16 @@ pub struct StoredRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<StoredRequestBody>,
     /// Keep HTTP connection alive
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub keep_alive: Option<bool>,
+    #[serde(default = "bool::default", skip_serializing_if = "std::ops::Not::not")]
+    pub keep_alive: bool,
+    /// Allow invalid certificates (default is false)
+    #[serde(default = "bool::default", skip_serializing_if = "std::ops::Not::not")]
+    pub accept_invalid_certs: bool,
+    /// Number redirects (default = 10)
+    #[serde(default = "default_redirects", skip_serializing_if = "is_default_redirects")]
+    pub number_of_redirects: usize,
     /// Number of runs for the request to execute
-    #[serde(default = "one")]
+    #[serde(default = "default_runs", skip_serializing_if = "is_default_runs")]
     pub runs: usize,
     /// Execution of multiple runs
     #[serde(default = "sequential")]
@@ -632,7 +675,7 @@ pub struct StoredRequestGroup {
     #[serde(default = "sequential")]
     pub execution: ExecutionConcurrency,
     /// Number of runs for the group to execute
-    #[serde(default = "one")]
+    #[serde(default = "default_runs", skip_serializing_if = "is_default_runs")]
     pub runs: usize,
     /// Execution of multiple runs
     #[serde(default = "sequential")]
@@ -713,6 +756,8 @@ impl StoredRequestEntry {
                     None => None,
                 },
                 keep_alive: request.keep_alive,
+                accept_invalid_certs: request.accept_invalid_certs,
+                number_of_redirects: request.number_of_redirects,
                 runs: request.runs,
                 multi_run_execution: request.multi_run_execution,
                 selected_scenario: request.selected_scenario,
@@ -786,6 +831,8 @@ impl StoredRequestEntry {
                     None => None,
                 },
                 keep_alive: stored_request.keep_alive,
+                accept_invalid_certs: stored_request.accept_invalid_certs,
+                number_of_redirects: stored_request.number_of_redirects,
                 runs: stored_request.runs,
                 multi_run_execution: stored_request.multi_run_execution,
                 selected_scenario: stored_request.selected_scenario,
