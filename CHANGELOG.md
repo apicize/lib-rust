@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.24.1
+
+* Restore serialization for concurrency default values
+
 # 0.24.0
 
 * Support keep alive, allow invalid certs and number of redirect options

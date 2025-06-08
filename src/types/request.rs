@@ -85,25 +85,14 @@ pub enum RequestBody {
 }
 
 /// Indicator on  request execution order
-#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Clone, Default)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum ExecutionConcurrency {
     /// Requests are executed sequentially
+    #[default]
     Sequential,
     /// Requests are executed concurrently
     Concurrent,
-}
-
-impl Default for ExecutionConcurrency {
-    fn default() -> Self {
-        ExecutionConcurrency::Sequential
-    }
-}
-
-impl ExecutionConcurrency {
-    fn is_default(value: &ExecutionConcurrency) -> bool {
-        *value == ExecutionConcurrency::Sequential
-    }
 }
 
 /// Information required to dispatch and test an Apicize Request
@@ -148,7 +137,7 @@ pub struct Request {
     #[serde(default = "default_runs", skip_serializing_if = "is_default_runs")]
     pub runs: usize,
     /// Execution of multiple runs
-    #[serde(skip_serializing_if = "ExecutionConcurrency::is_default")]
+    #[serde(default)]
     pub multi_run_execution: ExecutionConcurrency,
     /// Selected scenario, if applicable
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -185,13 +174,13 @@ pub struct RequestGroup {
     /// Child items
     pub children: Option<Vec<RequestEntry>>,
     /// Execution of children
-    #[serde(skip_serializing_if = "ExecutionConcurrency::is_default")]
+    #[serde(default)]
     pub execution: ExecutionConcurrency,
     /// Number of runs for the group to execute
     #[serde(default = "default_runs", skip_serializing_if = "is_default_runs")]
     pub runs: usize,
     /// Execution of multiple runs
-    #[serde(skip_serializing_if = "ExecutionConcurrency::is_default")]
+    #[serde(default)]
     pub multi_run_execution: ExecutionConcurrency,
     /// Selected scenario, if applicable
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -638,7 +627,7 @@ pub struct StoredRequest {
     #[serde(default = "default_runs", skip_serializing_if = "is_default_runs")]
     pub runs: usize,
     /// Execution of multiple runs
-    #[serde(default = "sequential")]
+    #[serde(default)]
     pub multi_run_execution: ExecutionConcurrency,
     /// Selected scenario, if applicable
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -672,13 +661,13 @@ pub struct StoredRequestGroup {
     /// Child items
     pub children: Option<Vec<StoredRequestEntry>>,
     /// Execution of children
-    #[serde(default = "sequential")]
+    #[serde(default)]
     pub execution: ExecutionConcurrency,
     /// Number of runs for the group to execute
     #[serde(default = "default_runs", skip_serializing_if = "is_default_runs")]
     pub runs: usize,
     /// Execution of multiple runs
-    #[serde(default = "sequential")]
+    #[serde(default)]
     pub multi_run_execution: ExecutionConcurrency,
     /// Selected scenario, if applicable
     #[serde(skip_serializing_if = "Option::is_none")]
