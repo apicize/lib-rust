@@ -17,16 +17,8 @@ pub fn default_runs() -> usize {
     1
 }
 
-pub fn is_default_runs(value: &usize) -> bool {
-    *value == 1
-}
-
 fn default_redirects() -> usize {
     10
-}
-
-fn is_default_redirects(value: &usize) -> bool {
-    *value == 10
 }
 
 /// Enumeration of HTTP methods
@@ -131,10 +123,10 @@ pub struct Request {
     #[serde(default = "bool::default", skip_serializing_if = "std::ops::Not::not")]
     pub accept_invalid_certs: bool,
     /// Number redirects (default = 10)
-    #[serde(default = "default_redirects", skip_serializing_if = "is_default_redirects")]
+    #[serde(default = "default_redirects")]
     pub number_of_redirects: usize,
     /// Number of runs for the request to execute
-    #[serde(default = "default_runs", skip_serializing_if = "is_default_runs")]
+    #[serde(default = "default_runs")]
     pub runs: usize,
     /// Execution of multiple runs
     #[serde(default)]
@@ -177,7 +169,7 @@ pub struct RequestGroup {
     #[serde(default)]
     pub execution: ExecutionConcurrency,
     /// Number of runs for the group to execute
-    #[serde(default = "default_runs", skip_serializing_if = "is_default_runs")]
+    #[serde(default = "default_runs")]
     pub runs: usize,
     /// Execution of multiple runs
     #[serde(default)]
@@ -621,10 +613,10 @@ pub struct StoredRequest {
     #[serde(default = "bool::default", skip_serializing_if = "std::ops::Not::not")]
     pub accept_invalid_certs: bool,
     /// Number redirects (default = 10)
-    #[serde(default = "default_redirects", skip_serializing_if = "is_default_redirects")]
+    #[serde(default = "default_redirects")]
     pub number_of_redirects: usize,
     /// Number of runs for the request to execute
-    #[serde(default = "default_runs", skip_serializing_if = "is_default_runs")]
+    #[serde(default = "default_runs")]
     pub runs: usize,
     /// Execution of multiple runs
     #[serde(default)]
@@ -664,7 +656,7 @@ pub struct StoredRequestGroup {
     #[serde(default)]
     pub execution: ExecutionConcurrency,
     /// Number of runs for the group to execute
-    #[serde(default = "default_runs", skip_serializing_if = "is_default_runs")]
+    #[serde(default = "default_runs")]
     pub runs: usize,
     /// Execution of multiple runs
     #[serde(default)]

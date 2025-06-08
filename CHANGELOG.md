@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.24.2
+
+* Restore serialization for default runs and redirects
+
 # 0.24.1
 
 * Restore serialization for concurrency default values
