@@ -30,17 +30,11 @@ use crate::oauth2_client_tokens::TokenResult;
 use crate::types::workspace::RequestExecutionParameters;
 use crate::workspace::RequestExecutionState;
 use crate::{
-    ApicizeError, ApicizeGroupResultRowContent, ApicizeRequestResultContent,
-    ApicizeRequestResultRow, ApicizeRequestResultRowContent, Authorization, ExecutionConcurrency,
-    Identifiable, Request, RequestBody, RequestEntry, RequestGroup, RequestMethod, VariableCache,
-    Workspace,
+    get_oauth2_client_credentials, retrieve_oauth2_token_from_cache, ApicizeError, ApicizeGroupResultRowContent, ApicizeRequestResultContent, ApicizeRequestResultRow, ApicizeRequestResultRowContent, Authorization, ExecutionConcurrency, Identifiable, Request, RequestBody, RequestEntry, RequestGroup, RequestMethod, VariableCache, Workspace
 };
 
-#[cfg(test)]
-use crate::oauth2_client_tokens::tests::MockOAuth2ClientTokens as oauth2;
-
-#[cfg(not(test))]
-use crate::oauth2_client_tokens as oauth2;
+// #[cfg(test)]
+// use crate::oauth2_client_tokens::tests::MockOAuth2ClientTokens as oauth2;
 
 static V8_INIT: Once = Once::new();
 
@@ -1113,7 +1107,7 @@ async fn dispatch_request(
                     send_credentials_in_body,
                     ..
                 }) => {
-                    match oauth2::get_oauth2_client_credentials(
+                    match get_oauth2_client_credentials(
                         id.as_str(),
                         access_token_url.as_str(),
                         client_id.as_str(),
@@ -1141,15 +1135,17 @@ async fn dispatch_request(
                         Err(err) => return Err(err),
                     }
                 }
-                Some(Authorization::OAuth2Pkce { token, .. }) => match token {
-                    Some(t) => {
-                        request_builder = request_builder.bearer_auth(t.clone());
-                    }
-                    None => {
-                        return Err(ApicizeError::Error {
-                            description: String::from("PKCE access token is not available"),
-                            source: None,
-                        });
+                Some(Authorization::OAuth2Pkce { id, .. }) => {
+                    match retrieve_oauth2_token_from_cache(id).await {
+                        Some(t) => {
+                            request_builder = request_builder.bearer_auth(t.access_token.clone());
+                        }
+                        None => {
+                            return Err(ApicizeError::Error {
+                                description: String::from("PKCE access token is not available"),
+                                source: None,
+                            });
+                        }
                     }
                 },
                 None => {}

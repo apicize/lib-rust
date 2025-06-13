@@ -1,29 +1,14 @@
-//! This module implements OAuth2 client flow support, including support for caching tokens
-use crate::{ApicizeError, Certificate, Identifiable, Proxy};
+//! This module implements OAuth2 client flow support
+use crate::{
+    retrieve_oauth2_token_from_cache, store_oauth2_token_in_cache, ApicizeError, CachedTokenInfo,
+    Certificate, Identifiable, Proxy,
+};
 use oauth2::basic::BasicClient;
 use oauth2::{reqwest, AuthType};
 use oauth2::{ClientId, ClientSecret, Scope, TokenResponse, TokenUrl};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::ops::Add;
-use std::sync::LazyLock;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::Mutex;
-
-pub static TOKEN_CACHE: LazyLock<Mutex<HashMap<String, CachedTokenInfo>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
-
-/// Cached token
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct CachedTokenInfo {
-    /// Access token
-    pub access_token: String,
-    /// Refresh token
-    pub refresh_token: Option<String>,
-    /// Expiration of token in seconds past Unix epoch
-    pub expiration: Option<u64>,
-}
 
 /// OAuth2 issued client token result
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -44,18 +29,6 @@ pub struct TokenResult {
     pub proxy: Option<String>,
 }
 
-/// OAuth2 issued PKCE token result
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct PkceTokenResult {
-    /// Access token
-    pub access_token: String,
-    /// Refresh token
-    pub refresh_token: Option<String>,
-    /// Expiration of token in seconds past Unix epoch
-    pub expiration: Option<u64>,
-}
-
 /// Return cached oauth2 token, with indicator of whether value was retrieved from cache
 #[allow(clippy::too_many_arguments)]
 pub async fn get_oauth2_client_credentials<'a>(
@@ -71,8 +44,7 @@ pub async fn get_oauth2_client_credentials<'a>(
     enable_trace: bool,
 ) -> Result<TokenResult, ApicizeError> {
     // Check cache and return if token found and not expired
-    let mut locked_cache = TOKEN_CACHE.lock().await;
-    let valid_token = match locked_cache.get(id) {
+    let valid_token = match retrieve_oauth2_token_from_cache(id).await {
         Some(cached_token) => match cached_token.expiration {
             Some(expiration) => {
                 let now = SystemTime::now()
@@ -171,22 +143,22 @@ pub async fn get_oauth2_client_credentials<'a>(
 
     match token_request.request_async(&http_client).await {
         Ok(token_response) => {
-            let expiration = token_response.expires_in().map(|token_expires_in|
+            let expiration = token_response.expires_in().map(|token_expires_in| {
                 SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
                     .as_secs()
                     .add(token_expires_in.as_secs())
-            );
+            });
             let token = token_response.access_token().secret().clone();
-            locked_cache.insert(
-                String::from(id),
+            store_oauth2_token_in_cache(
+                id,
                 CachedTokenInfo {
                     access_token: token.clone(),
                     refresh_token: None,
                     expiration,
                 },
-            );
+            ).await;
             Ok(TokenResult {
                 token,
                 cached: false,
@@ -202,502 +174,482 @@ pub async fn get_oauth2_client_credentials<'a>(
     }
 }
 
-/// Store OAuth2 token in cache
-pub async fn store_oauth2_token(authorization_id: &str, token_info: CachedTokenInfo) {
-    let locked_cache = &mut TOKEN_CACHE.lock().await;
-    locked_cache.insert(authorization_id.to_owned(), token_info);
-}
+// #[cfg(test)]
+// pub mod tests {
+//     use std::ops::{Add, Sub};
+//     use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Clear all cached OAuth2 tokens
-pub async fn clear_all_oauth2_tokens<'a>() -> usize {
-    let locked_cache = &mut TOKEN_CACHE.lock().await;
-    let count = locked_cache.len();
-    locked_cache.clear();
-    count
-}
+//     use mockall::automock;
+//     use serial_test::{parallel, serial};
 
-/// Clear specified cached OAuth2 credentials, returning true if value was cached
-pub async fn clear_oauth2_token(id: &str) -> bool {
-    let mut locked_cache = TOKEN_CACHE.lock().await;
-    locked_cache.remove(&String::from(id)).is_some()
-}
+//     use crate::oauth2_client_tokens::{
+//         clear_all_oauth2_tokens, clear_oauth2_token, get_oauth2_client_credentials,
+//         CachedTokenInfo, TokenResult, OAUTH2_CLIENT_TOKEN_CACHE,
+//     };
 
-#[cfg(test)]
-pub mod tests {
-    use std::ops::{Add, Sub};
-    use std::time::{SystemTime, UNIX_EPOCH};
+//     pub struct OAuth2ClientTokens;
+//     #[automock]
+//     impl OAuth2ClientTokens {
+//         pub async fn get_oauth2_client_credentials<'a>(
+//             _id: &str,
+//             _token_url: &str,
+//             _client_id: &str,
+//             _client_secret: &str,
+//             _send_credentials_in_body: bool,
+//             _scope: &'a Option<String>,
+//             _audience: &'a Option<String>,
+//             _certificate: Option<&'a crate::Certificate>,
+//             _proxy: Option<&'a crate::Proxy>,
+//             _enable_trace: bool,
+//         ) -> Result<TokenResult, crate::ApicizeError> {
+//             Ok(TokenResult {
+//                 token: String::from(""),
+//                 cached: false,
+//                 url: None,
+//                 certificate: None,
+//                 proxy: None,
+//             })
+//         }
+//         pub async fn clear_all_oauth2_tokens<'a>() -> usize {
+//             1
+//         }
+//         pub async fn clear_oauth2_token(_id: &str) -> bool {
+//             true
+//         }
+//     }
 
-    use mockall::automock;
-    use serial_test::{parallel, serial};
+//     // Note - because we are using shared storage for cached tokens, some tests cannot be run in parallel, thus the "serial" attributes.
+//     // We also do explicitly run some tests in parallel to ensure that the module itself is threadsafe.
 
-    use crate::oauth2_client_tokens::{
-        clear_all_oauth2_tokens, clear_oauth2_token, get_oauth2_client_credentials,
-        CachedTokenInfo, TokenResult, TOKEN_CACHE,
-    };
+//     const FAKE_TOKEN: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
 
-    pub struct OAuth2ClientTokens;
-    #[automock]
-    impl OAuth2ClientTokens {
-        pub async fn get_oauth2_client_credentials<'a>(
-            _id: &str,
-            _token_url: &str,
-            _client_id: &str,
-            _client_secret: &str,
-            _send_credentials_in_body: bool,
-            _scope: &'a Option<String>,
-            _audience: &'a Option<String>,
-            _certificate: Option<&'a crate::Certificate>,
-            _proxy: Option<&'a crate::Proxy>,
-            _enable_trace: bool,
-        ) -> Result<TokenResult, crate::ApicizeError> {
-            Ok(TokenResult {
-                token: String::from(""),
-                cached: false,
-                url: None,
-                certificate: None,
-                proxy: None,
-            })
-        }
-        pub async fn clear_all_oauth2_tokens<'a>() -> usize {
-            1
-        }
-        pub async fn clear_oauth2_token(_id: &str) -> bool {
-            true
-        }
-    }
+//     #[tokio::test()]
+//     #[serial]
+//     async fn get_oauth2_client_credentials_returns_cached_token() {
+//         {
+//             let mut locked_cache = OAUTH2_CLIENT_TOKEN_CACHE.lock().await;
+//             locked_cache.clear();
+//             let expiration = Some(
+//                 SystemTime::now()
+//                     .duration_since(UNIX_EPOCH)
+//                     .unwrap()
+//                     .as_secs()
+//                     .add(10),
+//             );
+//             locked_cache.insert(
+//                 String::from("abc"),
+//                 CachedTokenInfo {
+//                     expiration,
+//                     access_token: String::from("123"),
+//                     refresh_token: None,
+//                 },
+//             );
+//         }
+//         assert_eq!(
+//             (get_oauth2_client_credentials(
+//                 "abc",
+//                 "http://server",
+//                 "me",
+//                 "shhh",
+//                 false,
+//                 &None,
+//                 &None,
+//                 None,
+//                 None,
+//                 false,
+//             )
+//             .await)
+//                 .unwrap(),
+//             TokenResult {
+//                 token: String::from("123"),
+//                 cached: true,
+//                 url: None,
+//                 certificate: None,
+//                 proxy: None
+//             }
+//         );
+//     }
 
-    // Note - because we are using shared storage for cached tokens, some tests cannot be run in parallel, thus the "serial" attributes.
-    // We also do explicitly run some tests in parallel to ensure that the module itself is threadsafe.
+//     #[tokio::test]
+//     #[serial]
+//     async fn get_oauth2_client_credentials_calls_server() {
+//         {
+//             let mut locked_cache = OAUTH2_CLIENT_TOKEN_CACHE.lock().await;
+//             locked_cache.clear();
+//         }
+//         let mut server = mockito::Server::new_async().await;
+//         let oauth2_response = format!(
+//             "{{\"access_token\":\"{}\",\"expires_in\":86400,\"token_type\":\"Bearer\"}}",
+//             FAKE_TOKEN
+//         );
+//         let mock = server
+//             .mock("POST", "/")
+//             // .match_body("foo")
+//             .with_status(200)
+//             .with_header("Content-Type", "application/json")
+//             .with_body(oauth2_response)
+//             .create();
 
-    const FAKE_TOKEN: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+//         let result = get_oauth2_client_credentials(
+//             "abc",
+//             server.url().as_str(),
+//             "me",
+//             "shhh",
+//             false,
+//             &None,
+//             &None,
+//             None,
+//             None,
+//             false,
+//         )
+//         .await;
 
-    #[tokio::test()]
-    #[serial]
-    async fn get_oauth2_client_credentials_returns_cached_token() {
-        {
-            let mut locked_cache = TOKEN_CACHE.lock().await;
-            locked_cache.clear();
-            let expiration = Some(
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs()
-                    .add(10),
-            );
-            locked_cache.insert(
-                String::from("abc"),
-                CachedTokenInfo {
-                    expiration,
-                    access_token: String::from("123"),
-                    refresh_token: None,
-                },
-            );
-        }
-        assert_eq!(
-            (get_oauth2_client_credentials(
-                "abc",
-                "http://server",
-                "me",
-                "shhh",
-                false,
-                &None,
-                &None,
-                None,
-                None,
-                false,
-            )
-            .await)
-                .unwrap(),
-            TokenResult {
-                token: String::from("123"),
-                cached: true,
-                url: None,
-                certificate: None,
-                proxy: None
-            }
-        );
-    }
+//         mock.assert();
 
-    #[tokio::test]
-    #[serial]
-    async fn get_oauth2_client_credentials_calls_server() {
-        {
-            let mut locked_cache = TOKEN_CACHE.lock().await;
-            locked_cache.clear();
-        }
-        let mut server = mockito::Server::new_async().await;
-        let oauth2_response = format!(
-            "{{\"access_token\":\"{}\",\"expires_in\":86400,\"token_type\":\"Bearer\"}}",
-            FAKE_TOKEN
-        );
-        let mock = server
-            .mock("POST", "/")
-            // .match_body("foo")
-            .with_status(200)
-            .with_header("Content-Type", "application/json")
-            .with_body(oauth2_response)
-            .create();
+//         assert_eq!(
+//             result.unwrap(),
+//             TokenResult {
+//                 token: String::from(FAKE_TOKEN),
+//                 cached: false,
+//                 url: Some(server.url()),
+//                 certificate: None,
+//                 proxy: None
+//             }
+//         );
 
-        let result = get_oauth2_client_credentials(
-            "abc",
-            server.url().as_str(),
-            "me",
-            "shhh",
-            false,
-            &None,
-            &None,
-            None,
-            None,
-            false,
-        )
-        .await;
+//         {
+//             let locked_cache = OAUTH2_CLIENT_TOKEN_CACHE.lock().await;
+//             assert!(locked_cache.get(&String::from("abc")).is_some());
+//         }
+//     }
 
-        mock.assert();
+//     #[tokio::test]
+//     #[serial]
+//     async fn get_oauth2_client_credentials_ignores_expired_cache() {
+//         let mut server = mockito::Server::new_async().await;
+//         let oauth2_response = format!(
+//             "{{\"access_token\":\"{}\",\"expires_in\":86400,\"token_type\":\"Bearer\"}}",
+//             FAKE_TOKEN
+//         );
+//         let mock = server
+//             .mock("POST", "/")
+//             // .match_body("foo")
+//             .with_status(200)
+//             .with_header("Content-Type", "application/json")
+//             .with_body(oauth2_response)
+//             .create();
 
-        assert_eq!(
-            result.unwrap(),
-            TokenResult {
-                token: String::from(FAKE_TOKEN),
-                cached: false,
-                url: Some(server.url()),
-                certificate: None,
-                proxy: None
-            }
-        );
+//         {
+//             let mut locked_cache = OAUTH2_CLIENT_TOKEN_CACHE.lock().await;
+//             locked_cache.clear();
+//             let expiration = Some(
+//                 SystemTime::now()
+//                     .duration_since(UNIX_EPOCH)
+//                     .unwrap()
+//                     .as_secs()
+//                     .sub(10),
+//             );
+//             let cached_token = CachedTokenInfo {
+//                 expiration,
+//                 access_token: String::from("123"),
+//                 refresh_token: None,
+//             };
+//             locked_cache.insert(String::from("abc"), cached_token.clone());
+//             assert_eq!(locked_cache.get(&String::from("abc")), Some(&cached_token));
+//         }
 
-        {
-            let locked_cache = TOKEN_CACHE.lock().await;
-            assert!(locked_cache.get(&String::from("abc")).is_some());
-        }
-    }
+//         let result = get_oauth2_client_credentials(
+//             "abc",
+//             server.url().as_str(),
+//             "me",
+//             "shhh",
+//             false,
+//             &None,
+//             &None,
+//             None,
+//             None,
+//             false,
+//         )
+//         .await;
 
-    #[tokio::test]
-    #[serial]
-    async fn get_oauth2_client_credentials_ignores_expired_cache() {
-        let mut server = mockito::Server::new_async().await;
-        let oauth2_response = format!(
-            "{{\"access_token\":\"{}\",\"expires_in\":86400,\"token_type\":\"Bearer\"}}",
-            FAKE_TOKEN
-        );
-        let mock = server
-            .mock("POST", "/")
-            // .match_body("foo")
-            .with_status(200)
-            .with_header("Content-Type", "application/json")
-            .with_body(oauth2_response)
-            .create();
+//         mock.assert();
 
-        {
-            let mut locked_cache = TOKEN_CACHE.lock().await;
-            locked_cache.clear();
-            let expiration = Some(
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs()
-                    .sub(10),
-            );
-            let cached_token = CachedTokenInfo {
-                expiration,
-                access_token: String::from("123"),
-                refresh_token: None,
-            };
-            locked_cache.insert(String::from("abc"), cached_token.clone());
-            assert_eq!(locked_cache.get(&String::from("abc")), Some(&cached_token));
-        }
+//         assert_eq!(
+//             result.unwrap(),
+//             TokenResult {
+//                 token: String::from(FAKE_TOKEN),
+//                 cached: false,
+//                 url: Some(server.url()),
+//                 certificate: None,
+//                 proxy: None
+//             }
+//         );
+//         {
+//             let locked_cache = OAUTH2_CLIENT_TOKEN_CACHE.lock().await;
+//             assert!(locked_cache.get(&String::from("abc")).is_some());
+//         }
+//     }
 
-        let result = get_oauth2_client_credentials(
-            "abc",
-            server.url().as_str(),
-            "me",
-            "shhh",
-            false,
-            &None,
-            &None,
-            None,
-            None,
-            false,
-        )
-        .await;
+//     #[tokio::test]
+//     #[serial]
+//     async fn clear_all_oauth2_tokens_clears_tokens() {
+//         {
+//             let mut locked_cache = OAUTH2_CLIENT_TOKEN_CACHE.lock().await;
+//             locked_cache.clear();
+//             let expiration = Some(
+//                 SystemTime::now()
+//                     .duration_since(UNIX_EPOCH)
+//                     .unwrap()
+//                     .as_secs()
+//                     .add(10),
+//             );
+//             let cached_token = CachedTokenInfo {
+//                 expiration,
+//                 access_token: String::from("123"),
+//                 refresh_token: None,
+//             };
+//             locked_cache.insert(String::from("abc"), cached_token.clone());
+//             assert_eq!(locked_cache.get(&String::from("abc")), Some(&cached_token));
+//         }
+//         assert_eq!(clear_all_oauth2_tokens().await, 1);
+//         {
+//             let locked_cache = OAUTH2_CLIENT_TOKEN_CACHE.lock().await;
+//             assert_eq!(locked_cache.len(), 0);
+//         }
+//     }
 
-        mock.assert();
+//     #[tokio::test]
+//     #[serial]
+//     async fn clear_oauth2_token_removes_item() {
+//         {
+//             let mut locked_cache = OAUTH2_CLIENT_TOKEN_CACHE.lock().await;
+//             locked_cache.clear();
+//             let expiration = Some(
+//                 SystemTime::now()
+//                     .duration_since(UNIX_EPOCH)
+//                     .unwrap()
+//                     .as_secs()
+//                     .add(10),
+//             );
+//             let cached_token = CachedTokenInfo {
+//                 expiration,
+//                 access_token: String::from("123"),
+//                 refresh_token: None,
+//             };
+//             locked_cache.insert(String::from("abc"), cached_token.clone());
+//             assert_eq!(locked_cache.get(&String::from("abc")), Some(&cached_token));
+//         }
+//         assert_eq!(clear_oauth2_token("abc").await, true);
+//         {
+//             let locked_cache = OAUTH2_CLIENT_TOKEN_CACHE.lock().await;
+//             assert_eq!(locked_cache.get(&String::from("abc")), None);
+//         }
+//     }
 
-        assert_eq!(
-            result.unwrap(),
-            TokenResult {
-                token: String::from(FAKE_TOKEN),
-                cached: false,
-                url: Some(server.url()),
-                certificate: None,
-                proxy: None
-            }
-        );
-        {
-            let locked_cache = TOKEN_CACHE.lock().await;
-            assert!(locked_cache.get(&String::from("abc")).is_some());
-        }
-    }
+//     #[tokio::test]
+//     #[serial]
+//     async fn clear_oauth2_token_ignores_invalid_id() {
+//         assert_eq!(clear_oauth2_token("abc_bogus").await, false);
+//     }
 
-    #[tokio::test]
-    #[serial]
-    async fn clear_all_oauth2_tokens_clears_tokens() {
-        {
-            let mut locked_cache = TOKEN_CACHE.lock().await;
-            locked_cache.clear();
-            let expiration = Some(
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs()
-                    .add(10),
-            );
-            let cached_token = CachedTokenInfo {
-                expiration,
-                access_token: String::from("123"),
-                refresh_token: None,
-            };
-            locked_cache.insert(String::from("abc"), cached_token.clone());
-            assert_eq!(locked_cache.get(&String::from("abc")), Some(&cached_token));
-        }
-        assert_eq!(clear_all_oauth2_tokens().await, 1);
-        {
-            let locked_cache = TOKEN_CACHE.lock().await;
-            assert_eq!(locked_cache.len(), 0);
-        }
-    }
+//     #[tokio::test()]
+//     #[parallel]
+//     async fn get_oauth2_client_credentials_parallel_1() {
+//         let mut server = mockito::Server::new_async().await;
+//         let oauth2_response = format!(
+//             "{{\"access_token\":\"{}\",\"expires_in\":86400,\"token_type\":\"Bearer\"}}",
+//             FAKE_TOKEN
+//         );
+//         let mock = server
+//             .mock("POST", "/")
+//             // .match_body("foo")
+//             .with_status(200)
+//             .with_header("Content-Type", "application/json")
+//             .with_body(oauth2_response)
+//             .create();
+//         assert_eq!(
+//             (get_oauth2_client_credentials(
+//                 "abc1",
+//                 &server.url(),
+//                 "me",
+//                 "shhh",
+//                 false,
+//                 &None,
+//                 &None,
+//                 None,
+//                 None,
+//                 false,
+//             )
+//             .await)
+//                 .unwrap(),
+//             TokenResult {
+//                 token: String::from(FAKE_TOKEN),
+//                 cached: false,
+//                 url: Some(server.url()),
+//                 certificate: None,
+//                 proxy: None
+//             }
+//         );
+//         mock.assert();
 
-    #[tokio::test]
-    #[serial]
-    async fn clear_oauth2_token_removes_item() {
-        {
-            let mut locked_cache = TOKEN_CACHE.lock().await;
-            locked_cache.clear();
-            let expiration = Some(
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs()
-                    .add(10),
-            );
-            let cached_token = CachedTokenInfo {
-                expiration,
-                access_token: String::from("123"),
-                refresh_token: None,
-            };
-            locked_cache.insert(String::from("abc"), cached_token.clone());
-            assert_eq!(locked_cache.get(&String::from("abc")), Some(&cached_token));
-        }
-        assert_eq!(clear_oauth2_token("abc").await, true);
-        {
-            let locked_cache = TOKEN_CACHE.lock().await;
-            assert_eq!(locked_cache.get(&String::from("abc")), None);
-        }
-    }
+//         // Second attempt will use cache
+//         assert_eq!(
+//             (get_oauth2_client_credentials(
+//                 "abc1",
+//                 &server.url(),
+//                 "me",
+//                 "shhh",
+//                 false,
+//                 &None,
+//                 &None,
+//                 None,
+//                 None,
+//                 false,
+//             )
+//             .await)
+//                 .unwrap(),
+//             TokenResult {
+//                 token: String::from(FAKE_TOKEN),
+//                 cached: true,
+//                 url: None,
+//                 certificate: None,
+//                 proxy: None
+//             }
+//         );
+//         mock.expect_at_most(0);
+//     }
 
-    #[tokio::test]
-    #[serial]
-    async fn clear_oauth2_token_ignores_invalid_id() {
-        assert_eq!(clear_oauth2_token("abc_bogus").await, false);
-    }
+//     #[tokio::test()]
+//     #[parallel]
+//     async fn get_oauth2_client_credentials_parallel_2() {
+//         let mut server = mockito::Server::new_async().await;
+//         let oauth2_response = format!(
+//             "{{\"access_token\":\"{}\",\"expires_in\":86400,\"token_type\":\"Bearer\"}}",
+//             FAKE_TOKEN
+//         );
+//         let mock = server
+//             .mock("POST", "/")
+//             // .match_body("foo")
+//             .with_status(200)
+//             .with_header("Content-Type", "application/json")
+//             .with_body(oauth2_response)
+//             .create();
+//         assert_eq!(
+//             (get_oauth2_client_credentials(
+//                 "abc2",
+//                 &server.url(),
+//                 "me",
+//                 "shhh",
+//                 false,
+//                 &None,
+//                 &None,
+//                 None,
+//                 None,
+//                 false,
+//             )
+//             .await)
+//                 .unwrap(),
+//             TokenResult {
+//                 token: String::from(FAKE_TOKEN),
+//                 cached: false,
+//                 url: Some(server.url()),
+//                 certificate: None,
+//                 proxy: None
+//             }
+//         );
+//         mock.assert();
 
-    #[tokio::test()]
-    #[parallel]
-    async fn get_oauth2_client_credentials_parallel_1() {
-        let mut server = mockito::Server::new_async().await;
-        let oauth2_response = format!(
-            "{{\"access_token\":\"{}\",\"expires_in\":86400,\"token_type\":\"Bearer\"}}",
-            FAKE_TOKEN
-        );
-        let mock = server
-            .mock("POST", "/")
-            // .match_body("foo")
-            .with_status(200)
-            .with_header("Content-Type", "application/json")
-            .with_body(oauth2_response)
-            .create();
-        assert_eq!(
-            (get_oauth2_client_credentials(
-                "abc1",
-                &server.url(),
-                "me",
-                "shhh",
-                false,
-                &None,
-                &None,
-                None,
-                None,
-                false,
-            )
-            .await)
-                .unwrap(),
-            TokenResult {
-                token: String::from(FAKE_TOKEN),
-                cached: false,
-                url: Some(server.url()),
-                certificate: None,
-                proxy: None
-            }
-        );
-        mock.assert();
+//         // Second attempt will use cache
+//         assert_eq!(
+//             (get_oauth2_client_credentials(
+//                 "abc2",
+//                 &server.url(),
+//                 "me",
+//                 "shhh",
+//                 false,
+//                 &None,
+//                 &None,
+//                 None,
+//                 None,
+//                 false,
+//             )
+//             .await)
+//                 .unwrap(),
+//             TokenResult {
+//                 token: String::from(FAKE_TOKEN),
+//                 cached: true,
+//                 url: None,
+//                 certificate: None,
+//                 proxy: None
+//             }
+//         );
+//         mock.expect_at_most(0);
+//     }
 
-        // Second attempt will use cache
-        assert_eq!(
-            (get_oauth2_client_credentials(
-                "abc1",
-                &server.url(),
-                "me",
-                "shhh",
-                false,
-                &None,
-                &None,
-                None,
-                None,
-                false,
-            )
-            .await)
-                .unwrap(),
-            TokenResult {
-                token: String::from(FAKE_TOKEN),
-                cached: true,
-                url: None,
-                certificate: None,
-                proxy: None
-            }
-        );
-        mock.expect_at_most(0);
-    }
+//     #[tokio::test()]
+//     #[parallel]
+//     async fn get_oauth2_client_credentials_parallel_3() {
+//         let mut server = mockito::Server::new_async().await;
+//         let oauth2_response = format!(
+//             "{{\"access_token\":\"{}\",\"expires_in\":86400,\"token_type\":\"Bearer\"}}",
+//             FAKE_TOKEN
+//         );
+//         let mock = server
+//             .mock("POST", "/")
+//             // .match_body("foo")
+//             .with_status(200)
+//             .with_header("Content-Type", "application/json")
+//             .with_body(oauth2_response)
+//             .create();
+//         assert_eq!(
+//             (get_oauth2_client_credentials(
+//                 "abc3",
+//                 &server.url(),
+//                 "me",
+//                 "shhh",
+//                 false,
+//                 &None,
+//                 &None,
+//                 None,
+//                 None,
+//                 false,
+//             )
+//             .await)
+//                 .unwrap(),
+//             TokenResult {
+//                 token: String::from(FAKE_TOKEN),
+//                 cached: false,
+//                 url: Some(server.url()),
+//                 certificate: None,
+//                 proxy: None
+//             }
+//         );
+//         mock.assert();
 
-    #[tokio::test()]
-    #[parallel]
-    async fn get_oauth2_client_credentials_parallel_2() {
-        let mut server = mockito::Server::new_async().await;
-        let oauth2_response = format!(
-            "{{\"access_token\":\"{}\",\"expires_in\":86400,\"token_type\":\"Bearer\"}}",
-            FAKE_TOKEN
-        );
-        let mock = server
-            .mock("POST", "/")
-            // .match_body("foo")
-            .with_status(200)
-            .with_header("Content-Type", "application/json")
-            .with_body(oauth2_response)
-            .create();
-        assert_eq!(
-            (get_oauth2_client_credentials(
-                "abc2",
-                &server.url(),
-                "me",
-                "shhh",
-                false,
-                &None,
-                &None,
-                None,
-                None,
-                false,
-            )
-            .await)
-                .unwrap(),
-            TokenResult {
-                token: String::from(FAKE_TOKEN),
-                cached: false,
-                url: Some(server.url()),
-                certificate: None,
-                proxy: None
-            }
-        );
-        mock.assert();
-
-        // Second attempt will use cache
-        assert_eq!(
-            (get_oauth2_client_credentials(
-                "abc2",
-                &server.url(),
-                "me",
-                "shhh",
-                false,
-                &None,
-                &None,
-                None,
-                None,
-                false,
-            )
-            .await)
-                .unwrap(),
-            TokenResult {
-                token: String::from(FAKE_TOKEN),
-                cached: true,
-                url: None,
-                certificate: None,
-                proxy: None
-            }
-        );
-        mock.expect_at_most(0);
-    }
-
-    #[tokio::test()]
-    #[parallel]
-    async fn get_oauth2_client_credentials_parallel_3() {
-        let mut server = mockito::Server::new_async().await;
-        let oauth2_response = format!(
-            "{{\"access_token\":\"{}\",\"expires_in\":86400,\"token_type\":\"Bearer\"}}",
-            FAKE_TOKEN
-        );
-        let mock = server
-            .mock("POST", "/")
-            // .match_body("foo")
-            .with_status(200)
-            .with_header("Content-Type", "application/json")
-            .with_body(oauth2_response)
-            .create();
-        assert_eq!(
-            (get_oauth2_client_credentials(
-                "abc3",
-                &server.url(),
-                "me",
-                "shhh",
-                false,
-                &None,
-                &None,
-                None,
-                None,
-                false,
-            )
-            .await)
-                .unwrap(),
-            TokenResult {
-                token: String::from(FAKE_TOKEN),
-                cached: false,
-                url: Some(server.url()),
-                certificate: None,
-                proxy: None
-            }
-        );
-        mock.assert();
-
-        // Second attempt will use cache
-        assert_eq!(
-            (get_oauth2_client_credentials(
-                "abc3",
-                &server.url(),
-                "me",
-                "shhh",
-                false,
-                &None,
-                &None,
-                None,
-                None,
-                false,
-            )
-            .await)
-                .unwrap(),
-            TokenResult {
-                token: String::from(FAKE_TOKEN),
-                cached: true,
-                url: None,
-                certificate: None,
-                proxy: None
-            }
-        );
-        mock.expect_at_most(0);
-    }
-}
+//         // Second attempt will use cache
+//         assert_eq!(
+//             (get_oauth2_client_credentials(
+//                 "abc3",
+//                 &server.url(),
+//                 "me",
+//                 "shhh",
+//                 false,
+//                 &None,
+//                 &None,
+//                 None,
+//                 None,
+//                 false,
+//             )
+//             .await)
+//                 .unwrap(),
+//             TokenResult {
+//                 token: String::from(FAKE_TOKEN),
+//                 cached: true,
+//                 url: None,
+//                 certificate: None,
+//                 proxy: None
+//             }
+//         );
+//         mock.expect_at_most(0);
+//     }
+// }

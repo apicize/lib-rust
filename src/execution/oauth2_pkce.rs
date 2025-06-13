@@ -1,6 +1,7 @@
 //! This module implements helpers for OAuth2 PKCE flow.  It does not include mechanisms
 //! to enable interactive retrieval of tokens (i.e. HTML browser)
 
+use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use oauth2::{
@@ -8,7 +9,17 @@ use oauth2::{
 };
 use reqwest::Url;
 
-use crate::oauth2_client_tokens::PkceTokenResult;
+/// OAuth2 issued PKCE token result
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PkceTokenResult {
+    /// Access token
+    pub access_token: String,
+    /// Refresh token
+    pub refresh_token: Option<String>,
+    /// Expiration of token in seconds past Unix epoch
+    pub expiration: Option<u64>,
+}
 
 /// Generate authorization URL and include the CSRF token and PKCE verifier in the response
 pub fn generate_authorization(
