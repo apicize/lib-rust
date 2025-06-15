@@ -78,6 +78,14 @@ console = {
     debug: (msg, ...args) => appendLog('debug', msg, ...args),
 };
 
+BodyType = {
+    JSON: 'JSON',
+    XML: 'XML',
+    Text: 'Text',
+    Form: 'Form',
+    Binary: 'Binary'
+}
+
 let results = []
 let current_results = results
 let results_queue = [ results ]
@@ -167,7 +175,7 @@ runTestSuite = (request1, response1, variables1, data1, output1, testOffset1, te
     data = data1 ?? {}
     outputVars = output1 ?? {}
     
-    $ = {...outputVars, ...variables, ...data}
+    $ = {...outputVars, ...scenario, ...data}
     variables = $ // retain variables for some level of backward compatibility
 
     testOffset = testOffset1

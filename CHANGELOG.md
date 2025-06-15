@@ -1,8 +1,12 @@
 # Change Log
 
+# 0.24.4
+
+* Test framework: Add body type and refine $ values
+
 # 0.24.3
 
-* Reorg cache methos, add get cached token method for PKCE flow
+* Reorg cache methods, add get cached token method for PKCE flow
 
 # 0.24.2
 
