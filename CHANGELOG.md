@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.24.5
+
+* Update jp function to always return array (even if single result)
+
 # 0.24.4
 
 * Test framework: Add body type and refine $ values

@@ -56,9 +56,7 @@ function jpath(param) {
     if (typeof param === 'object') {
         return jpp.JSONPath({...param, json: this})
     } else if (typeof param === 'string') {
-        const result = jpp.JSONPath({json: this, path: param})
-        return (Array.isArray(result) && result.length === 1) 
-            ? result[0] : result        
+        return jpp.JSONPath({path: param, json: this})
     } else {
         throw new Error('Argument for jp must be either a JSON path (string) or named parameters')
     }
