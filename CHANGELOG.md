@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.25.2
+
+* Include method and URL to CSV reporting
+
 # 0.25.1
 
 * Include method in execution results

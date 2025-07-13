@@ -35,14 +35,6 @@ pub struct ExecutionReportJson {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tag: Option<String>,
 
-    /// Method for request
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub method: Option<String>,
-
-    /// URL for request
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub url: Option<String>,
-
     /// Execution start (millisecond offset from start)
     pub executed_at: u128,
 
@@ -64,6 +56,14 @@ pub struct ExecutionReportJson {
     /// Ordinal row count, if multi-row result
     #[serde(skip_serializing_if = "Option::is_none")]
     pub row_count: Option<usize>,
+
+    /// Method for request
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub method: Option<String>,
+
+    /// URL for request
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
 
     /// Whether
     pub success: ExecutionResultSuccess,
@@ -111,6 +111,14 @@ pub struct ExecutionReportCsv {
     /// Duration of execution (milliseconds)
     #[serde(rename = "Duration")]
     pub duration: u128,
+
+    /// Method for request
+    #[serde(rename="Method", skip_serializing_if = "Option::is_none")]
+    pub method: Option<String>,
+
+    /// URL for request
+    #[serde(rename="URL", skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
 
     /// Whether the request executed and tests succeeded
     #[serde(rename = "Success")]
