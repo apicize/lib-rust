@@ -30,7 +30,10 @@ use crate::oauth2_client_tokens::TokenResult;
 use crate::types::workspace::RequestExecutionParameters;
 use crate::workspace::RequestExecutionState;
 use crate::{
-    get_oauth2_client_credentials, retrieve_oauth2_token_from_cache, ApicizeError, ApicizeGroupResultRowContent, ApicizeRequestResultContent, ApicizeRequestResultRow, ApicizeRequestResultRowContent, Authorization, ExecutionConcurrency, Identifiable, Request, RequestBody, RequestEntry, RequestGroup, RequestMethod, VariableCache, Workspace
+    get_oauth2_client_credentials, retrieve_oauth2_token_from_cache, ApicizeError,
+    ApicizeGroupResultRowContent, ApicizeRequestResultContent, ApicizeRequestResultRow,
+    ApicizeRequestResultRowContent, Authorization, ExecutionConcurrency, Identifiable, Request,
+    RequestBody, RequestEntry, RequestGroup, RequestMethod, VariableCache, Workspace,
 };
 
 // #[cfg(test)]
@@ -235,6 +238,8 @@ async fn run_request(
     Ok(Box::new(ApicizeRequestResult {
         id: request.id.clone(),
         name: request.get_title(),
+        tag: None,
+        url: None,
         executed_at,
         duration: context.ellapsed_in_ms() - executed_at,
         data_context,
@@ -517,6 +522,7 @@ async fn run_group(
     Ok(Box::new(ApicizeGroupResult {
         id: group.id.clone(),
         name: group.get_title(),
+        tag: None,
         executed_at,
         duration: context.ellapsed_in_ms() - executed_at,
         data_context,
@@ -870,17 +876,22 @@ async fn dispatch_request_and_test(
 
     let mut test_count: usize = 0;
     let mut test_fail_count: usize = 0;
+    let url: Option<String>;
 
     match dispatch_request(context.clone(), &request_id, &params, &subs).await {
-        Ok((name_with_subs, http_request, http_response, _)) => {
+        Ok((name_with_subs, url_called, http_request, http_response, _)) => {
             name = name_with_subs;
+            url = Some(url_called);
+
+            execution_request = Some(http_request);
+            execution_response = Some(http_response);
 
             match &request.test {
                 Some(t) => {
                     match execute_request_test(
                         RequestEntry::clone_and_sub(t, &subs).as_str(),
-                        &http_request,
-                        &http_response,
+                        &execution_request,
+                        &execution_response,
                         &params.variables,
                         &state.row,
                         &state.output_variables,
@@ -895,7 +906,7 @@ async fn dispatch_request_and_test(
                                         Some(response.output)
                                     };
 
-                                    // Flatten test neted responses into behaviors
+                                    // Flatten test nested responses into behaviors
                                     let mut behaviors = Vec::<ApicizeTestBehavior>::new();
                                     flatten_test_results(&response.results, &mut behaviors, &[]);
                                     let test_results = if behaviors.is_empty() {
@@ -925,12 +936,10 @@ async fn dispatch_request_and_test(
                     output_variables = None;
                 }
             }
-
-            execution_request = Some(http_request);
-            execution_response = Some(http_response);
         }
         Err(err) => {
             name = request.get_name().to_string();
+            url = None;
             error = Some(err);
         }
     }
@@ -939,6 +948,7 @@ async fn dispatch_request_and_test(
 
     Ok(ApicizeExecution {
         name,
+        url,
         test_context: ApicizeExecutionTestContext {
             merged,
             scenario: params.variables.clone(),
@@ -964,6 +974,7 @@ async fn dispatch_request(
     subs: &HashMap<String, String>,
 ) -> Result<
     (
+        String,
         String,
         ApicizeHttpRequest,
         ApicizeHttpResponse,
@@ -1060,7 +1071,7 @@ async fn dispatch_request(
                 url = format!("{}://{}", if https { "https" } else { "http" }, url);
             }
 
-            let mut request_builder = client.request(method, url);
+            let mut request_builder = client.request(method, &url);
 
             // Add headers, including authorization if applicable
             let mut headers = reqwest::header::HeaderMap::new();
@@ -1147,7 +1158,7 @@ async fn dispatch_request(
                             });
                         }
                     }
-                },
+                }
                 None => {}
             }
 
@@ -1357,6 +1368,7 @@ async fn dispatch_request(
 
                                     let response = (
                                         name,
+                                        url,
                                         ApicizeHttpRequest {
                                             url: request_url,
                                             method: request
@@ -1395,8 +1407,8 @@ async fn dispatch_request(
 /// Execute the specified request's tests
 fn execute_request_test(
     test: &str,
-    request: &ApicizeHttpRequest,
-    response: &ApicizeHttpResponse,
+    request: &Option<ApicizeHttpRequest>,
+    response: &Option<ApicizeHttpResponse>,
     variables: &Option<Map<String, Value>>,
     data: &Option<Map<String, Value>>,
     output: &Option<Map<String, Value>>,
@@ -1459,6 +1471,9 @@ fn execute_request_test(
 
     let result = value.to_string(tc);
     let s = result.unwrap().to_rust_string_lossy(tc);
+
+    // println!("Test result: {}", &s);
+
     let test_response: ApicizeTestResponse = serde_json::from_str(&s).unwrap();
 
     Ok(Some(test_response))
@@ -1484,6 +1499,7 @@ fn flatten_test_results(
                     name.push(behavior.name.clone());
                     behaviors.push(ApicizeTestBehavior {
                         name: name.join(" "),
+                        tag: behavior.tag.clone(),
                         success: behavior.success,
                         error: behavior.error.clone(),
                         logs: behavior.logs.clone(),

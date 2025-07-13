@@ -28,6 +28,14 @@ pub struct ExecutionResultSummary {
     /// Name of request or group
     pub name: String,
 
+    /// Associative tag name
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
+
+    /// URL requested
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+
     /// Execution start (millisecond offset from start)
     pub executed_at: u128,
 

@@ -13,12 +13,16 @@ pub struct ApicizeExecution {
     /// Name of the request being executed
     pub name: String,
 
+    /// URL being called
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+
     /// Values available to use in the test context
     pub test_context: ApicizeExecutionTestContext,
 
     /// Variables returned at the end of the test for use in next request
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub output_variables: Option<Map<String, Value>>,   
+    pub output_variables: Option<Map<String, Value>>,
 
     /// Test results (if executed)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -33,7 +37,7 @@ pub struct ApicizeExecution {
 
     /// Number of passed tests, if request and tests are succesfully run
     pub test_pass_count: usize,
-    
+
     /// Number of failed tests, if request and tests are succesfully run
     pub test_fail_count: usize,
 }
@@ -41,9 +45,8 @@ pub struct ApicizeExecution {
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ApicizeExecutionTestContext {
-
     /// Merged variables and data
-    #[serde(skip_serializing_if = "Option::is_none", rename="$")]
+    #[serde(skip_serializing_if = "Option::is_none", rename = "$")]
     pub merged: Option<Map<String, Value>>,
 
     /// Variables available from scenario
@@ -66,7 +69,6 @@ pub struct ApicizeExecutionTestContext {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response: Option<ApicizeHttpResponse>,
 }
-
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]

@@ -27,10 +27,6 @@ function appendLog(type, message, ...optionalParams) {
     logs.push(`${timestamp} [${type}] ${format(message, ...optionalParams)}`)
 }
 
-function clearLog() {
-    logs = [];
-}
-
 /******************************************************************
  * Global variables exposed to test runner
  ******************************************************************/
@@ -84,72 +80,145 @@ BodyType = {
     Binary: 'Binary'
 }
 
-let results = []
-let current_results = results
-let results_queue = [ results ]
-let inIt = false;
+class Scenario {
+    constructor(name) {
+        this.type = 'Scenario'
+        this.name = name
+        this.tag = undefined
+        this.success = true
+        this.children = []
+        this.testCount = 0
+        this.testFailCount = 0
+    }
 
-function pushResult(result) {
-    current_results.push({
-        ...result,
-        logs: logs.length > 0 ? logs : undefined
-    });
-    clearLog();
-}
-
-function updateTallies(entry) {
-    if (entry.children) {
-        entry.passed = true
-        for (const child of entry.children) {
-            updateTallies(child)
-            entry.testCount += child.testCount
-            entry.testFailCount += child.testFailCount
-            entry.passed &&= child.passed
-        }
-    } else {
-        entry.testCount = 1
-        entry.testFailCount = entry.passed ? 0 : 1
+    tag(name) {
+        this.tag = name
     }
 }
 
+class Behavior {
+    constructor(name) {
+        this.type = 'Behavior'
+        this.name = name
+        this.tag = undefined
+        this.success = true
+        this.testCount = 0
+        this.testFailCount = 0
+    }
 
-describe = (name, run) => {    
-    let entry = {
-        type: 'Scenario', 
-        name,
-        success: true,
-        children: [],
-        testCount: 0,
-        testFailCount: 0,
+    tag(name) {
+        this.tag = name
+    }
+
+    succeed() {
+        this.success = true
+        this.testCount = 1
     }
     
-    current_results.push(entry)
+    fail(e) {
+        this.success = false
+        this.testCount = 1
+        this.testFailCount = 1
+        this.error = e
+    }
+}
 
-    results_queue.push(current_results)
-    current_results = entry.children
+class Context {
+    constructor() {
+        this.results = []
+        this.currentResult = null
+        this.inScenario = false
+        this.inBehavior = false
+    }
 
+    push(scenarioOrbehavior) {
+        if (this.currentResult == null) {
+            this.results.push(scenarioOrbehavior)
+        } else {
+            scenarioOrbehavior.parent = this.currentResult
+            if (scenarioOrbehavior.parent.children) {
+                scenarioOrbehavior.parent.children.push(scenarioOrbehavior)
+            } else {
+                scenarioOrbehavior.parent.children = [scenarioOrbehavior]
+            }
+        }
+        this.currentResult = scenarioOrbehavior
+
+    }
+
+    pop() {
+        const current = this.currentResult
+        if (! current) {
+            return
+        }
+        if (logs && logs.length > 0) {
+            current.logs = logs
+            logs = []
+        }
+        if (current.parent) {
+            if (current.parent.tag) {
+                current.tag = current.parent.tag + (current.tag ? '.' + current.tag : '')
+            }
+            current.parent.success = current.success && current.parent.success
+            current.parent.testCount += current.testCount
+            current.parent.testFailCount += current.testFailCount
+            this.currentResult = current.parent
+            current.parent = undefined
+        } else {
+            this.currentResult = null
+        }
+    }
+
+    enterScenario(name) {
+        const scenario = new Scenario(name)
+        this.push(scenario)
+        return scenario
+    }
+
+    exitScenario() {
+        this.pop()
+    }
+
+    enterBehavior(name) {
+        if (this.currentResult?.type !== 'Scenario') {
+            throw new Error('"it" must be called from within a "describe" block')
+        }
+        const behavior = new Behavior(name)
+        this.push(behavior)
+        return behavior
+    }
+
+    exitBehavior() {
+        this.pop()
+    }
+}
+
+let context = new Context()
+
+describe = (name, run) => {    
+    context.enterScenario(name)
     try {
         run()
     } finally {
-        updateTallies(entry)
-        current_results = results_queue.pop()
+        context.exitScenario()
     }
-};
+}
 
 it = (name, run) => {
+    const behavior = context.enterBehavior(name)
     try {
-        if (inIt) {
-            throw new Error('\"it\" cannot be contained in another \"it\" block')
-        }
-        inIt = true;
         run();
-        pushResult({ type: 'Behavior', name, success: true, testCount: 1, testFailCount: 0 });
+        behavior.succeed()
     } catch (e) {
-        pushResult({ type: 'Behavior', name, success: false, testCount: 1, testFailCount: 0, error: e.message })
+        behavior.fail(e.message)
     } finally {
-        inIt = false
+        context.exitBehavior()
     }
-};
+}
+
+tag = (name) => {
+    context.currentResult.tag = name
+}
 
 output = (name, value) => {
     switch (typeof value) {
@@ -177,10 +246,11 @@ runTestSuite = (request1, response1, variables1, data1, output1, testOffset1, te
     variables = $ // retain variables for some level of backward compatibility
 
     testOffset = testOffset1
-    clearLog()
     testSuite()
     return JSON.stringify({
-        results,
+        results: context.results,
         output: outputVars
     })
 };
+
+module.exports = runTestSuite

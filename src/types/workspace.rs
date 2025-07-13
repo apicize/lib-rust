@@ -4,9 +4,10 @@
 
 use crate::{
     open_data_file, ApicizeError, Authorization, Certificate, ExecutionReportCsv,
-    ExecutionReportFormat, ExecutionReportJson, ExecutionResultSummary, FileAccessError,
-    Identifiable, PersistedIndex, Proxy, RequestEntry, Scenario, SelectedParameters,
-    SerializationSaveSuccess, Workbook, WorkbookDefaultParameters,
+    ExecutionReportFormat, ExecutionReportJson, ExecutionReportZephyr,
+    ExecutionReportZephyrTestCase, ExecutionResultSummary, FileAccessError, Identifiable,
+    PersistedIndex, Proxy, RequestEntry, Scenario, SelectedParameters, SerializationSaveSuccess,
+    Workbook, WorkbookDefaultParameters,
 };
 
 use csv::WriterBuilder;
@@ -260,7 +261,6 @@ impl Workspace {
     ) -> Result<RequestExecutionParameters, ApicizeError> {
         let mut done = false;
 
-
         let mut current = request;
 
         let mut scenario: Option<&Scenario> = None;
@@ -503,6 +503,8 @@ impl Workspace {
                     // Deal with summaries with errors
                     report.push(ExecutionReportJson {
                         name: summary.name.clone(),
+                        tag: summary.tag.clone(),
+                        url: summary.url.clone(),
                         executed_at: summary.executed_at,
                         duration: summary.duration,
                         success: summary.success.clone(),
@@ -524,6 +526,8 @@ impl Workspace {
                     }
                     report.push(ExecutionReportJson {
                         name: summary.name.clone(),
+                        tag: summary.tag.clone(),
+                        url: summary.url.clone(),
                         executed_at: summary.executed_at,
                         duration: summary.duration,
                         success: summary.success.clone(),
@@ -542,6 +546,8 @@ impl Workspace {
                     // Deal with executed behavior results
                     report.push(ExecutionReportJson {
                         name: summary.name.clone(),
+                        tag: summary.tag.clone(),
+                        url: summary.url.clone(),
                         executed_at: summary.executed_at,
                         duration: summary.duration,
                         success: summary.success.clone(),
@@ -604,6 +610,7 @@ impl Workspace {
                     report.push(ExecutionReportCsv {
                         run_number,
                         name: name_parts.join(", "),
+                        tag: summary.tag.clone(),
                         executed_at: summary.executed_at,
                         duration: summary.duration,
                         success: summary.success.clone(),
@@ -632,6 +639,7 @@ impl Workspace {
                         report.push(ExecutionReportCsv {
                             run_number,
                             name: name_parts.join(", "),
+                            tag: summary.tag.clone(),
                             executed_at: summary.executed_at,
                             duration: summary.duration,
                             success: summary.success.clone(),
@@ -649,6 +657,7 @@ impl Workspace {
                     report.push(ExecutionReportCsv {
                         run_number,
                         name: name_parts.join(", "),
+                        tag: summary.tag.clone(),
                         executed_at: summary.executed_at,
                         duration: summary.duration,
                         success: summary.success.clone(),
@@ -668,6 +677,32 @@ impl Workspace {
                 source: None,
             }),
         }
+    }
+
+    /// Append specified index, including children, to the results
+    fn generate_zephyr(
+        summaries: &Vec<ExecutionResultSummary>,
+        report: &mut Vec<ExecutionReportZephyr>,
+    ) -> Result<(), ApicizeError> {
+        for summary in summaries {
+            if let Some(tests) = &summary.test_results {
+                for test in tests {
+                    report.push(ExecutionReportZephyr {
+                        source: summary.name.clone(),
+                        result: if summary.error.is_some() || !test.success {
+                            "Failed".to_string()
+                        } else {
+                            "Success".to_string()
+                        },
+                        test_case: ExecutionReportZephyrTestCase {
+                            name: test.name.clone(),
+                            key: test.tag.clone(),
+                        },
+                    });
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Generate a report from summarized execution results
@@ -700,19 +735,28 @@ impl Workspace {
                 }
                 Ok(String::from_utf8(writer.into_inner().unwrap()).unwrap())
             }
+            ExecutionReportFormat::ZEPHYR => {
+                let mut data = Vec::<ExecutionReportZephyr>::new();
+                Self::generate_zephyr(summaries, &mut data)?;
+                let mut buf = Vec::new();
+                let formatter = PrettyFormatter::with_indent(b"    ");
+                let mut ser = serde_json::Serializer::with_formatter(&mut buf, formatter);
+                data.serialize(&mut ser).unwrap();
+                Ok(String::from_utf8(buf).unwrap())
+            }
         }
     }
 
     /// Generate a report from summarized execution results
     pub fn generate_multirun_report(
-        run_summaries: HashMap<usize, Vec<Vec<ExecutionResultSummary>>>,
-        format: ExecutionReportFormat,
+        run_summaries: &HashMap<usize, Vec<Vec<ExecutionResultSummary>>>,
+        format: &ExecutionReportFormat,
     ) -> Result<String, ApicizeError> {
         match format {
             ExecutionReportFormat::JSON => {
                 let mut all_data = HashMap::<usize, Vec<ExecutionReportJson>>::new();
 
-                for (run_number, summary_set) in run_summaries.into_iter() {
+                for (run_number, summary_set) in run_summaries {
                     for summaries in summary_set {
                         let mut data = Vec::<ExecutionReportJson>::new();
                         let root_indexes: Vec<usize> = summaries
@@ -726,13 +770,13 @@ impl Workspace {
                             })
                             .collect();
                         for index in root_indexes {
-                            Self::generate_json(index, &summaries, &mut data)?;
+                            Self::generate_json(index, summaries, &mut data)?;
                         }
 
-                        if let Some(entry) = all_data.get_mut(&run_number) {
+                        if let Some(entry) = all_data.get_mut(run_number) {
                             entry.extend(data);
                         } else {
-                            all_data.insert(run_number, data);
+                            all_data.insert(*run_number, data);
                         }
                     }
                 }
@@ -746,7 +790,7 @@ impl Workspace {
             ExecutionReportFormat::CSV => {
                 let mut data = Vec::<ExecutionReportCsv>::new();
 
-                for (run_number, summary_set) in run_summaries.into_iter() {
+                for (run_number, summary_set) in run_summaries {
                     for summaries in summary_set {
                         let root_indexes: Vec<usize> = summaries
                             .iter()
@@ -760,9 +804,9 @@ impl Workspace {
                             .collect();
                         for index in root_indexes {
                             Self::generate_csv(
-                                Some(run_number),
+                                Some(*run_number),
                                 index,
-                                &summaries,
+                                summaries,
                                 &[],
                                 &mut data,
                             )?;
@@ -780,6 +824,21 @@ impl Workspace {
                     }
                 }
                 Ok(String::from_utf8(writer.into_inner().unwrap()).unwrap())
+            }
+            ExecutionReportFormat::ZEPHYR => {
+                let mut data = Vec::<ExecutionReportZephyr>::new();
+
+                for summary_set in run_summaries.values() {
+                    for summaries in summary_set {
+                        Self::generate_zephyr(summaries, &mut data)?;
+                    }
+                }
+
+                let mut buf = Vec::new();
+                let formatter = PrettyFormatter::with_indent(b"    ");
+                let mut ser = serde_json::Serializer::with_formatter(&mut buf, formatter);
+                data.serialize(&mut ser).unwrap();
+                Ok(String::from_utf8(buf).unwrap())
             }
         }
     }

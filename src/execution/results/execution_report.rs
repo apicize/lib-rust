@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{ApicizeError, ApicizeTestBehavior};
@@ -10,6 +12,17 @@ pub enum ExecutionReportFormat {
     #[default]
     JSON,
     CSV,
+    ZEPHYR,
+}
+
+impl Display for ExecutionReportFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExecutionReportFormat::JSON => f.write_str("JSON"),
+            ExecutionReportFormat::CSV => f.write_str("CSV"),
+            ExecutionReportFormat::ZEPHYR => f.write_str("Zephyr"),
+        }
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -17,6 +30,14 @@ pub enum ExecutionReportFormat {
 pub struct ExecutionReportJson {
     /// Fully qualified request name
     pub name: String,
+
+    /// Associative tag name
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
+
+    /// URL for request
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
 
     /// Execution start (millisecond offset from start)
     pub executed_at: u128,
@@ -75,6 +96,10 @@ pub struct ExecutionReportCsv {
     #[serde(rename = "Name")]
     pub name: String,
 
+    /// Associative tag name
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
+
     /// Execution start (millisecond offset from start)
     #[serde(rename = "Executed At")]
     pub executed_at: u128,
@@ -114,4 +139,30 @@ pub struct ExecutionReportCsv {
     /// Error generated during the test
     #[serde(rename = "Test Error")]
     pub test_error: Option<String>,
+}
+
+/// Zephyr test case identifier
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecutionReportZephyrTestCase {
+    /// Name of test
+    pub name: String,
+    /// Associative tag of test
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+}
+
+/// Zephyr simplified test report
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecutionReportZephyr {
+    /// Fully qualified request name
+    pub source: String,
+
+    /// Result (Passed or Failed?)
+    pub result: String,
+
+    /// Idnetifier for Zephyr test case
+    #[serde(rename = "testCase")]
+    pub test_case: ExecutionReportZephyrTestCase,
 }

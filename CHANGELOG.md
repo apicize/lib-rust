@@ -1,5 +1,10 @@
 # Change Log
 
+# 0.25.0
+
+* Add "tag" test function to store tag with executed tests
+* Include URL and tag in execution results
+
 # 0.24.5
 
 * Update jp function to always return array (even if single result)

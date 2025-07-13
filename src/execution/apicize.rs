@@ -41,6 +41,12 @@ pub struct ApicizeRequestResult {
     pub id: String,
     /// Result name
     pub name: String,
+    /// Associative tag name
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
+    /// URL requested
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
 
     /// Execution start (millisecond offset from start)
     pub executed_at: u128,
@@ -152,6 +158,9 @@ pub struct ApicizeGroupResult {
     pub id: String,
     /// Group name
     pub name: String,
+    /// Associative tag name
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
 
     /// Execution start (millisecond offset from start)
     pub executed_at: u128,
@@ -315,7 +324,10 @@ pub struct ApicizeTestScenario {
     pub test_count: usize,
 
     pub test_fail_count: usize,
-}
+
+    /// Console I/O generated during the test
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logs: Option<Vec<String>>,}
 
 /// Test execution results
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
@@ -323,6 +335,9 @@ pub struct ApicizeTestScenario {
 pub struct ApicizeTestBehavior {
     /// Human readable name of the test
     pub name: String,
+    /// Tagged reference of the test
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
     /// Whether or not the test executed and passed successful
     pub success: bool,
     /// Error generated during the test

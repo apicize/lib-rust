@@ -21,6 +21,14 @@ pub struct ExecutionResultDetailRequest {
     /// Request name
     pub name: String,
 
+    /// Requested URL
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+
+    /// Associative tag name
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
+
     /// Row number (if applicable)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub row_number: Option<usize>,
@@ -77,6 +85,10 @@ pub struct ExecutionResultDetailGroup {
 
     /// Request name
     pub name: String,
+
+    /// Associative tag
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
 
     /// Row number (if applicable)
     #[serde(skip_serializing_if = "Option::is_none")]

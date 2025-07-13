@@ -21,6 +21,7 @@ trait ListAppendable {
         parent_index: Option<usize>,
         request_or_group_id: &str,
         request_or_group_title: &str,
+        request_or_group_tag: &Option<String>,
     ) -> Vec<usize>;
 }
 
@@ -69,6 +70,7 @@ impl ListAppendable for ApicizeRequestResult {
         parent_index: Option<usize>,
         request_or_group_id: &str,
         request_or_group_title: &str,
+        request_or_group_tag: &Option<String>,
     ) -> Vec<usize> {
         let success = success_from_tallies(&self);
 
@@ -82,6 +84,8 @@ impl ListAppendable for ApicizeRequestResult {
                     child_indexes: Some(vec![]),
                     level,
                     name: self.name.clone(),
+                    tag: self.tag.clone(),
+                    url: None,
                     executed_at: self.executed_at,
                     duration: self.duration,
                     status: None,
@@ -99,6 +103,7 @@ impl ListAppendable for ApicizeRequestResult {
                 ExecutionResultDetail::Grouped(Box::new(ExecutionResultDetailGroup {
                     id: self.id.to_string(),
                     name: self.name.clone(),
+                    tag: self.tag.clone(),
                     row_number: None,
                     run_number: None,
                     executed_at: self.executed_at,
@@ -124,6 +129,7 @@ impl ListAppendable for ApicizeRequestResult {
                     Some(index),
                     request_or_group_id,
                     request_or_group_title,
+                    request_or_group_tag,
                 );
                 if !child_indexes.is_empty() {
                     list.get_mut(index).unwrap().0.child_indexes = Some(child_indexes);
@@ -138,6 +144,7 @@ impl ListAppendable for ApicizeRequestResult {
                     Some(index),
                     request_or_group_id,
                     request_or_group_title,
+                    request_or_group_tag,
                 );
                 if !child_indexes.is_empty() {
                     list.get_mut(index).unwrap().0.child_indexes = Some(child_indexes);
@@ -156,6 +163,8 @@ impl ListAppendable for ApicizeRequestResult {
                         child_indexes: None,
                         level,
                         name: request_or_group_title.to_string(),
+                        url: execution.url.clone(),
+                        tag: self.tag.clone(),
                         executed_at: self.executed_at,
                         duration: self.duration,
                         status,
@@ -173,6 +182,8 @@ impl ListAppendable for ApicizeRequestResult {
                     ExecutionResultDetail::Request(ExecutionResultDetailRequest {
                         id: request_or_group_id.to_string(),
                         name: request_or_group_title.to_string(),
+                        url: execution.url.clone(),
+                        tag: self.tag.clone(),
                         row_number: None,
                         run_number: None,
                         executed_at: self.executed_at,
@@ -203,6 +214,7 @@ impl ListAppendable for Vec<ApicizeRequestResultRun> {
         parent_index: Option<usize>,
         request_or_group_id: &str,
         request_or_group_title: &str,
+        request_or_group_tag: &Option<String>,
     ) -> Vec<usize> {
         let mut run_number = 1;
         let run_count = self.len();
@@ -227,6 +239,8 @@ impl ListAppendable for Vec<ApicizeRequestResultRun> {
                     child_indexes: None,
                     level,
                     name: name.clone(),
+                    tag: request_or_group_tag.clone(),
+                    url: run.execution.url.clone(),
                     executed_at: run.executed_at,
                     duration: run.duration,
                     status,
@@ -244,6 +258,8 @@ impl ListAppendable for Vec<ApicizeRequestResultRun> {
                 ExecutionResultDetail::Request(ExecutionResultDetailRequest {
                     id: request_or_group_id.to_string(),
                     name,
+                    tag: request_or_group_tag.clone(),
+                    url: run.execution.url.clone(),
                     row_number: None,
                     run_number: Some(run_number),
                     executed_at: run.executed_at,
@@ -278,6 +294,7 @@ impl ListAppendable for Vec<ApicizeRequestResultRow> {
         parent_index: Option<usize>,
         request_or_group_id: &str,
         request_or_group_title: &str,
+        request_or_group_tag: &Option<String>,
     ) -> Vec<usize> {
         let mut row_number = 1;
         let row_count = self.len();
@@ -301,6 +318,8 @@ impl ListAppendable for Vec<ApicizeRequestResultRow> {
                             child_indexes: Some(vec![]),
                             level,
                             name: name.clone(),
+                            url: None,
+                            tag: request_or_group_tag.clone(),
                             executed_at: row.executed_at,
                             duration: row.duration,
                             status: None,
@@ -318,6 +337,7 @@ impl ListAppendable for Vec<ApicizeRequestResultRow> {
                         ExecutionResultDetail::Grouped(Box::new(ExecutionResultDetailGroup {
                             id: request_or_group_id.to_string(),
                             name,
+                            tag: request_or_group_tag.clone(),
                             row_number: Some(row_number),
                             run_number: None,
                             executed_at: row.executed_at,
@@ -338,6 +358,7 @@ impl ListAppendable for Vec<ApicizeRequestResultRow> {
                         Some(index),
                         request_or_group_id,
                         request_or_group_title,
+                        request_or_group_tag,
                     );
 
                     if !child_indexes.is_empty() {
@@ -357,6 +378,8 @@ impl ListAppendable for Vec<ApicizeRequestResultRow> {
                             child_indexes: None,
                             level,
                             name: name.clone(),
+                            tag: request_or_group_tag.clone(),
+                            url: execution.url.clone(),
                             executed_at: row.executed_at,
                             duration: row.duration,
                             status,
@@ -374,6 +397,8 @@ impl ListAppendable for Vec<ApicizeRequestResultRow> {
                         ExecutionResultDetail::Request(ExecutionResultDetailRequest {
                             id: request_or_group_id.to_string(),
                             name,
+                            tag: request_or_group_tag.clone(),
+                            url: execution.url.clone(),
                             row_number: Some(row_number),
                             run_number: None,
                             executed_at: row.executed_at,
@@ -410,6 +435,7 @@ impl ListAppendable for ApicizeGroupResult {
         parent_index: Option<usize>,
         request_or_group_id: &str,
         request_or_group_title: &str,
+        request_or_group_tag: &Option<String>,
     ) -> Vec<usize> {
         let success = success_from_tallies(&self);
         let mut indexes = Vec::<usize>::with_capacity(list.len());
@@ -424,6 +450,8 @@ impl ListAppendable for ApicizeGroupResult {
                     child_indexes: Some(vec![]),
                     level,
                     name: self.name.clone(),
+                    tag: self.tag.clone(),
+                    url: None,
                     executed_at: self.executed_at,
                     duration: self.duration,
                     status: None,
@@ -441,6 +469,7 @@ impl ListAppendable for ApicizeGroupResult {
                 ExecutionResultDetail::Grouped(Box::new(ExecutionResultDetailGroup {
                     id: self.id.to_string(),
                     name: self.name.clone(),
+                    tag: self.tag.clone(),
                     row_number: None,
                     run_number: None,
                     executed_at: self.executed_at,
@@ -469,6 +498,7 @@ impl ListAppendable for ApicizeGroupResult {
                     Some(parent_index),
                     request_or_group_id,
                     request_or_group_title,
+                    request_or_group_tag,
                 );
             }
             ApicizeGroupResultContent::Runs { runs } => {
@@ -478,6 +508,7 @@ impl ListAppendable for ApicizeGroupResult {
                     Some(parent_index),
                     request_or_group_id,
                     request_or_group_title,
+                    request_or_group_tag,
                 );
             }
             ApicizeGroupResultContent::Results { results } => {
@@ -508,6 +539,7 @@ impl ListAppendable for Vec<ApicizeGroupResultRun> {
         parent_index: Option<usize>,
         request_or_group_id: &str,
         request_or_group_title: &str,
+        request_or_group_tag: &Option<String>,
     ) -> Vec<usize> {
         let mut run_number = 1;
         let run_count = self.len();
@@ -529,6 +561,8 @@ impl ListAppendable for Vec<ApicizeGroupResultRun> {
                     child_indexes: None,
                     level,
                     name: name.clone(),
+                    tag: request_or_group_tag.clone(),
+                    url: None,
                     executed_at: run.executed_at,
                     duration: run.duration,
                     status: None,
@@ -546,6 +580,7 @@ impl ListAppendable for Vec<ApicizeGroupResultRun> {
                 ExecutionResultDetail::Grouped(Box::new(ExecutionResultDetailGroup {
                     id: request_or_group_id.to_string(),
                     name,
+                    tag: request_or_group_tag.clone(),
                     row_number: None,
                     run_number: Some(run_number),
                     executed_at: run.executed_at,
@@ -586,6 +621,7 @@ impl ListAppendable for Vec<ApicizeGroupResultRow> {
         parent_index: Option<usize>,
         request_or_group_id: &str,
         request_or_group_title: &str,
+        request_or_group_tag: &Option<String>,
     ) -> Vec<usize> {
         let mut row_number = 1;
         let row_count = self.len();
@@ -607,6 +643,8 @@ impl ListAppendable for Vec<ApicizeGroupResultRow> {
                     child_indexes: None,
                     level,
                     name: name.clone(),
+                    tag: request_or_group_tag.clone(),
+                    url: None,
                     executed_at: row.executed_at,
                     duration: row.duration,
                     status: None,
@@ -624,6 +662,7 @@ impl ListAppendable for Vec<ApicizeGroupResultRow> {
                 ExecutionResultDetail::Grouped(Box::new(ExecutionResultDetailGroup {
                     id: request_or_group_id.to_string(),
                     name,
+                    tag: request_or_group_tag.clone(),
                     row_number: None,
                     run_number: Some(row_number),
                     executed_at: row.executed_at,
@@ -647,6 +686,7 @@ impl ListAppendable for Vec<ApicizeGroupResultRow> {
                         Some(index),
                         request_or_group_id,
                         request_or_group_title,
+                        request_or_group_tag,
                     );
                 }
                 ApicizeGroupResultRowContent::Results { results } => {
@@ -679,6 +719,10 @@ impl ApicizeResult {
     ) -> Vec<usize> {
         let request_or_group_id = self.get_id().to_string();
         let request_or_group_title = self.get_title();
+        let request_or_group_tag = match &self {
+            ApicizeResult::Request(request) => request.tag.clone(),
+            ApicizeResult::Group(group) => group.tag.clone(),
+        };
         match self {
             ApicizeResult::Request(request) => request.append_to_list(
                 list,
@@ -686,6 +730,7 @@ impl ApicizeResult {
                 parent_index,
                 &request_or_group_id,
                 &request_or_group_title,
+                &request_or_group_tag,
             ),
             ApicizeResult::Group(group) => group.append_to_list(
                 list,
@@ -693,6 +738,7 @@ impl ApicizeResult {
                 parent_index,
                 &request_or_group_id,
                 &request_or_group_title,
+                &request_or_group_tag,
             ),
         }
     }

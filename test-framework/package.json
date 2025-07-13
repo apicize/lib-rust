@@ -5,10 +5,12 @@
   "main": "index.js",
   "license": "MIT",
   "scripts": {
-    "build": "webpack"
+    "build": "webpack",
+    "test": "jest"
   },
   "devDependencies": {
     "chai": "^4.3.10",
+    "jest": "^30.0.4",
     "jsonpath-plus": "^10.1.0",
     "terser-webpack-plugin": "^5.3.10",
     "util": "^0.12.5",
