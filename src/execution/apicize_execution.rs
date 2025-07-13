@@ -13,6 +13,10 @@ pub struct ApicizeExecution {
     /// Name of the request being executed
     pub name: String,
 
+    /// Method for request
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub method: Option<String>,
+
     /// URL being called
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,

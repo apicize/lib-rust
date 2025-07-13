@@ -504,6 +504,7 @@ impl Workspace {
                     report.push(ExecutionReportJson {
                         name: summary.name.clone(),
                         tag: summary.tag.clone(),
+                        method: summary.method.clone(),
                         url: summary.url.clone(),
                         executed_at: summary.executed_at,
                         duration: summary.duration,
@@ -527,6 +528,7 @@ impl Workspace {
                     report.push(ExecutionReportJson {
                         name: summary.name.clone(),
                         tag: summary.tag.clone(),
+                        method: summary.method.clone(),
                         url: summary.url.clone(),
                         executed_at: summary.executed_at,
                         duration: summary.duration,
@@ -547,6 +549,7 @@ impl Workspace {
                     report.push(ExecutionReportJson {
                         name: summary.name.clone(),
                         tag: summary.tag.clone(),
+                        method: summary.method.clone(),
                         url: summary.url.clone(),
                         executed_at: summary.executed_at,
                         duration: summary.duration,

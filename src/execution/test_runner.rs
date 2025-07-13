@@ -876,12 +876,14 @@ async fn dispatch_request_and_test(
 
     let mut test_count: usize = 0;
     let mut test_fail_count: usize = 0;
+    let mut method: Option<String> = None;
     let url: Option<String>;
 
     match dispatch_request(context.clone(), &request_id, &params, &subs).await {
         Ok((name_with_subs, url_called, http_request, http_response, _)) => {
             name = name_with_subs;
             url = Some(url_called);
+            method = Some(http_request.method.clone());
 
             execution_request = Some(http_request);
             execution_response = Some(http_response);
@@ -948,6 +950,7 @@ async fn dispatch_request_and_test(
 
     Ok(ApicizeExecution {
         name,
+        method,
         url,
         test_context: ApicizeExecutionTestContext {
             merged,

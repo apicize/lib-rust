@@ -35,6 +35,10 @@ pub struct ExecutionReportJson {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tag: Option<String>,
 
+    /// Method for request
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub method: Option<String>,
+
     /// URL for request
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,

@@ -21,6 +21,10 @@ pub struct ExecutionResultDetailRequest {
     /// Request name
     pub name: String,
 
+    /// Method for request
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub method: Option<String>,
+
     /// Requested URL
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,

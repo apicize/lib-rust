@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.25.1
+
+* Include method in execution results
+
 # 0.25.0
 
 * Add "tag" test function to store tag with executed tests
