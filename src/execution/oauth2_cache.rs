@@ -31,7 +31,7 @@ pub async fn store_oauth2_token_in_cache(authorization_id: &str, token_info: Cac
 }
 
 /// Clear all cached OAuth2 tokens
-pub async fn clear_all_oauth2_tokens_from_cache<'a>() -> usize {
+pub async fn clear_all_oauth2_tokens_from_cache() -> usize {
     let locked_cache = &mut OAUTH2_TOKEN_CACHE.lock().await;
     let count = locked_cache.len();
     locked_cache.clear();

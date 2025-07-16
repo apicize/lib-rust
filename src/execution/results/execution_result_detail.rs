@@ -7,7 +7,7 @@ use super::ExecutionResultSuccess;
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase", tag = "entityType" )]
 pub enum ExecutionResultDetail {
-    Request(ExecutionResultDetailRequest),
+    Request(Box<ExecutionResultDetailRequest>),
     Grouped(Box<ExecutionResultDetailGroup>),
 }
 

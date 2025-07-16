@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.25.3
+
+* Update Zephyr output to only include tagged entries
+
 # 0.25.2
 
 * Include method and URL to CSV reporting

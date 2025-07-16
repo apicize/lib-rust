@@ -83,7 +83,7 @@ pub fn get_absolute_file_name(
             } else {
                 Err(ApicizeError::from_io(io::Error::new(
                     io::ErrorKind::NotFound,
-                    format!("{} not found", file_name),
+                    format!("{file_name} not found"),
                 )))
             }
         }

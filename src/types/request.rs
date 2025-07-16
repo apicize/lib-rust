@@ -710,10 +710,7 @@ impl StoredRequestEntry {
                         RequestBody::JSON { data } => {
                             // If the data from the workspace is serializable, then store the serialized version,
                             // as well as writing the raw data
-                            let data_to_save = match Value::from_str(&data) {
-                                Ok(v) => Some(v),
-                                Err(_) => None,
-                            };
+                            let data_to_save = Value::from_str(&data).ok();
                             Some(StoredRequestBody::JSON {
                                 data: data_to_save,
                                 formatted: Some(data),
@@ -722,10 +719,7 @@ impl StoredRequestEntry {
                         RequestBody::XML { data } => {
                             // If the data from the workspace is serializable, then store the serialized version,
                             // as well as writing the raw data
-                            let data_to_save = match to_json(&data) {
-                                Ok(v) => Some(v),
-                                Err(_) => None,
-                            };
+                            let data_to_save = to_json(&data).ok();
                             Some(StoredRequestBody::JSON {
                                 data: data_to_save,
                                 formatted: Some(data),

@@ -29,7 +29,7 @@ pub enum ApicizeRequestResultContent {
         runs: Vec<ApicizeRequestResultRun>,
     },
     Execution {
-        execution: ApicizeExecution,
+        execution: Box<ApicizeExecution>,
     },
 }
 
@@ -75,10 +75,9 @@ pub struct ApicizeRequestResult {
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type")]
-
 pub enum ApicizeRequestResultRowContent {
     Runs(Vec<ApicizeRequestResultRun>),
-    Execution(ApicizeExecution),
+    Execution(Box<ApicizeExecution>),
 }
 
 /// Result for a request row
@@ -189,7 +188,6 @@ pub struct ApicizeGroupResult {
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type")]
-
 pub enum ApicizeGroupResultRowContent {
     Runs { runs: Vec<ApicizeGroupResultRun> },
     Results { results: Vec<ApicizeResult> },

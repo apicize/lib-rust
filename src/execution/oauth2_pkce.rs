@@ -115,7 +115,7 @@ pub async fn retrieve_access_token(
                     expiration,
                 })
             }
-            Err(err) => Err(format!("{:?}", err))
+            Err(err) => Err(format!("{err:?}"))
         }
 
 }

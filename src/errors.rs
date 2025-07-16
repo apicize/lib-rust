@@ -115,21 +115,21 @@ impl ApicizeError {
 
     pub fn from_serde(error: serde_json::Error, name: &str) -> ApicizeError {
         ApicizeError::Parse {
-            description: format!("{}", error),
+            description: format!("{error}"),
             name: name.to_string(),
         }
     }
 
     pub fn from_csv(error: csv::Error, name: &str) -> ApicizeError {
         ApicizeError::Parse {
-            description: format!("{}", error),
+            description: format!("{error}"),
             name: name.to_string(),
         }
     }
 
     pub fn from_io(error: io::Error) -> ApicizeError {
         ApicizeError::IO {
-            description: format!("{}", error),
+            description: format!("{error}"),
         }
     }
 

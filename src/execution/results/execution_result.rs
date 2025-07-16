@@ -181,7 +181,7 @@ impl ListAppendable for ApicizeRequestResult {
                         row_number: None,
                         row_count: None,
                     },
-                    ExecutionResultDetail::Request(ExecutionResultDetailRequest {
+                    ExecutionResultDetail::Request(Box::new(ExecutionResultDetailRequest {
                         id: request_or_group_id.to_string(),
                         name: request_or_group_title.to_string(),
                         method: execution.method.clone(),
@@ -201,7 +201,7 @@ impl ListAppendable for ApicizeRequestResult {
                         request_error_count: self.request_error_count,
                         test_pass_count: self.test_pass_count,
                         test_fail_count: self.test_fail_count,
-                    }),
+                    })),
                 ));
                 vec![index]
             }
@@ -226,8 +226,7 @@ impl ListAppendable for Vec<ApicizeRequestResultRun> {
         for run in self {
             let success = success_from_tallies(&run);
             let name = format!(
-                "{} (Run {} of {})",
-                request_or_group_title, run_number, run_count
+                "{request_or_group_title} (Run {run_number} of {run_count})"
             );
 
             let (status, status_text, has_response_headers, response_body_length) =
@@ -259,7 +258,7 @@ impl ListAppendable for Vec<ApicizeRequestResultRun> {
                     row_number: None,
                     row_count: None,
                 },
-                ExecutionResultDetail::Request(ExecutionResultDetailRequest {
+                ExecutionResultDetail::Request(Box::new(ExecutionResultDetailRequest {
                     id: request_or_group_id.to_string(),
                     name,
                     tag: request_or_group_tag.clone(),
@@ -279,7 +278,7 @@ impl ListAppendable for Vec<ApicizeRequestResultRun> {
                     request_error_count: run.request_error_count,
                     test_pass_count: run.test_pass_count,
                     test_fail_count: run.test_fail_count,
-                }),
+                })),
             ));
 
             indexes.push(index);
@@ -309,8 +308,7 @@ impl ListAppendable for Vec<ApicizeRequestResultRow> {
             let success = success_from_tallies(&row);
             let index = list.len();
             let name = format!(
-                "{} (Row {} of {})",
-                request_or_group_title, row_number, row_count
+                "{request_or_group_title} (Row {row_number} of {row_count})"
             );
 
             match row.results {
@@ -401,7 +399,7 @@ impl ListAppendable for Vec<ApicizeRequestResultRow> {
                             row_number: Some(row_number),
                             row_count: Some(row_count),
                         },
-                        ExecutionResultDetail::Request(ExecutionResultDetailRequest {
+                        ExecutionResultDetail::Request(Box::new(ExecutionResultDetailRequest {
                             id: request_or_group_id.to_string(),
                             name,
                             tag: request_or_group_tag.clone(),
@@ -421,7 +419,7 @@ impl ListAppendable for Vec<ApicizeRequestResultRow> {
                             request_error_count: row.request_error_count,
                             test_pass_count: row.test_pass_count,
                             test_fail_count: row.test_fail_count,
-                        }),
+                        })),
                     ));
                 }
             }
@@ -557,8 +555,7 @@ impl ListAppendable for Vec<ApicizeGroupResultRun> {
         for run in self {
             let success = success_from_tallies(&run);
             let name = format!(
-                "{} (Run {} of {})",
-                request_or_group_title, run_number, run_count
+                "{request_or_group_title} (Run {run_number} of {run_count})"
             );
 
             let index = list.len();
@@ -640,8 +637,7 @@ impl ListAppendable for Vec<ApicizeGroupResultRow> {
         for row in self {
             let success = success_from_tallies(&row);
             let name = format!(
-                "{} (Row {} of {})",
-                request_or_group_title, row_number, row_count
+                "{request_or_group_title} (Row {row_number} of {row_count})"
             );
 
             let index = list.len();

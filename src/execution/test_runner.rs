@@ -93,7 +93,7 @@ impl TestRunnerContext {
         match self.workspace.requests.entities.get(request_or_group_id) {
             Some(entry) => Ok(entry),
             None => Err(ApicizeError::InvalidId {
-                description: format!("Invalid Request or Group ID {}", request_or_group_id),
+                description: format!("Invalid Request or Group ID {request_or_group_id}"),
             }),
         }
     }
@@ -102,7 +102,7 @@ impl TestRunnerContext {
         match self.workspace.requests.entities.get(request_id) {
             Some(RequestEntry::Request(request)) => Ok(request),
             _ => Err(ApicizeError::InvalidId {
-                description: format!("Invalid Request ID {}", request_id),
+                description: format!("Invalid Request ID {request_id}"),
             }),
         }
     }
@@ -111,7 +111,7 @@ impl TestRunnerContext {
         match self.workspace.requests.entities.get(group_id) {
             Some(RequestEntry::Group(group)) => Ok(group),
             _ => Err(ApicizeError::InvalidId {
-                description: format!("Invalid Group ID {}", group_id),
+                description: format!("Invalid Group ID {group_id}"),
             }),
         }
     }
@@ -229,7 +229,7 @@ async fn run_request(
         let data_context = execution.generate_data_context();
         let tallies = execution.get_tallies();
         (
-            ApicizeRequestResultContent::Execution { execution },
+            ApicizeRequestResultContent::Execution { execution: Box::new(execution) },
             data_context,
             tallies,
         )
@@ -302,7 +302,7 @@ async fn run_request_rows(
                         executed_at: row_executed_at,
                         duration: context.ellapsed_in_ms() - row_executed_at,
                         data_context,
-                        results: ApicizeRequestResultRowContent::Execution(execution),
+                        results: ApicizeRequestResultRowContent::Execution(Box::new(execution)),
                         success: taliles.success,
                         request_success_count: taliles.request_success_count,
                         request_failure_count: taliles.request_failure_count,
@@ -866,9 +866,9 @@ async fn dispatch_request_and_test(
                 let v = if let Some(s) = value.as_str() {
                     String::from(s)
                 } else {
-                    format!("{}", value)
+                    format!("{value}", )
                 };
-                (format!("{{{{{}}}}}", name), v)
+                (format!("{{{{{name}}}}}"), v)
             })
             .collect::<HashMap<String, String>>(),
         None => HashMap::new(),
@@ -1064,7 +1064,7 @@ async fn dispatch_request(
                 }
 
                 if !https {
-                    if let Ok(addrs) = &mut format!("{}:443", url).to_socket_addrs() {
+                    if let Ok(addrs) = &mut format!("{url}:443").to_socket_addrs() {
                         if let Some(addr) = addrs.next() {
                             https =
                                 TcpStream::connect_timeout(&addr, Duration::from_secs(2)).is_ok();

@@ -696,18 +696,20 @@ impl Workspace {
         for summary in summaries {
             if let Some(tests) = &summary.test_results {
                 for test in tests {
-                    report.push(ExecutionReportZephyr {
-                        source: summary.name.clone(),
-                        result: if summary.error.is_some() || !test.success {
-                            "Failed".to_string()
-                        } else {
-                            "Success".to_string()
-                        },
-                        test_case: ExecutionReportZephyrTestCase {
-                            name: test.name.clone(),
-                            key: test.tag.clone(),
-                        },
-                    });
+                    if test.tag.as_ref().is_some_and(|t| !t.is_empty()) {
+                        report.push(ExecutionReportZephyr {
+                            source: summary.name.clone(),
+                            result: if summary.error.is_some() || !test.success {
+                                "Failed".to_string()
+                            } else {
+                                "Success".to_string()
+                            },
+                            test_case: ExecutionReportZephyrTestCase {
+                                name: test.name.clone(),
+                                key: test.tag.clone(),
+                            },
+                        });
+                    }
                 }
             }
         }
