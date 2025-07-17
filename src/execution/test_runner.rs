@@ -1488,6 +1488,7 @@ fn flatten_test_results(
     parents: &[String],
 ) {
     if let Some(r) = results {
+        // println!("Results {}", serde_json::to_string(r).unwrap());
         for result in r {
             match &result {
                 ApicizeTestResult::Scenario(scenario) => {

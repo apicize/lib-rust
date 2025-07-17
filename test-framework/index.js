@@ -50,9 +50,9 @@ jsonpath = jpp.JSONPath;
 // Helper function to jsonpath-plus
 function jpath(param) {
     if (typeof param === 'object') {
-        return jpp.JSONPath({...param, json: this})
+        return jpp.JSONPath({ ...param, json: this })
     } else if (typeof param === 'string') {
-        return jpp.JSONPath({path: param, json: this})
+        return jpp.JSONPath({ path: param, json: this })
     } else {
         throw new Error('Argument for jp must be either a JSON path (string) or named parameters')
     }
@@ -80,6 +80,35 @@ BodyType = {
     Binary: 'Binary'
 }
 
+function generateTag(arg) {
+    let tagName = undefined
+
+    switch (typeof (arg)) {
+        case 'boolean':
+        case 'undefined':
+        case 'array':
+        case 'function':
+            throw new Error('Invalid parameter for "tag"')
+        default:
+            if (arg !== null) {
+                const n = `${arg}`
+                if (n.length > 0) {
+                    tagName = n
+                }
+            }
+            break
+    }
+
+    if (tagName) {
+        const props = tagName.matchAll(/\{\{(.*?)\}\}/g)
+        for(const [match, propName] of props) {
+            tagName = tagName.replaceAll(match, $[propName] ? `${$[propName]}` : '')
+        }
+    }
+
+    return tagName
+}
+
 class Scenario {
     constructor(name) {
         this.type = 'Scenario'
@@ -89,10 +118,6 @@ class Scenario {
         this.children = []
         this.testCount = 0
         this.testFailCount = 0
-    }
-
-    tag(name) {
-        this.tag = name
     }
 }
 
@@ -106,15 +131,11 @@ class Behavior {
         this.testFailCount = 0
     }
 
-    tag(name) {
-        this.tag = name
-    }
-
     succeed() {
         this.success = true
         this.testCount = 1
     }
-    
+
     fail(e) {
         this.success = false
         this.testCount = 1
@@ -148,7 +169,7 @@ class Context {
 
     pop() {
         const current = this.currentResult
-        if (! current) {
+        if (!current) {
             return
         }
         if (logs && logs.length > 0) {
@@ -195,7 +216,7 @@ class Context {
 
 let context = new Context()
 
-describe = (name, run) => {    
+describe = (name, run) => {
     context.enterScenario(name)
     try {
         run()
@@ -216,8 +237,8 @@ it = (name, run) => {
     }
 }
 
-tag = (name) => {
-    context.currentResult.tag = name
+tag = (arg) => {
+    context.currentResult.tag = generateTag(arg)
 }
 
 output = (name, value) => {
@@ -241,12 +262,13 @@ runTestSuite = (request1, response1, variables1, data1, output1, testOffset1, te
     scenario = variables1 ?? {}
     data = data1 ?? {}
     outputVars = output1 ?? {}
-    
-    $ = {...outputVars, ...scenario, ...data}
+
+    $ = { ...outputVars, ...scenario, ...data }
     variables = $ // retain variables for some level of backward compatibility
 
     testOffset = testOffset1
     testSuite()
+
     return JSON.stringify({
         results: context.results,
         output: outputVars

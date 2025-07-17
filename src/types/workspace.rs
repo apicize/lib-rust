@@ -4,8 +4,8 @@
 
 use crate::{
     open_data_file, ApicizeError, Authorization, Certificate, ExecutionReportCsv,
-    ExecutionReportFormat, ExecutionReportJson, ExecutionReportZephyr,
-    ExecutionReportZephyrTestCase, ExecutionResultSummary, FileAccessError, Identifiable,
+    ExecutionReportFormat, ExecutionReportJson, ExecutionReportZephyrTestExecution,
+    ExecutionReportZephyr, ExecutionReportZephyrTestCase, ExecutionResultSummary, FileAccessError, Identifiable,
     PersistedIndex, Proxy, RequestEntry, Scenario, SelectedParameters, SerializationSaveSuccess,
     Workbook, WorkbookDefaultParameters,
 };
@@ -691,25 +691,23 @@ impl Workspace {
     /// Append specified index, including children, to the results
     fn generate_zephyr(
         summaries: &Vec<ExecutionResultSummary>,
-        report: &mut Vec<ExecutionReportZephyr>,
+        report: &mut Vec<ExecutionReportZephyrTestExecution>,
     ) -> Result<(), ApicizeError> {
         for summary in summaries {
             if let Some(tests) = &summary.test_results {
                 for test in tests {
-                    if test.tag.as_ref().is_some_and(|t| !t.is_empty()) {
-                        report.push(ExecutionReportZephyr {
-                            source: summary.name.clone(),
-                            result: if summary.error.is_some() || !test.success {
-                                "Failed".to_string()
-                            } else {
-                                "Success".to_string()
-                            },
-                            test_case: ExecutionReportZephyrTestCase {
-                                name: test.name.clone(),
-                                key: test.tag.clone(),
-                            },
-                        });
-                    }
+                    report.push(ExecutionReportZephyrTestExecution {
+                        source: summary.name.clone(),
+                        result: if summary.error.is_some() || !test.success {
+                            "Failed".to_string()
+                        } else {
+                            "Success".to_string()
+                        },
+                        test_case: ExecutionReportZephyrTestCase {
+                            name: test.name.clone(),
+                            key: test.tag.clone(),
+                        },
+                    });
                 }
             }
         }
@@ -747,12 +745,18 @@ impl Workspace {
                 Ok(String::from_utf8(writer.into_inner().unwrap()).unwrap())
             }
             ExecutionReportFormat::ZEPHYR => {
-                let mut data = Vec::<ExecutionReportZephyr>::new();
-                Self::generate_zephyr(summaries, &mut data)?;
+                let mut executions = Vec::<ExecutionReportZephyrTestExecution>::new();
+                Self::generate_zephyr(summaries, &mut executions)?;
+
+                let report = ExecutionReportZephyr {
+                    version: 1,
+                    executions,
+                };
+
                 let mut buf = Vec::new();
                 let formatter = PrettyFormatter::with_indent(b"    ");
                 let mut ser = serde_json::Serializer::with_formatter(&mut buf, formatter);
-                data.serialize(&mut ser).unwrap();
+                report.serialize(&mut ser).unwrap();
                 Ok(String::from_utf8(buf).unwrap())
             }
         }
@@ -837,7 +841,7 @@ impl Workspace {
                 Ok(String::from_utf8(writer.into_inner().unwrap()).unwrap())
             }
             ExecutionReportFormat::ZEPHYR => {
-                let mut data = Vec::<ExecutionReportZephyr>::new();
+                let mut data = Vec::<ExecutionReportZephyrTestExecution>::new();
 
                 for summary_set in run_summaries.values() {
                     for summaries in summary_set {

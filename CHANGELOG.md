@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.25.4
+
+* Allow handlebars in tag names to pull in values (data, scenario, output)
+
 # 0.25.3
 
 * Update Zephyr output to only include tagged entries

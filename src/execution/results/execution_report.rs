@@ -167,7 +167,7 @@ pub struct ExecutionReportZephyrTestCase {
 /// Zephyr simplified test report
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ExecutionReportZephyr {
+pub struct ExecutionReportZephyrTestExecution {
     /// Fully qualified request name
     pub source: String,
 
@@ -177,4 +177,16 @@ pub struct ExecutionReportZephyr {
     /// Idnetifier for Zephyr test case
     #[serde(rename = "testCase")]
     pub test_case: ExecutionReportZephyrTestCase,
+}
+
+
+/// Zephyr simplified test report
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecutionReportZephyr {
+    /// Zephyr test format version number
+    pub version: u32,
+
+    /// Test executions
+    pub executions: Vec<ExecutionReportZephyrTestExecution>,
 }

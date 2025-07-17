@@ -1,15 +1,19 @@
 const runTestSuite = require('../index')
 
-test('runsTestSuite', () => {
-    const results = runTestSuite({}, {}, {}, {}, {}, 0, () => {
+test('processes tag substitution', () => {
+    let response = runTestSuite({}, {}, {}, {test1: 'test-123', value: 100}, {}, 0, () => {
         describe('test', () => {
-            tag('foo')
             it('should be ok', () => {
-                expect(1).to.equal(1)
+                tag('{{test1}}')
+                expect(data.value).to.equal(100)
             })
         })
     })
-    expect(results).to.be.an('string')
+    results = JSON.parse(response).results
+    testBehavior = results[0]
+    testOk = testBehavior.children[0]
+    expect(testBehavior.tag).to.be.undefined
+    expect(testOk.tag).to.equal('test-123')
+    expect(testOk.success).to.equal(true)
 })
-
 
