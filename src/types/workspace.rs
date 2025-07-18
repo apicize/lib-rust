@@ -701,7 +701,7 @@ impl Workspace {
                         result: if summary.error.is_some() || !test.success {
                             "Failed".to_string()
                         } else {
-                            "Success".to_string()
+                            "Passed".to_string()
                         },
                         test_case: ExecutionReportZephyrTestCase {
                             name: test.name.clone(),
