@@ -4,10 +4,10 @@
 
 use crate::{
     open_data_file, ApicizeError, Authorization, Certificate, ExecutionReportCsv,
-    ExecutionReportFormat, ExecutionReportJson, ExecutionReportZephyrTestExecution,
-    ExecutionReportZephyr, ExecutionReportZephyrTestCase, ExecutionResultSummary, FileAccessError, Identifiable,
-    PersistedIndex, Proxy, RequestEntry, Scenario, SelectedParameters, SerializationSaveSuccess,
-    Workbook, WorkbookDefaultParameters,
+    ExecutionReportFormat, ExecutionReportJson, ExecutionReportZephyr,
+    ExecutionReportZephyrTestCase, ExecutionReportZephyrTestExecution, ExecutionResultSummary,
+    FileAccessError, Identifiable, PersistedIndex, Proxy, RequestEntry, Scenario,
+    SelectedParameters, SerializationSaveSuccess, Workbook, WorkbookDefaultParameters,
 };
 
 use csv::WriterBuilder;
@@ -841,18 +841,23 @@ impl Workspace {
                 Ok(String::from_utf8(writer.into_inner().unwrap()).unwrap())
             }
             ExecutionReportFormat::ZEPHYR => {
-                let mut data = Vec::<ExecutionReportZephyrTestExecution>::new();
+                let mut executions = Vec::<ExecutionReportZephyrTestExecution>::new();
 
                 for summary_set in run_summaries.values() {
                     for summaries in summary_set {
-                        Self::generate_zephyr(summaries, &mut data)?;
+                        Self::generate_zephyr(summaries, &mut executions)?;
                     }
                 }
+
+                let report = ExecutionReportZephyr {
+                    version: 1,
+                    executions,
+                };
 
                 let mut buf = Vec::new();
                 let formatter = PrettyFormatter::with_indent(b"    ");
                 let mut ser = serde_json::Serializer::with_formatter(&mut buf, formatter);
-                data.serialize(&mut ser).unwrap();
+                report.serialize(&mut ser).unwrap();
                 Ok(String::from_utf8(buf).unwrap())
             }
         }

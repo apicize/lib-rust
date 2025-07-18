@@ -102,7 +102,11 @@ function generateTag(arg) {
     if (tagName) {
         const props = tagName.matchAll(/\{\{(.*?)\}\}/g)
         for(const [match, propName] of props) {
-            tagName = tagName.replaceAll(match, $[propName] ? `${$[propName]}` : '')
+            const value = $[propName]
+            if (! value) {
+                throw new Error(`"${propName}" is not available for use in a tag`)
+            }
+            tagName = tagName.replaceAll(match, $[propName] ? `${value}` : '')
         }
     }
 
