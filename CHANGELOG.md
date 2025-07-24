@@ -1,5 +1,10 @@
 # Change Log
 
+# 0.26.0
+
+* Support Key property for requests and groups, add to reporting
+* Separate execution result assembly into ExecutionResultBuilder
+
 # 0.25.6
 
 * Fix Zephyr report to say "Passed" instead of "Success"

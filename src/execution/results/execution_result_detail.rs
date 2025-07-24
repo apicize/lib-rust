@@ -29,6 +29,10 @@ pub struct ExecutionResultDetailRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
 
+    /// Optional referential key
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+
     /// Associative tag name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tag: Option<String>,
@@ -89,6 +93,10 @@ pub struct ExecutionResultDetailGroup {
 
     /// Request name
     pub name: String,
+
+    /// Optional referential key
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
 
     /// Associative tag
     #[serde(skip_serializing_if = "Option::is_none")]

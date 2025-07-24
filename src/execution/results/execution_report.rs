@@ -31,6 +31,10 @@ pub struct ExecutionReportJson {
     /// Fully qualified request name
     pub name: String,
 
+    /// Optional referential key
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+
     /// Associative tag name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tag: Option<String>,
@@ -92,17 +96,20 @@ pub struct ExecutionReportJson {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionReportCsv {
-    /// Set to run number if a multi-run execution from CLI tool
-    #[serde(rename = "Run #", skip_serializing_if = "Option::is_none")]
-    pub run_number: Option<usize>,
-    
+    // /// Set to run number if a multi-run execution from CLI tool
+    // #[serde(rename = "Run #")]
+    // pub run_number: Option<usize>,
+
+    // /// Set to run number if a multi-run execution from CLI tool
+    // #[serde(rename = "Row #")]
+    // pub row_number: Option<usize>,
     /// Fully qualified request name
     #[serde(rename = "Name")]
     pub name: String,
 
-    /// Associative tag name
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tag: Option<String>,
+    /// Optional referential key
+    #[serde(rename = "Key")]
+    pub key: Option<String>,
 
     /// Execution start (millisecond offset from start)
     #[serde(rename = "Executed At")]
@@ -113,11 +120,11 @@ pub struct ExecutionReportCsv {
     pub duration: u128,
 
     /// Method for request
-    #[serde(rename="Method", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "Method")]
     pub method: Option<String>,
 
     /// URL for request
-    #[serde(rename="URL", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "URL")]
     pub url: Option<String>,
 
     /// Whether the request executed and tests succeeded
@@ -135,6 +142,10 @@ pub struct ExecutionReportCsv {
     /// Human readable name of the test
     #[serde(rename = "Test Name")]
     pub test_name: Option<String>,
+
+    /// Associative tag name
+    #[serde(rename = "Test Tag")]
+    pub test_tag: Option<String>,
 
     /// Whether or not the test executed and passed successful
     #[serde(rename = "Test Success")]
@@ -178,7 +189,6 @@ pub struct ExecutionReportZephyrTestExecution {
     #[serde(rename = "testCase")]
     pub test_case: ExecutionReportZephyrTestCase,
 }
-
 
 /// Zephyr simplified test report
 #[derive(Clone, Serialize, Deserialize)]

@@ -107,6 +107,39 @@ impl TestRunnerContext {
         }
     }
 
+    /// Return key of the request/group with inheritance
+    pub fn get_request_key(&self, request_or_group_id: &str) -> Result<Option<String>, ApicizeError> {
+        match self.workspace.requests.entities.get(request_or_group_id) {
+            Some(RequestEntry::Request(request)) => {
+                if let Some(key) = &request.key {
+                    Ok(Some(key.clone()))
+                } else {
+                    for (parent_id, child_ids) in &self.workspace.requests.child_ids {
+                        if child_ids.contains(&request_or_group_id.to_string()) {
+                            return self.get_request_key(parent_id);
+                        }
+                    }
+                    Ok(None)
+                }
+            },
+            Some(RequestEntry::Group(group)) => {
+                if let Some(key) = &group.key {
+                    Ok(Some(key.clone()))
+                } else {
+                    for (parent_id, child_ids) in &self.workspace.requests.child_ids {
+                        if child_ids.contains(&request_or_group_id.to_string()) {
+                            return self.get_request_key(parent_id);
+                        }
+                    }
+                    Ok(None)
+                }
+            },
+            _ => Err(ApicizeError::InvalidId {
+                description: format!("Invalid Request ID {request_or_group_id}"),
+            }),
+        }
+    }
+
     pub fn get_group(&self, group_id: &str) -> Result<&RequestGroup, ApicizeError> {
         match self.workspace.requests.entities.get(group_id) {
             Some(RequestEntry::Group(group)) => Ok(group),
@@ -198,6 +231,7 @@ async fn run_request(
     params: Arc<RequestExecutionParameters>,
     state: Arc<RequestExecutionState>,
 ) -> Result<Box<ApicizeRequestResult>, ApicizeError> {
+    let key = context.get_request_key(request_id)?;
     let executed_at = context.ellapsed_in_ms();
     let request = context.get_request(request_id)?;
     let multi_run = request.runs > 1 && (!context.single_run_no_timeout);
@@ -238,6 +272,7 @@ async fn run_request(
     Ok(Box::new(ApicizeRequestResult {
         id: request.id.clone(),
         name: request.get_title(),
+        key,
         tag: None,
         url: None,
         executed_at,
@@ -478,6 +513,7 @@ async fn run_group(
     let executed_at = context.ellapsed_in_ms();
 
     let group = context.get_group(group_id)?;
+    let key = context.get_request_key(group_id)?;
     let multi_run = group.runs > 1 && (!context.single_run_no_timeout);
 
     let child_ids = context.get_group_children(group_id);
@@ -522,6 +558,7 @@ async fn run_group(
     Ok(Box::new(ApicizeGroupResult {
         id: group.id.clone(),
         name: group.get_title(),
+        key,
         tag: None,
         executed_at,
         duration: context.ellapsed_in_ms() - executed_at,
@@ -840,6 +877,7 @@ async fn dispatch_request_and_test(
     let mut error: Option<ApicizeError> = None;
 
     let name: String;
+    let key = context.get_request_key(&request_id)?;
 
     let request = context.get_request(&request_id)?;
 
@@ -950,6 +988,7 @@ async fn dispatch_request_and_test(
 
     Ok(ApicizeExecution {
         name,
+        key,
         method,
         url,
         test_context: ApicizeExecutionTestContext {

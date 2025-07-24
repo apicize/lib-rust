@@ -39,11 +39,18 @@ pub enum ApicizeRequestResultContent {
 pub struct ApicizeRequestResult {
     /// Result ID
     pub id: String,
+
     /// Result name
     pub name: String,
+
+    /// Result request/group key
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+
     /// Associative tag name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tag: Option<String>,
+
     /// URL requested
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
@@ -157,6 +164,9 @@ pub struct ApicizeGroupResult {
     pub id: String,
     /// Group name
     pub name: String,
+    /// Group key
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
     /// Associative tag name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tag: Option<String>,

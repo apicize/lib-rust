@@ -503,6 +503,7 @@ impl Workspace {
                     // Deal with summaries with errors
                     report.push(ExecutionReportJson {
                         name: summary.name.clone(),
+                        key: summary.key.clone(),
                         tag: summary.tag.clone(),
                         method: summary.method.clone(),
                         url: summary.url.clone(),
@@ -527,6 +528,7 @@ impl Workspace {
                     }
                     report.push(ExecutionReportJson {
                         name: summary.name.clone(),
+                        key: summary.key.clone(),
                         tag: summary.tag.clone(),
                         method: summary.method.clone(),
                         url: summary.url.clone(),
@@ -548,6 +550,7 @@ impl Workspace {
                     // Deal with executed behavior results
                     report.push(ExecutionReportJson {
                         name: summary.name.clone(),
+                        key: summary.key.clone(),
                         tag: summary.tag.clone(),
                         method: summary.method.clone(),
                         url: summary.url.clone(),
@@ -577,7 +580,6 @@ impl Workspace {
 
     // Append specified index, including children, to the results
     fn generate_csv(
-        run_number: Option<usize>,
         summary_index: usize,
         summaries: &Vec<ExecutionResultSummary>,
         parent_names: &[&str],
@@ -611,9 +613,8 @@ impl Workspace {
                 if summary.error.is_some() {
                     // Deal with summaries with errors
                     report.push(ExecutionReportCsv {
-                        run_number,
                         name: name_parts.join(", "),
-                        tag: summary.tag.clone(),
+                        key: summary.key.clone(),
                         executed_at: summary.executed_at,
                         duration: summary.duration,
                         method: summary.method.clone(),
@@ -622,6 +623,7 @@ impl Workspace {
                         status: summary.status,
                         status_text: summary.status_text.clone(),
                         test_name: None,
+                        test_tag: None,
                         test_success: None,
                         test_logs: None,
                         test_error: None,
@@ -630,21 +632,14 @@ impl Workspace {
                 } else if let Some(child_indexes) = &summary.child_indexes {
                     // Deal with "parent" scenarois
                     for child_index in child_indexes {
-                        Self::generate_csv(
-                            run_number,
-                            *child_index,
-                            summaries,
-                            &name_parts,
-                            report,
-                        )?;
+                        Self::generate_csv(*child_index, summaries, &name_parts, report)?;
                     }
                 } else if let Some(test_results) = &summary.test_results {
                     // Deal with executed behavior results with tests
                     for test_result in test_results {
                         report.push(ExecutionReportCsv {
-                            run_number,
                             name: name_parts.join(", "),
-                            tag: summary.tag.clone(),
+                            key: summary.key.clone(),
                             executed_at: summary.executed_at,
                             duration: summary.duration,
                             method: summary.method.clone(),
@@ -654,6 +649,7 @@ impl Workspace {
                             status_text: summary.status_text.clone(),
                             error: summary.error.clone(),
                             test_name: Some(test_result.name.clone()),
+                            test_tag: test_result.tag.clone(),
                             test_success: Some(test_result.success),
                             test_logs: test_result.logs.as_ref().map(|l| l.join("; ")),
                             test_error: test_result.error.clone(),
@@ -662,9 +658,8 @@ impl Workspace {
                 } else {
                     // Deal with executed behavior results without tests
                     report.push(ExecutionReportCsv {
-                        run_number,
                         name: name_parts.join(", "),
-                        tag: summary.tag.clone(),
+                        key: summary.key.clone(),
                         executed_at: summary.executed_at,
                         duration: summary.duration,
                         method: summary.method.clone(),
@@ -674,6 +669,7 @@ impl Workspace {
                         status_text: summary.status_text.clone(),
                         error: summary.error.clone(),
                         test_name: None,
+                        test_tag: None,
                         test_success: None,
                         test_logs: None,
                         test_error: None,
@@ -732,7 +728,7 @@ impl Workspace {
             }
             ExecutionReportFormat::CSV => {
                 let mut data = Vec::<ExecutionReportCsv>::new();
-                Self::generate_csv(None, summary_index, summaries, &[], &mut data)?;
+                Self::generate_csv(summary_index, summaries, &[], &mut data)?;
                 let mut writer = WriterBuilder::new().from_writer(Vec::new());
                 for d in data {
                     if let Err(err) = writer.serialize(d) {
@@ -805,7 +801,7 @@ impl Workspace {
             ExecutionReportFormat::CSV => {
                 let mut data = Vec::<ExecutionReportCsv>::new();
 
-                for (run_number, summary_set) in run_summaries {
+                for summary_set in run_summaries.values() {
                     for summaries in summary_set {
                         let root_indexes: Vec<usize> = summaries
                             .iter()
@@ -818,13 +814,7 @@ impl Workspace {
                             })
                             .collect();
                         for index in root_indexes {
-                            Self::generate_csv(
-                                Some(*run_number),
-                                index,
-                                summaries,
-                                &[],
-                                &mut data,
-                            )?;
+                            Self::generate_csv(index, summaries, &[], &mut data)?;
                         }
                     }
                 }

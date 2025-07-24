@@ -96,6 +96,9 @@ pub struct Request {
     pub id: String,
     /// Human-readable name describing the Apicize Request
     pub name: String,
+    /// Optional identifier for the Apicize Requset
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
     /// Test to execute after dispatching request and receiving response
     #[serde(skip_serializing_if = "Option::is_none")]
     pub test: Option<String>,
@@ -161,8 +164,11 @@ pub struct RequestGroup {
     /// Uniquely identifies group of Apicize requests
     #[serde(default = "generate_uuid")]
     pub id: String,
-    /// Human-readable name of group
+    /// Human-readable name of the Apicize Group
     pub name: String,
+    /// Optional identifier for the Apicize Group,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
     /// Child items
     pub children: Option<Vec<RequestEntry>>,
     /// Execution of children
@@ -282,6 +288,7 @@ impl Default for Request {
         Self {
             id: generate_uuid(),
             name: Default::default(),
+            key: Default::default(),
             test: Some(
                 r#"describe('status', () => {
     it('equals 200', () => {
@@ -373,6 +380,7 @@ impl Default for RequestGroup {
         Self {
             id: generate_uuid(),
             name: Default::default(),
+            key: Default::default(),
             children: Default::default(),
             execution: ExecutionConcurrency::Sequential,
             runs: 1,
@@ -586,6 +594,9 @@ pub struct StoredRequest {
     pub id: String,
     /// Human-readable name describing the Apicize Request
     pub name: String,
+    /// Optional identifier for the Apicize Request
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
     /// Test to execute after dispatching request and receiving response
     #[serde(skip_serializing_if = "Option::is_none")]
     pub test: Option<String>,
@@ -648,8 +659,11 @@ pub struct StoredRequestGroup {
     /// Uniquely identifies group of Apicize requests
     #[serde(default = "generate_uuid")]
     pub id: String,
-    /// Human-readable name of group
+    /// Human-readable name of the Apicize Group
     pub name: String,
+    /// Optional identifier for the Apicize Group
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
     /// Child items
     pub children: Option<Vec<StoredRequestEntry>>,
     /// Execution of children
@@ -698,6 +712,7 @@ impl StoredRequestEntry {
             RequestEntry::Request(request) => StoredRequestEntry::Request(StoredRequest {
                 id: request.id,
                 name: request.name,
+                key: request.key,
                 test: request.test,
                 url: request.url,
                 method: request.method,
@@ -745,6 +760,7 @@ impl StoredRequestEntry {
             RequestEntry::Group(group) => StoredRequestEntry::Group(StoredRequestGroup {
                 id: group.id,
                 name: group.name,
+                key: group.key,
                 children: group.children.map(|children| {
                     children
                         .into_iter()
@@ -769,6 +785,7 @@ impl StoredRequestEntry {
             StoredRequestEntry::Request(stored_request) => RequestEntry::Request(Request {
                 id: stored_request.id,
                 name: stored_request.name,
+                key: stored_request.key,
                 test: stored_request.test,
                 url: stored_request.url,
                 method: stored_request.method,
@@ -821,6 +838,7 @@ impl StoredRequestEntry {
             StoredRequestEntry::Group(group) => RequestEntry::Group(RequestGroup {
                 id: group.id,
                 name: group.name,
+                key: group.key,
                 children: group.children.map(|children| {
                     children
                         .into_iter()

@@ -13,6 +13,9 @@ pub struct ApicizeExecution {
     /// Name of the request being executed
     pub name: String,
 
+    /// Optiona key of the request being executed (assigned or inherited)
+    pub key: Option<String>,
+
     /// Method for request
     #[serde(skip_serializing_if = "Option::is_none")]
     pub method: Option<String>,
