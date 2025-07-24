@@ -744,6 +744,11 @@ pub struct ExecutionResultBuilder<'a> {
 }
 
 impl ExecutionResultBuilder<'_> {
+
+    pub fn new(context: &TestRunnerContext) -> ExecutionResultBuilder {
+        ExecutionResultBuilder { context, results: Vec::new() }
+    }
+
     pub fn get_results(self) -> (Vec<ExecutionResultSummary>, Vec<ExecutionResultDetail>) {
         self.results.into_iter().unzip()
     }

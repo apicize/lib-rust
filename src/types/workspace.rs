@@ -760,35 +760,33 @@ impl Workspace {
 
     /// Generate a report from summarized execution results
     pub fn generate_multirun_report(
-        run_summaries: &HashMap<usize, Vec<Vec<ExecutionResultSummary>>>,
+        run_summaries: &HashMap<usize, Vec<ExecutionResultSummary>>,
         format: &ExecutionReportFormat,
     ) -> Result<String, ApicizeError> {
         match format {
             ExecutionReportFormat::JSON => {
                 let mut all_data = HashMap::<usize, Vec<ExecutionReportJson>>::new();
 
-                for (run_number, summary_set) in run_summaries {
-                    for summaries in summary_set {
-                        let mut data = Vec::<ExecutionReportJson>::new();
-                        let root_indexes: Vec<usize> = summaries
-                            .iter()
-                            .filter_map(|s| {
-                                if s.parent_index.is_none() {
-                                    Some(s.index)
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect();
-                        for index in root_indexes {
-                            Self::generate_json(index, summaries, &mut data)?;
-                        }
+                for (run_number, summaries) in run_summaries {
+                    let mut data = Vec::<ExecutionReportJson>::new();
+                    let root_indexes: Vec<usize> = summaries
+                        .iter()
+                        .filter_map(|s| {
+                            if s.parent_index.is_none() {
+                                Some(s.index)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    for index in root_indexes {
+                        Self::generate_json(index, summaries, &mut data)?;
+                    }
 
-                        if let Some(entry) = all_data.get_mut(run_number) {
-                            entry.extend(data);
-                        } else {
-                            all_data.insert(*run_number, data);
-                        }
+                    if let Some(entry) = all_data.get_mut(run_number) {
+                        entry.extend(data);
+                    } else {
+                        all_data.insert(*run_number, data);
                     }
                 }
 
@@ -801,21 +799,19 @@ impl Workspace {
             ExecutionReportFormat::CSV => {
                 let mut data = Vec::<ExecutionReportCsv>::new();
 
-                for summary_set in run_summaries.values() {
-                    for summaries in summary_set {
-                        let root_indexes: Vec<usize> = summaries
-                            .iter()
-                            .filter_map(|s| {
-                                if s.parent_index.is_none() {
-                                    Some(s.index)
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect();
-                        for index in root_indexes {
-                            Self::generate_csv(index, summaries, &[], &mut data)?;
-                        }
+                for summaries in run_summaries.values() {
+                    let root_indexes: Vec<usize> = summaries
+                        .iter()
+                        .filter_map(|s| {
+                            if s.parent_index.is_none() {
+                                Some(s.index)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    for index in root_indexes {
+                        Self::generate_csv(index, summaries, &[], &mut data)?;
                     }
                 }
 
@@ -833,10 +829,8 @@ impl Workspace {
             ExecutionReportFormat::ZEPHYR => {
                 let mut executions = Vec::<ExecutionReportZephyrTestExecution>::new();
 
-                for summary_set in run_summaries.values() {
-                    for summaries in summary_set {
-                        Self::generate_zephyr(summaries, &mut executions)?;
-                    }
+                for summaries in run_summaries.values() {
+                    Self::generate_zephyr(summaries, &mut executions)?;
                 }
 
                 let report = ExecutionReportZephyr {

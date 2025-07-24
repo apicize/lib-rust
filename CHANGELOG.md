@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.26.1
+
+* Refactor multi-run reporting to "flatten" results
+
 # 0.26.0
 
 * Support Key property for requests and groups, add to reporting
