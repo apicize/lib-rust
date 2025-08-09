@@ -1,5 +1,10 @@
 # Change Log
 
+# 0.27.0
+
+* Remove Zephyr test report format (BREAKING)
+* Some memory optimization, mostly preallocations 
+
 # 0.26.1
 
 * Refactor multi-run reporting to "flatten" results

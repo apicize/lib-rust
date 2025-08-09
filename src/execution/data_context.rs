@@ -4,7 +4,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-/// Values active for a set if results (grouped requetss, runs, rows)
+/// Active values for a set of results (grouped requests, runs, rows)
 #[derive(Serialize, Deserialize, PartialEq, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct DataContext {
@@ -23,10 +23,9 @@ pub struct DataContext {
     /// Output variables resulting from operation to be sent to next request/group
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_result: Option<Map<String, Value>>,
-
 }
 
-/// Trait to retrieve test contexts from enums
+/// Trait to retrieve data contexts
 pub trait GetDataContext {
     fn get_data_context(&self) -> &DataContext;
 }
@@ -48,11 +47,13 @@ pub trait DataContextGenerator {
 impl DataContextGenerator for Vec<ApicizeGroupResultRow> {
     fn generate_data_context(&self) -> DataContext {
         if let Some(first) = self.first() {
-            let first_context = &first.data_context;
-            let last_context = &self.last().unwrap().data_context;
-            let mut data_context = first_context.clone();
-            data_context.output_result = last_context.output_result.clone();
-            data_context
+            let last = self.last().unwrap();
+            DataContext {
+                scenario: first.data_context.scenario.clone(),
+                output: first.data_context.output.clone(),
+                data: first.data_context.data.clone(),
+                output_result: last.data_context.output_result.clone(),
+            }
         } else {
             DataContext::default()
         }
@@ -62,11 +63,13 @@ impl DataContextGenerator for Vec<ApicizeGroupResultRow> {
 impl DataContextGenerator for Vec<ApicizeGroupResultRun> {
     fn generate_data_context(&self) -> DataContext {
         if let Some(first) = self.first() {
-            let first_context = &first.data_context;
-            let last_context = &self.last().unwrap().data_context;
-            let mut data_context = first_context.clone();
-            data_context.output_result = last_context.output_result.clone();
-            data_context
+            let last = self.last().unwrap();
+            DataContext {
+                scenario: first.data_context.scenario.clone(),
+                output: first.data_context.output.clone(),
+                data: first.data_context.data.clone(),
+                output_result: last.data_context.output_result.clone(),
+            }
         } else {
             DataContext::default()
         }
@@ -76,11 +79,13 @@ impl DataContextGenerator for Vec<ApicizeGroupResultRun> {
 impl DataContextGenerator for Vec<ApicizeRequestResultRow> {
     fn generate_data_context(&self) -> DataContext {
         if let Some(first) = self.first() {
-            let first_context = &first.data_context;
-            let last_context = &self.last().unwrap().data_context;
-            let mut data_context = first_context.clone();
-            data_context.output_result = last_context.output_result.clone();
-            data_context
+            let last = self.last().unwrap();
+            DataContext {
+                scenario: first.data_context.scenario.clone(),
+                output: first.data_context.output.clone(),
+                data: first.data_context.data.clone(),
+                output_result: last.data_context.output_result.clone(),
+            }
         } else {
             DataContext::default()
         }
@@ -120,6 +125,11 @@ impl DataContextGenerator for Vec<ApicizeResult> {
 
 impl DataContextGenerator for ApicizeExecution {
     fn generate_data_context(&self) -> DataContext {
-        DataContext { scenario: self.test_context.scenario.clone(), output: self.test_context.output.clone(), data: self.test_context.data.clone(), output_result: self.output_variables.clone() }
+        DataContext { 
+            scenario: self.test_context.scenario.clone(),
+            output: self.test_context.output.clone(),
+            data: self.test_context.data.clone(),
+            output_result: self.output_variables.clone() 
+        }
     }
 }

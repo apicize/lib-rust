@@ -12,7 +12,6 @@ pub enum ExecutionReportFormat {
     #[default]
     JSON,
     CSV,
-    ZEPHYR,
 }
 
 impl Display for ExecutionReportFormat {
@@ -20,7 +19,6 @@ impl Display for ExecutionReportFormat {
         match self {
             ExecutionReportFormat::JSON => f.write_str("JSON"),
             ExecutionReportFormat::CSV => f.write_str("CSV"),
-            ExecutionReportFormat::ZEPHYR => f.write_str("Zephyr"),
         }
     }
 }
@@ -162,41 +160,4 @@ pub struct ExecutionReportCsv {
     /// Error generated during the test
     #[serde(rename = "Test Error")]
     pub test_error: Option<String>,
-}
-
-/// Zephyr test case identifier
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ExecutionReportZephyrTestCase {
-    /// Name of test
-    pub name: String,
-    /// Associative tag of test
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub key: Option<String>,
-}
-
-/// Zephyr simplified test report
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ExecutionReportZephyrTestExecution {
-    /// Fully qualified request name
-    pub source: String,
-
-    /// Result (Passed or Failed?)
-    pub result: String,
-
-    /// Idnetifier for Zephyr test case
-    #[serde(rename = "testCase")]
-    pub test_case: ExecutionReportZephyrTestCase,
-}
-
-/// Zephyr simplified test report
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ExecutionReportZephyr {
-    /// Zephyr test format version number
-    pub version: u32,
-
-    /// Test executions
-    pub executions: Vec<ExecutionReportZephyrTestExecution>,
 }

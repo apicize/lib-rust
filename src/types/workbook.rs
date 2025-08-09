@@ -1,10 +1,5 @@
-//! Workbook models submodule
-//!
-//! Storage of workbooks (requests and public parameters)
-use std::path::PathBuf;
-use crate::{save_data_file, Authorization, Certificate, Proxy, RequestEntry, Scenario, FileAccessError, SerializationSaveSuccess};
+use crate::{Authorization, Certificate, Proxy, Scenario};
 use serde::{Deserialize, Serialize};
-
 use super::{ExternalData, StoredRequestEntry, WorkbookDefaultParameters};
 
 /// Persisted Apcizize requests and scenario definitions
@@ -32,87 +27,4 @@ pub struct Workbook {
     /// Workbook defaults
     #[serde(skip_serializing_if = "Option::is_none")]
     pub defaults: Option<WorkbookDefaultParameters>
-}
-
-impl Workbook {
-    /// Save workbook information to the specified file
-    #[allow(clippy::too_many_arguments)] 
-    pub fn save(
-        file_name: PathBuf,
-        requests: Vec<RequestEntry>,
-        scenarios: Option<Vec<Scenario>>,
-        authorizations: Option<Vec<Authorization>>,
-        certificates: Option<Vec<Certificate>>,
-        proxies: Option<Vec<Proxy>>,
-        data: Option<Vec<ExternalData>>,
-        defaults: Option<WorkbookDefaultParameters>
-    ) -> Result<SerializationSaveSuccess, FileAccessError> {
-        let save_scenarios = match scenarios {
-            Some(entities) => {
-                if entities.is_empty() {
-                    None
-                } else {
-                    Some(entities.to_vec())
-                }
-            },
-            None => None,
-        };
-        let save_authorizations = match authorizations {
-            Some(entities) => {
-                if entities.is_empty() {
-                    None
-                } else {
-                    Some(entities.to_vec())
-                }
-            },
-            None => None,
-        };
-        let save_certiificates = match certificates {
-            Some(entities) => {
-                if entities.is_empty() {
-                    None
-                } else {
-                    Some(entities.to_vec())
-                }
-            },
-            None => None,
-        };
-        let save_proxies = match proxies {
-            Some(entities) => {
-                if entities.is_empty() {
-                    None
-                } else {
-                    Some(entities.to_vec())
-                }
-            },
-            None => None,
-        };
-
-        let save_data = match data {
-            Some(entities) => {
-                if entities.is_empty() {
-                    None
-                } else {
-                    Some(entities.to_vec())
-                }
-            },
-            None => None,
-        };
-
-        let stored_requests = requests.into_iter().map(StoredRequestEntry::from_workspace).collect();
-
-
-        let workbook = Workbook {
-            version: 1.0,
-            requests: stored_requests,
-            scenarios: save_scenarios,
-            authorizations: save_authorizations,
-            certificates: save_certiificates,
-            proxies: save_proxies,
-            data: save_data,
-            defaults,
-        };
-
-        save_data_file(&file_name, &workbook)
-    }
 }

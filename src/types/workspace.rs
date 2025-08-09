@@ -3,11 +3,7 @@
 //! This submodule defines modules used to manage workspaces
 
 use crate::{
-    open_data_file, ApicizeError, Authorization, Certificate, ExecutionReportCsv,
-    ExecutionReportFormat, ExecutionReportJson, ExecutionReportZephyr,
-    ExecutionReportZephyrTestCase, ExecutionReportZephyrTestExecution, ExecutionResultSummary,
-    FileAccessError, Identifiable, PersistedIndex, Proxy, RequestEntry, Scenario,
-    SelectedParameters, SerializationSaveSuccess, Workbook, WorkbookDefaultParameters,
+    open_data_file, save_data_file, ApicizeError, Authorization, Certificate, ExecutionReportCsv, ExecutionReportFormat, ExecutionReportJson, ExecutionResultSummary, FileAccessError, Identifiable, PersistedIndex, Proxy, RequestEntry, Scenario, SelectedParameters, SerializationSaveSuccess, StoredRequestEntry, Workbook, WorkbookDefaultParameters
 };
 
 use csv::WriterBuilder;
@@ -106,6 +102,7 @@ impl Workspace {
         Self::build_workspace(workbook, private_parameters, global_parameters)
     }
 
+    /// Build a workspace based upon the workbook file, private params file and global params
     pub fn build_workspace(
         workbook: Workbook,
         private_parameters: Parameters,
@@ -148,8 +145,8 @@ impl Workspace {
         Ok(workspace)
     }
 
+    /// Validate the default scenarios, etc. selected for testing
     pub fn validate_selections(&mut self) {
-        // Validate the default scenarios, etc. selected for testing
         let scenarios = self
             .scenarios
             .entities
@@ -202,24 +199,75 @@ impl Workspace {
     ) -> Result<Vec<SerializationSaveSuccess>, FileAccessError> {
         let mut successes: Vec<SerializationSaveSuccess> = vec![];
 
-        match Workbook::save(
-            PathBuf::from(workbook_path),
-            self.requests.to_entities(),
-            self.scenarios.get_workbook(),
-            self.authorizations.get_workbook(),
-            self.certificates.get_workbook(),
-            self.proxies.get_workbook(),
-            if self.data.is_empty() {
-                None
-            } else {
-                Some(self.data.clone())
+        let save_scenarios = match self.scenarios.get_workbook() {
+            Some(entities) => {
+                if entities.is_empty() {
+                    None
+                } else {
+                    Some(entities.to_vec())
+                }
             },
-            if self.defaults.any_values_set() {
-                Some(self.defaults.clone())
-            } else {
-                None
+            None => None,
+        };
+
+        let save_authorizations = match self.authorizations.get_workbook() {
+            Some(entities) => {
+                if entities.is_empty() {
+                    None
+                } else {
+                    Some(entities.to_vec())
+                }
             },
-        ) {
+            None => None,
+        };
+
+        let save_certiificates = match self.certificates.get_workbook() {
+            Some(entities) => {
+                if entities.is_empty() {
+                    None
+                } else {
+                    Some(entities.to_vec())
+                }
+            },
+            None => None,
+        };
+
+        let save_proxies = match self.proxies.get_workbook() {
+            Some(entities) => {
+                if entities.is_empty() {
+                    None
+                } else {
+                    Some(entities.to_vec())
+                }
+            },
+            None => None,
+        };
+
+        let save_data = match self.data.is_empty() {
+            true => None,
+            false => Some(self.data.to_vec())
+        };
+
+        let save_defaults = match self.defaults.any_values_set() {
+            true => Some(self.defaults.clone()),
+            false => None,
+        };
+
+        let stored_requests = self.requests.to_entities()
+            .into_iter().map(StoredRequestEntry::from_workspace).collect();
+
+        let workbook = Workbook {
+            version: 1.0,
+            requests: stored_requests,
+            scenarios: save_scenarios,
+            authorizations: save_authorizations,
+            certificates: save_certiificates,
+            proxies: save_proxies,
+            data: save_data,
+            defaults: save_defaults,
+        };
+
+        match save_data_file(workbook_path, &workbook) {
             Ok(success) => successes.push(success),
             Err(error) => return Err(error),
         }
@@ -684,32 +732,6 @@ impl Workspace {
         }
     }
 
-    /// Append specified index, including children, to the results
-    fn generate_zephyr(
-        summaries: &Vec<ExecutionResultSummary>,
-        report: &mut Vec<ExecutionReportZephyrTestExecution>,
-    ) -> Result<(), ApicizeError> {
-        for summary in summaries {
-            if let Some(tests) = &summary.test_results {
-                for test in tests {
-                    report.push(ExecutionReportZephyrTestExecution {
-                        source: summary.name.clone(),
-                        result: if summary.error.is_some() || !test.success {
-                            "Failed".to_string()
-                        } else {
-                            "Passed".to_string()
-                        },
-                        test_case: ExecutionReportZephyrTestCase {
-                            name: test.name.clone(),
-                            key: test.tag.clone(),
-                        },
-                    });
-                }
-            }
-        }
-        Ok(())
-    }
-
     /// Generate a report from summarized execution results
     pub fn geneate_report(
         summary_index: usize,
@@ -739,21 +761,6 @@ impl Workspace {
                     }
                 }
                 Ok(String::from_utf8(writer.into_inner().unwrap()).unwrap())
-            }
-            ExecutionReportFormat::ZEPHYR => {
-                let mut executions = Vec::<ExecutionReportZephyrTestExecution>::new();
-                Self::generate_zephyr(summaries, &mut executions)?;
-
-                let report = ExecutionReportZephyr {
-                    version: 1,
-                    executions,
-                };
-
-                let mut buf = Vec::new();
-                let formatter = PrettyFormatter::with_indent(b"    ");
-                let mut ser = serde_json::Serializer::with_formatter(&mut buf, formatter);
-                report.serialize(&mut ser).unwrap();
-                Ok(String::from_utf8(buf).unwrap())
             }
         }
     }
@@ -825,24 +832,6 @@ impl Workspace {
                     }
                 }
                 Ok(String::from_utf8(writer.into_inner().unwrap()).unwrap())
-            }
-            ExecutionReportFormat::ZEPHYR => {
-                let mut executions = Vec::<ExecutionReportZephyrTestExecution>::new();
-
-                for summaries in run_summaries.values() {
-                    Self::generate_zephyr(summaries, &mut executions)?;
-                }
-
-                let report = ExecutionReportZephyr {
-                    version: 1,
-                    executions,
-                };
-
-                let mut buf = Vec::new();
-                let formatter = PrettyFormatter::with_indent(b"    ");
-                let mut ser = serde_json::Serializer::with_formatter(&mut buf, formatter);
-                report.serialize(&mut ser).unwrap();
-                Ok(String::from_utf8(buf).unwrap())
             }
         }
     }

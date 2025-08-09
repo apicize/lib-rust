@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 use tokio::sync::Mutex;
 
-/// Cached token
+/// Cached OAuth2 token
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CachedTokenInfo {
@@ -20,19 +20,19 @@ pub static OAUTH2_TOKEN_CACHE: LazyLock<Mutex<HashMap<String, CachedTokenInfo>>>
 
 /// Retrieve cached OAuth2 token
 pub async fn retrieve_oauth2_token_from_cache(authorization_id: &str) -> Option<CachedTokenInfo> {
-    let locked_cache = &mut OAUTH2_TOKEN_CACHE.lock().await;
+    let locked_cache = OAUTH2_TOKEN_CACHE.lock().await;
     locked_cache.get(authorization_id).cloned()
 }
 
 /// Store OAuth2 token in cache
 pub async fn store_oauth2_token_in_cache(authorization_id: &str, token_info: CachedTokenInfo) {
-    let locked_cache = &mut OAUTH2_TOKEN_CACHE.lock().await;
+    let mut locked_cache = OAUTH2_TOKEN_CACHE.lock().await;
     locked_cache.insert(authorization_id.to_owned(), token_info);
 }
 
 /// Clear all cached OAuth2 tokens
 pub async fn clear_all_oauth2_tokens_from_cache() -> usize {
-    let locked_cache = &mut OAUTH2_TOKEN_CACHE.lock().await;
+    let mut locked_cache = OAUTH2_TOKEN_CACHE.lock().await;
     let count = locked_cache.len();
     locked_cache.clear();
     count

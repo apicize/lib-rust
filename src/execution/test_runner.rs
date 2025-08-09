@@ -439,23 +439,21 @@ async fn run_request_runs(
                 JoinSet::new();
 
             for run_number in 1..number_of_runs + 1 {
-                let cloned_cancel = context.cancellation.clone();
-                let cloned_context = context.clone();
-                // let cloned_request = request.clone();
-                let cloned_request_id = request_id.to_string();
-                let cloned_params = params.clone();
-                let cloned_state = state.clone();
+                let context = context.clone();
+                let request_id = request_id.to_string();
+                let params = params.clone();
+                let state = state.clone();
 
                 executing_runs.spawn(async move {
                     select! {
-                        _ = cloned_cancel.cancelled() => Err(ApicizeError::Cancelled {
+                        _ = context.cancellation.cancelled() => Err(ApicizeError::Cancelled {
                             source: None
                         }),
                         result = dispatch_request_and_test(
-                            cloned_context.clone(),
-                            cloned_request_id.clone(),
-                            cloned_params.clone(),
-                            cloned_state.clone(),
+                            context.clone(),
+                            request_id,
+                            params,
+                            state,
                         ) => {
                             match result {
                                 Ok(execution) => {
@@ -469,7 +467,7 @@ async fn run_request_runs(
                                     Ok(ApicizeRequestResultRun {
                                         run_number,
                                         executed_at: runs_executed_at,
-                                        duration: cloned_context.ellapsed_in_ms() - runs_executed_at,
+                                        duration: context.ellapsed_in_ms() - runs_executed_at,
                                         execution,
                                         success,
                                         request_success_count,
@@ -613,22 +611,21 @@ async fn run_group_children(
                     JoinSet::new();
 
                 for child_id in &child_ids {
-                    let cloned_cancel = context.cancellation.clone();
-                    let cloned_context = context.clone();
-                    let cloned_child_id = child_id.clone();
-                    let cloned_params = params.clone();
-                    let cloned_state = state.clone();
+                    let context = context.clone();
+                    let child_id = child_id.clone();
+                    let params = params.clone();
+                    let state = state.clone();
 
                     executing_children.spawn(async move {
                         select! {
-                            _ = cloned_cancel.cancelled() => Err(ApicizeError::Cancelled {
+                            _ = context.cancellation.cancelled() => Err(ApicizeError::Cancelled {
                                 source: None
                             }),
                             result = run_request_entry(
-                                cloned_context.clone(),
-                                cloned_child_id.clone(),
-                                cloned_params.clone(),
-                                cloned_state.clone(),
+                                context.clone(),
+                                child_id,
+                                params,
+                                state,
                             ) => {
                                 result
                             }
@@ -804,25 +801,24 @@ async fn run_group_runs(
                 JoinSet::new();
 
             for run_number in 1..number_of_runs + 1 {
-                let cloned_cancel = context.cancellation.clone();
-                let cloned_context = context.clone();
-                let cloned_child_ids = child_ids.clone();
-                let cloned_params = params.clone();
-                let cloned_state = state.clone();
+                let context = context.clone();
+                let child_ids = child_ids.clone();
+                let params = params.clone();
+                let state = state.clone();
                 let execution = group.execution.clone();
 
-                let run_executed_at = cloned_context.ellapsed_in_ms();
+                let run_executed_at = context.ellapsed_in_ms();
 
                 executing_runs.spawn(async move {
                     select! {
-                        _ = cloned_cancel.cancelled() => Err(ApicizeError::Cancelled {
+                        _ = context.cancellation.cancelled() => Err(ApicizeError::Cancelled {
                             source: None
                         }),
                         executed_results = run_group_children(
-                            cloned_context.clone(),
-                            cloned_child_ids.clone(),
-                            cloned_params.clone(),
-                            cloned_state.clone(),
+                            context.clone(),
+                            child_ids,
+                            params,
+                            state,
                             &execution,
                         ) => {
                             match executed_results {
@@ -831,7 +827,7 @@ async fn run_group_runs(
                                     Ok(ApicizeGroupResultRun {
                                         run_number,
                                         executed_at: run_executed_at,
-                                        duration: cloned_context.ellapsed_in_ms() - run_executed_at,
+                                        duration: context.ellapsed_in_ms() - run_executed_at,
                                         data_context: results.generate_data_context(),
                                         results,
                                         success: tallies.success,
@@ -898,17 +894,18 @@ async fn dispatch_request_and_test(
     };
 
     let subs = match &merged {
-        Some(m) => m
-            .iter()
-            .map(|(name, value)| {
+        Some(m) => {
+            let mut subs = HashMap::with_capacity(m.len());
+            for (name, value) in m.iter() {
                 let v = if let Some(s) = value.as_str() {
-                    String::from(s)
+                    s.to_owned()
                 } else {
-                    format!("{value}", )
+                    value.to_string()
                 };
-                (format!("{{{{{name}}}}}"), v)
-            })
-            .collect::<HashMap<String, String>>(),
+                subs.insert(format!("{{{{{name}}}}}"), v);
+            }
+            subs
+        }
         None => HashMap::new(),
     };
 
@@ -1116,19 +1113,22 @@ async fn dispatch_request(
             let mut request_builder = client.request(method, &url);
 
             // Add headers, including authorization if applicable
-            let mut headers = reqwest::header::HeaderMap::new();
+            let mut headers = match &request.headers {
+                Some(h) => {
+                    let capacity = h.iter().filter(|nvp| nvp.disabled != Some(true)).count();
+                    reqwest::header::HeaderMap::with_capacity(capacity)
+                },
+                None => reqwest::header::HeaderMap::new(),
+            };
+            
             if let Some(h) = &request.headers {
                 for nvp in h {
                     if nvp.disabled != Some(true) {
+                        let name_str = RequestEntry::clone_and_sub(&nvp.name, subs);
+                        let value_str = RequestEntry::clone_and_sub(&nvp.value, subs);
                         headers.insert(
-                            reqwest::header::HeaderName::try_from(RequestEntry::clone_and_sub(
-                                &nvp.name, subs,
-                            ))
-                            .unwrap(),
-                            reqwest::header::HeaderValue::try_from(RequestEntry::clone_and_sub(
-                                &nvp.value, subs,
-                            ))
-                            .unwrap(),
+                            reqwest::header::HeaderName::try_from(name_str).unwrap(),
+                            reqwest::header::HeaderValue::try_from(value_str).unwrap(),
                         );
                     }
                 }
@@ -1471,11 +1471,9 @@ fn execute_request_test(
     let context = v8::Context::new(scope, Default::default());
     let scope = &mut v8::ContextScope::new(scope, context);
 
-    let mut init_code = String::new();
-    init_code.push_str(include_str!(concat!(env!("OUT_DIR"), "/framework.min.js")));
-
-    // Compile the source code
-    let v8_code = v8::String::new(scope, &init_code).unwrap();
+    // Use the included framework directly without extra allocation
+    let framework_code = include_str!(concat!(env!("OUT_DIR"), "/framework.min.js"));
+    let v8_code = v8::String::new(scope, framework_code).unwrap();
     let script = v8::Script::compile(scope, v8_code, None).unwrap();
     script.run(scope).unwrap();
 
@@ -1483,8 +1481,7 @@ fn execute_request_test(
 
     let cloned_tests_started = tests_started;
 
-    let mut init_code = String::new();
-    init_code.push_str(&format!(
+    let init_code = format!(
         "runTestSuite({}, {}, {}, {}, {}, {}, () => {{{}}})",
         serde_json::to_string(request).unwrap(),
         serde_json::to_string(response).unwrap(),
@@ -1495,7 +1492,7 @@ fn execute_request_test(
             - cloned_tests_started.elapsed().as_millis()
             + 1,
         test,
-    ));
+    );
 
     let v8_code = v8::String::new(tc, &init_code).unwrap();
 
@@ -1532,13 +1529,15 @@ fn flatten_test_results(
             match &result {
                 ApicizeTestResult::Scenario(scenario) => {
                     if scenario.children.is_some() {
-                        let mut new_parents = Vec::from(parents);
+                        let mut new_parents = Vec::with_capacity(parents.len() + 1);
+                        new_parents.extend_from_slice(parents);
                         new_parents.push(scenario.name.clone());
                         flatten_test_results(&scenario.children, behaviors, &new_parents);
                     }
                 }
                 ApicizeTestResult::Behavior(behavior) => {
-                    let mut name = Vec::from(parents);
+                    let mut name = Vec::with_capacity(parents.len() + 1);
+                    name.extend_from_slice(parents);
                     name.push(behavior.name.clone());
                     behaviors.push(ApicizeTestBehavior {
                         name: name.join(" "),
