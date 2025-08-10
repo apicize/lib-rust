@@ -13,7 +13,7 @@ use xmltojson::to_json;
 use async_recursion::async_recursion;
 use encoding_rs::{Encoding, UTF_8};
 use mime::Mime;
-use reqwest::{Body, Client};
+use reqwest::{Body, Client, Response};
 use serde_json::{Map, Value};
 use tokio::select;
 use tokio::task::JoinSet;
@@ -108,7 +108,10 @@ impl TestRunnerContext {
     }
 
     /// Return key of the request/group with inheritance
-    pub fn get_request_key(&self, request_or_group_id: &str) -> Result<Option<String>, ApicizeError> {
+    pub fn get_request_key(
+        &self,
+        request_or_group_id: &str,
+    ) -> Result<Option<String>, ApicizeError> {
         match self.workspace.requests.entities.get(request_or_group_id) {
             Some(RequestEntry::Request(request)) => {
                 if let Some(key) = &request.key {
@@ -121,7 +124,7 @@ impl TestRunnerContext {
                     }
                     Ok(None)
                 }
-            },
+            }
             Some(RequestEntry::Group(group)) => {
                 if let Some(key) = &group.key {
                     Ok(Some(key.clone()))
@@ -133,7 +136,7 @@ impl TestRunnerContext {
                     }
                     Ok(None)
                 }
-            },
+            }
             _ => Err(ApicizeError::InvalidId {
                 description: format!("Invalid Request ID {request_or_group_id}"),
             }),
@@ -263,7 +266,9 @@ async fn run_request(
         let data_context = execution.generate_data_context();
         let tallies = execution.get_tallies();
         (
-            ApicizeRequestResultContent::Execution { execution: Box::new(execution) },
+            ApicizeRequestResultContent::Execution {
+                execution: Box::new(execution),
+            },
             data_context,
             tallies,
         )
@@ -981,6 +986,11 @@ async fn dispatch_request_and_test(
         }
     }
 
+    // If there was a cancellation, return a cancellation error instead of recording the error in the execution
+    if let Some(ApicizeError::Cancelled { source}) = error {
+        return Err(ApicizeError::Cancelled { source });
+    }
+
     let success = error.is_none() && (test_count == 0 || test_fail_count == 0);
 
     Ok(ApicizeExecution {
@@ -1117,10 +1127,10 @@ async fn dispatch_request(
                 Some(h) => {
                     let capacity = h.iter().filter(|nvp| nvp.disabled != Some(true)).count();
                     reqwest::header::HeaderMap::with_capacity(capacity)
-                },
+                }
                 None => reqwest::header::HeaderMap::new(),
             };
-            
+
             if let Some(h) = &request.headers {
                 for nvp in h {
                     if nvp.disabled != Some(true) {
@@ -1320,10 +1330,21 @@ async fn dispatch_request(
                         }
                     }
 
+                    let client_response: Result<Response, ApicizeError> = select! {
+                        _ = context.cancellation.cancelled() => Err(ApicizeError::Cancelled {
+                            source: None
+                        }),
+                        result = client.execute(web_request) => {
+                            match result {
+                                Ok(response) => Ok(response),
+                                Err(error) => Err(ApicizeError::from_reqwest(error)),
+                            }
+                        }
+                    };
+
                     // Execute the request
-                    let client_response = client.execute(web_request).await;
                     match client_response {
-                        Err(error) => Err(ApicizeError::from_reqwest(error)),
+                        Err(error) => Err(error),
                         Ok(response) => {
                             // Collect headers for response
                             let response_headers = response.headers();

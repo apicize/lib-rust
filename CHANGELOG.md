@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.28.0
+
+* Return Cancellation error on all cancelled executions
+
 # 0.27.0
 
 * Remove Zephyr test report format (BREAKING)
