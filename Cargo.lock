@@ -55,7 +55,7 @@ checksum = "862ed96ca487e809f1c8e5a8447f6ee2cf102f846893800b20cebdf541fc6bbd"
 
 [[package]]
 name = "apicize_lib"
-version = "0.28.0"
+version = "0.28.1"
 dependencies = [
  "async-recursion",
  "async-trait",

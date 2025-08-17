@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.28.1
+
+* Support setting request and group runs to zero
+
 # 0.28.0
 
 * Return Cancellation error on all cancelled executions

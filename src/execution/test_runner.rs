@@ -175,7 +175,13 @@ impl ApicizeRunner for Arc<TestRunnerContext> {
                 Arc::new(RequestExecutionState::default()),
             ))
             .await;
-            results.push(result);
+            match result {
+                Ok(Some(r)) => {
+                    results.push(Ok(r));
+                }
+                Ok(None) => {}
+                Err(err) => results.push(Err(err)),
+            }
         }
         results
     }
@@ -186,7 +192,7 @@ async fn run_request_entry(
     request_or_group_id: String,
     params: Arc<RequestExecutionParameters>,
     state: Arc<RequestExecutionState>,
-) -> Result<ApicizeResult, ApicizeError> {
+) -> Result<Option<ApicizeResult>, ApicizeError> {
     let entry = context.get_request_entry(&request_or_group_id)?;
 
     let new_params =
@@ -207,24 +213,28 @@ async fn run_request_entry(
     };
 
     match entry {
-        RequestEntry::Request(..) => Ok(ApicizeResult::Request(
-            run_request(
+        RequestEntry::Request(..) => 
+            match run_request(
                 context.clone(),
                 &request_or_group_id,
                 Arc::new(new_params),
                 new_state,
             )
-            .await?,
-        )),
-        RequestEntry::Group(..) => Ok(ApicizeResult::Group(
-            run_group(
+            .await? {
+                Some(result) => Ok(Some(ApicizeResult::Request(result))),
+                None => Ok(None),
+            },
+        RequestEntry::Group(..) => 
+            match run_group(
                 context.clone(),
                 &request_or_group_id,
                 Arc::new(new_params),
                 new_state,
             )
-            .await?,
-        )),
+            .await? {
+                Some(result) => Ok(Some(ApicizeResult::Group(result))),
+                None => Ok(None),
+            },
     }
 }
 
@@ -233,11 +243,15 @@ async fn run_request(
     request_id: &str,
     params: Arc<RequestExecutionParameters>,
     state: Arc<RequestExecutionState>,
-) -> Result<Box<ApicizeRequestResult>, ApicizeError> {
+) -> Result<Option<Box<ApicizeRequestResult>>, ApicizeError> {
     let key = context.get_request_key(request_id)?;
     let executed_at = context.ellapsed_in_ms();
     let request = context.get_request(request_id)?;
     let multi_run = request.runs > 1 && (!context.single_run_no_timeout);
+
+    if request.runs < 1 {
+        return Ok(None);
+    }
 
     let (content, data_context, tallies) = if params.data_set.is_some() && state.row.is_none() {
         let rows =
@@ -274,7 +288,7 @@ async fn run_request(
         )
     };
 
-    Ok(Box::new(ApicizeRequestResult {
+    Ok(Some(Box::new(ApicizeRequestResult {
         id: request.id.clone(),
         name: request.get_title(),
         key,
@@ -290,7 +304,7 @@ async fn run_request(
         request_error_count: tallies.request_error_count,
         test_pass_count: tallies.test_pass_count,
         test_fail_count: tallies.test_fail_count,
-    }))
+    })))
 }
 
 async fn run_request_rows(
@@ -512,12 +526,16 @@ async fn run_group(
     group_id: &str,
     params: Arc<RequestExecutionParameters>,
     state: Arc<RequestExecutionState>,
-) -> Result<Box<ApicizeGroupResult>, ApicizeError> {
+) -> Result<Option<Box<ApicizeGroupResult>>, ApicizeError> {
     let executed_at = context.ellapsed_in_ms();
 
     let group = context.get_group(group_id)?;
     let key = context.get_request_key(group_id)?;
     let multi_run = group.runs > 1 && (!context.single_run_no_timeout);
+
+    if group.runs < 1 {
+        return Ok(None);
+    }
 
     let child_ids = context.get_group_children(group_id);
 
@@ -558,7 +576,7 @@ async fn run_group(
         )
     };
 
-    Ok(Box::new(ApicizeGroupResult {
+    Ok(Some(Box::new(ApicizeGroupResult {
         id: group.id.clone(),
         name: group.get_title(),
         key,
@@ -573,7 +591,7 @@ async fn run_group(
         request_error_count: tallies.request_error_count,
         test_pass_count: tallies.test_pass_count,
         test_fail_count: tallies.test_fail_count,
-    }))
+    })))
 }
 
 #[async_recursion]
@@ -598,21 +616,21 @@ async fn run_group_children(
                     )
                     .await?;
 
-                    // let mut updated_group_params = group_params.as_ref().clone();
-
-                    let result_output_variables = &result.get_data_context().output_result;
-                    if result_output_variables.is_some() {
-                        group_state = Arc::new(RequestExecutionState {
-                            row: state.row.clone(),
-                            output_variables: result_output_variables.clone(),
-                        });
+                    if let Some(r) = result {
+                        let result_output_variables = &r.get_data_context().output_result;
+                        if result_output_variables.is_some() {
+                            group_state = Arc::new(RequestExecutionState {
+                                row: state.row.clone(),
+                                output_variables: result_output_variables.clone(),
+                            });
+                        }
+                        results.push(r);
                     }
-                    results.push(result);
                 }
                 Ok(results)
             }
             ExecutionConcurrency::Concurrent => {
-                let mut executing_children: JoinSet<Result<ApicizeResult, ApicizeError>> =
+                let mut executing_children: JoinSet<Result<Option<ApicizeResult>, ApicizeError>> =
                     JoinSet::new();
 
                 for child_id in &child_ids {
@@ -641,7 +659,15 @@ async fn run_group_children(
                 let mut results = executing_children.join_all().await.into_iter().try_fold(
                     vec![],
                     |mut unrolled, result| {
-                        unrolled.push(result?);
+                        match result {
+                            Ok(Some(r)) => {
+                                unrolled.push(r);
+                            }
+                            Ok(None) => {}
+                            Err(err) => {
+                                return Err(err);
+                            }
+                        }
                         Ok(unrolled)
                     },
                 )?;
@@ -987,7 +1013,7 @@ async fn dispatch_request_and_test(
     }
 
     // If there was a cancellation, return a cancellation error instead of recording the error in the execution
-    if let Some(ApicizeError::Cancelled { source}) = error {
+    if let Some(ApicizeError::Cancelled { source }) = error {
         return Err(ApicizeError::Cancelled { source });
     }
 

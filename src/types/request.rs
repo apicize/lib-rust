@@ -417,6 +417,19 @@ impl RequestEntry {
             RequestEntry::Group(group) => group.runs,
         }
     }
+
+    /// Set number of runs
+    pub fn set_runs(&mut self, runs: usize) {
+        match self {
+            RequestEntry::Request(info) => {
+                info.runs = runs;
+            },
+            RequestEntry::Group(group) => {
+                group.runs = runs;
+            },
+        }
+    }
+
 }
 
 impl Display for RequestEntry {
