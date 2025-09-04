@@ -3,16 +3,14 @@
 //! This submodule defines modules used to manage workspaces
 
 use crate::{
-    open_data_file, save_data_file, ApicizeError, Authorization, Certificate, ExecutionReportCsv, ExecutionReportFormat, ExecutionReportJson, ExecutionResultSummary, FileAccessError, Identifiable, PersistedIndex, Proxy, RequestEntry, Scenario, SelectedParameters, SerializationSaveSuccess, StoredRequestEntry, Workbook, WorkbookDefaultParameters
+    open_data_file, open_data_stream, save_data_file, ApicizeError, Authorization, Certificate, ExecutionReportCsv, ExecutionReportFormat, ExecutionReportJson, ExecutionResultSummary, ExternalDataSourceType, Identifiable, PersistedIndex, Proxy, RequestEntry, Scenario, SelectedParameters, Selection, SerializationSaveSuccess, StoredRequestEntry, Workbook, WorkbookDefaultParameters
 };
 
 use csv::WriterBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json::{ser::PrettyFormatter, Map, Value};
 use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-    sync::{Arc, Mutex},
+    collections::{HashMap, HashSet}, ffi::OsStr, io::stdin, path::{Path, PathBuf}, sync::{Arc, Mutex}
 };
 
 use super::{
@@ -49,7 +47,7 @@ pub struct Workspace {
 
 impl Workspace {
     /// Create a new workspace, including globals specified (if any)
-    pub fn new() -> Result<Workspace, FileAccessError> {
+    pub fn new() -> Result<Workspace, ApicizeError> {
         // Populate parameters from global vault, if available
         let global_parameters = Parameters::open(&Parameters::get_globals_filename(), true)?;
 
@@ -81,25 +79,186 @@ impl Workspace {
     }
 
     /// Open the specified  and globals file names
-    pub fn open(workbook_file_name: &PathBuf) -> Result<Workspace, FileAccessError> {
+    pub fn open(
+        workbook_file_name: Option<&PathBuf>,
+        override_default_scenario: Option<String>,
+        override_default_authorization: Option<String>,
+        override_default_certificate: Option<String>,
+        override_default_proxy: Option<String>,
+        override_data_seed: Option<String>,
+        allowed_data_path: &Path,
+    ) -> Result<Workspace, ApicizeError> {
         // Open workbook
-        let workbook = match open_data_file(workbook_file_name) {
-            Ok(success) => success.data,
-            Err(error) => {
-                return Err(error);
-            }
-        };
-
+        let mut workbook: Workbook = match workbook_file_name {
+            Some(input_file_name) => open_data_file(input_file_name),
+            None => open_data_stream("STDIN".to_string(), &mut stdin()),
+        }?.data;
         // Load private parameters if file exists
-        let private_parameters = Parameters::open(
-            &Parameters::get_workbook_vault_filename(workbook_file_name),
-            true,
-        )?;
+        let private_parameters = match workbook_file_name {
+            Some(input_file_name) => Parameters::open(
+                &Parameters::get_workbook_vault_filename(input_file_name),
+                true,
+            )?,
+            None => Parameters::default(),
+        };
 
         // Load globals if file exists
         let global_parameters = Parameters::open(&Parameters::get_globals_filename(), true)?;
 
+        if workbook.defaults.is_none() {
+            workbook.defaults = Some(WorkbookDefaultParameters::default());
+        }
+
+        if let Some(s) = Self::find_selection(
+            &override_default_scenario,
+            vec![&workbook.scenarios, &private_parameters.scenarios, &global_parameters.scenarios],
+            "scenario",
+        )? {
+            workbook.defaults.as_mut().unwrap().selected_scenario = Some(s);
+        }
+
+        if let Some(s) = Self::find_selection(
+            &override_default_authorization,
+            vec![&workbook.authorizations, &private_parameters.authorizations, &global_parameters.authorizations],
+            "authorization",
+        )? {
+            workbook.defaults.as_mut().unwrap().selected_authorization = Some(s);
+        }
+
+        if let Some(s) = Self::find_selection(
+            &override_default_certificate,
+            vec![&workbook.certificates, &private_parameters.certificates, &global_parameters.certificates],
+            "certificate",
+        )? {
+            workbook.defaults.as_mut().unwrap().selected_certificate = Some(s);
+        }
+
+        if let Some(s) = Self::find_selection(
+            &override_default_proxy,
+            vec![&workbook.proxies, &private_parameters.proxies, &global_parameters.proxies],
+            "proxy",
+        )? {
+            workbook.defaults.as_mut().unwrap().selected_proxy = Some(s);
+        }
+
+        // If seed is specified, then match by ID or name
+        if let Some(seed) = override_data_seed {
+            let mut found_data = false;
+
+            if let Some(workbook_data) = workbook.data.as_mut() {
+                if let Some(id) = workbook_data.iter().find_map(|d| {
+                    if d.id == seed || d.name == seed {
+                        Some(d.id.clone())
+                    } else {
+                        None
+                    }
+                }) {
+                    // writeln!(feedback, "Using seed entry \"{}\"", seed.white()).unwrap();
+
+                    workbook.defaults.as_mut().unwrap().selected_data = Some(Selection {
+                        id,
+                        name: "Command line seed".to_string(),
+                    });
+                    found_data = true;
+                }
+            }
+
+            if ! found_data {
+                let full_seed_name = allowed_data_path.join(&seed);
+                if full_seed_name.is_file() {
+                    // writeln!(
+                    //     feedback,
+                    //     "{}",
+                    //     format!("Using seed entry \"{}\"", &seed).white()
+                    // )
+                    // .unwrap();
+
+                    let ext = full_seed_name
+                        .extension()
+                        .unwrap_or(OsStr::new(""))
+                        .to_string_lossy()
+                        .to_ascii_lowercase();
+                    let source_type = match ext.as_str() {
+                        "json" => ExternalDataSourceType::FileJSON,
+                        "csv" => ExternalDataSourceType::FileCSV,
+                        _ => {
+                            return Err(ApicizeError::Error {
+                                description: format!("Error: seed file \"{seed}\" does not end with .csv or .json")
+                            });
+                        }
+                    };
+
+                    let default_data = ExternalData {
+                        source_type,
+                        source: seed,
+                        ..Default::default()
+                    };
+                    
+                    match workbook.data.as_mut() {
+                        Some(data) => {
+                            data.insert(0, default_data);
+                        },
+                        None => {
+                            workbook.data = Some(vec![default_data]);
+                        }
+                    }
+
+                    workbook.defaults.as_mut().unwrap().selected_data = Some(Selection {
+                        id: "\0".to_string(),
+                        name: "Command line seed".to_string(),
+                    });
+                } else {
+                    return Err(ApicizeError::FileAccess { 
+                        description: "seed file not found".to_string(), 
+                        file_name: Some(seed)
+                    });
+                }
+            }
+        }
+
         Self::build_workspace(workbook, private_parameters, global_parameters)
+    }
+
+    /// Return matching selection (if any)
+    fn find_selection<T: Identifiable>(
+        requested_selection: &Option<String>,
+        all_entities: Vec<&Option<Vec<T>>>,
+        label: &str,
+    ) -> Result<Option<Selection>, ApicizeError> {
+        match requested_selection {
+            Some(selection) => {
+                if selection.is_empty() {
+                    Ok(None)
+                } else {
+                    for entities in all_entities.iter().filter_map(|f| match f {
+                        Some(f1) => Some(f1),
+                        None => None,
+                    }) {
+                        let matching = entities.iter().find_map(|e| {
+                            let id = e.get_id();
+                            let name = e.get_name();
+                            if id == selection || name == selection {
+                                Some(Selection {
+                                    id: id.to_string(),
+                                    name: name.to_string(),
+                                })
+                            } else {
+                                None
+                            }
+                        });
+                        if matching.is_some() {
+                            return Ok(matching);
+                        }
+                    }
+
+                    Err(ApicizeError::Error {
+                        description: format!("Unable to locate {label} \"{selection}\"")
+                            .to_string(),
+                    })
+                }
+            }
+            &None => Ok(None),
+        }
     }
 
     /// Build a workspace based upon the workbook file, private params file and global params
@@ -107,7 +266,7 @@ impl Workspace {
         workbook: Workbook,
         private_parameters: Parameters,
         global_parameters: Parameters,
-    ) -> Result<Workspace, FileAccessError> {
+    ) -> Result<Workspace, ApicizeError> {
         let workspace_requests = workbook
             .requests
             .into_iter()
@@ -196,7 +355,7 @@ impl Workspace {
     pub fn save(
         &self,
         workbook_path: &PathBuf,
-    ) -> Result<Vec<SerializationSaveSuccess>, FileAccessError> {
+    ) -> Result<Vec<SerializationSaveSuccess>, ApicizeError> {
         let mut successes: Vec<SerializationSaveSuccess> = vec![];
 
         let save_scenarios = match self.scenarios.get_workbook() {
@@ -206,7 +365,7 @@ impl Workspace {
                 } else {
                     Some(entities.to_vec())
                 }
-            },
+            }
             None => None,
         };
 
@@ -217,7 +376,7 @@ impl Workspace {
                 } else {
                     Some(entities.to_vec())
                 }
-            },
+            }
             None => None,
         };
 
@@ -228,7 +387,7 @@ impl Workspace {
                 } else {
                     Some(entities.to_vec())
                 }
-            },
+            }
             None => None,
         };
 
@@ -239,13 +398,13 @@ impl Workspace {
                 } else {
                     Some(entities.to_vec())
                 }
-            },
+            }
             None => None,
         };
 
         let save_data = match self.data.is_empty() {
             true => None,
-            false => Some(self.data.to_vec())
+            false => Some(self.data.to_vec()),
         };
 
         let save_defaults = match self.defaults.any_values_set() {
@@ -253,8 +412,12 @@ impl Workspace {
             false => None,
         };
 
-        let stored_requests = self.requests.to_entities()
-            .into_iter().map(StoredRequestEntry::from_workspace).collect();
+        let stored_requests = self
+            .requests
+            .to_entities()
+            .into_iter()
+            .map(StoredRequestEntry::from_workspace)
+            .collect();
 
         let workbook = Workbook {
             version: 1.0,
@@ -621,7 +784,6 @@ impl Workspace {
             }
             None => Err(ApicizeError::Error {
                 description: "Invalid summary index".to_string(),
-                source: None,
             }),
         }
     }
@@ -727,7 +889,6 @@ impl Workspace {
             }
             None => Err(ApicizeError::Error {
                 description: "Invalid summary index".to_string(),
-                source: None,
             }),
         }
     }
@@ -756,7 +917,6 @@ impl Workspace {
                     if let Err(err) = writer.serialize(d) {
                         return Err(ApicizeError::Error {
                             description: format!("{}", &err),
-                            source: None,
                         });
                     }
                 }
@@ -827,7 +987,6 @@ impl Workspace {
                     if let Err(err) = writer.serialize(d) {
                         return Err(ApicizeError::Error {
                             description: format!("{}", &err),
-                            source: None,
                         });
                     }
                 }

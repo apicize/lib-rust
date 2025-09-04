@@ -1,12 +1,11 @@
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::ser::PrettyFormatter;
 use std::{
-    fmt::Display,
     fs::{self, File},
-    io::{self, Read},
+    io::Read,
     path::{Path, PathBuf},
 };
-use thiserror::Error;
+use crate::ApicizeError;
 
 /// Information on save success
 /// Information on open success, including data
@@ -24,21 +23,6 @@ pub struct SerializationSaveSuccess {
     pub operation: SerializationOperation,
 }
 
-/// Information about I/O failure
-#[derive(Error, Debug)]
-pub struct FileAccessError {
-    /// Name of file that was opened or saved
-    pub file_name: String,
-    /// Error on serialization/deserialization
-    pub error: SerializationError,
-}
-
-impl Display for FileAccessError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Unable to access {}: {}", &self.file_name, &self.error)
-    }
-}
-
 /// File operation
 pub enum SerializationOperation {
     /// File saved
@@ -49,49 +33,26 @@ pub enum SerializationOperation {
     None,
 }
 
-/// Represents errors occurring during Workbook serialization and deserialization
-#[derive(Error, Debug)]
-pub enum SerializationError {
-    /// File system error
-    #[error(transparent)]
-    IO(#[from] io::Error),
-    /// JSON parsing error
-    #[error(transparent)]
-    JSON(#[from] serde_json::Error),
-}
-
 /// Open the specified data file
 pub fn open_data_file<T: DeserializeOwned>(
     input_file_name: &PathBuf,
-) -> Result<SerializationOpenSuccess<T>, FileAccessError> {
+) -> Result<SerializationOpenSuccess<T>, ApicizeError> {
     let file_name = String::from(input_file_name.to_string_lossy());
-    match std::fs::File::open(input_file_name) {
-        Ok(mut f) => open_data_stream(file_name, &mut f),
-        Err(err) => Err(FileAccessError {
-            file_name,
-            error: SerializationError::IO(err),
-        }),
-    }
+    let mut f = fs::File::open(input_file_name)
+        .map_err(|err| ApicizeError::from_io(err, Some(file_name.clone())))?;
+    open_data_stream(file_name, &mut f)
 }
 
 /// Open the specified data stream
 pub fn open_data_stream<T: DeserializeOwned>(
     file_name: String,
     reader: &mut dyn Read,
-) -> Result<SerializationOpenSuccess<T>, FileAccessError> {
+) -> Result<SerializationOpenSuccess<T>, ApicizeError> {
     let mut text = String::new();
-    match reader.read_to_string(&mut text) {
-        Ok(_) => match serde_json::from_str::<T>(&text) {
-            Ok(data) => Ok(SerializationOpenSuccess { file_name, data }),
-            Err(err) => Err(FileAccessError {
-                file_name,
-                error: SerializationError::JSON(err),
-            }),
-        },
-        Err(err) => Err(FileAccessError {
-            file_name,
-            error: SerializationError::IO(err),
-        }),
+    reader.read_to_string(&mut text).map_err(|err| ApicizeError::from_io(err, Some(file_name.clone())))?;
+    match serde_json::from_str::<T>(&text) {
+        Ok(data) => Ok(SerializationOpenSuccess { file_name, data }),
+        Err(err) => Err(ApicizeError::from_serde(err, file_name))
     }
 }
 
@@ -99,35 +60,24 @@ pub fn open_data_stream<T: DeserializeOwned>(
 pub fn save_data_file<T: Serialize>(
     output_file_name: &PathBuf,
     data: &T,
-) -> Result<SerializationSaveSuccess, FileAccessError> {
+) -> Result<SerializationSaveSuccess, ApicizeError> {
     let file_name = String::from(output_file_name.to_string_lossy());
     let formatter = PrettyFormatter::with_indent(b"    ");
 
-    match File::create(output_file_name) {
-        Ok(writer) => {
-            let mut ser = serde_json::Serializer::with_formatter(writer, formatter);
-            match data.serialize(&mut ser) {
-                Ok(()) => Ok(SerializationSaveSuccess {
-                    file_name,
-                    operation: SerializationOperation::Save,
-                }),
-                Err(err) => Err(FileAccessError {
-                    file_name,
-                    error: SerializationError::JSON(err),
-                }),
-            }
-        }
-        Err(err) => Err(FileAccessError {
-            file_name,
-            error: SerializationError::IO(err),
-        }),
-    }
+    let writer = File::create(output_file_name)
+        .map_err(|err| ApicizeError::from_io(err, Some(file_name.clone())))?;
+    let mut ser = serde_json::Serializer::with_formatter(writer, formatter);
+    data.serialize(&mut ser).map_err(|err| ApicizeError::from_serde(err, file_name.clone()))?;
+    Ok(SerializationSaveSuccess {
+        file_name,
+        operation: SerializationOperation::Save,
+    })
 }
 
 /// Delete the specified file, if it exists
 pub fn delete_data_file(
     delete_file_name: &PathBuf,
-) -> Result<SerializationSaveSuccess, FileAccessError> {
+) -> Result<SerializationSaveSuccess, ApicizeError> {
     let file_name = String::from(delete_file_name.to_string_lossy());
     if Path::new(&delete_file_name).is_file() {
         match fs::remove_file(delete_file_name) {
@@ -135,9 +85,9 @@ pub fn delete_data_file(
                 file_name,
                 operation: SerializationOperation::Delete,
             }),
-            Err(err) => Err(FileAccessError {
-                file_name,
-                error: SerializationError::IO(err),
+            Err(err) => Err(ApicizeError::FileAccess {
+                file_name: Some(file_name),
+                description: err.to_string(),
             }),
         }
     } else {

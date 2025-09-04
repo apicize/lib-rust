@@ -213,28 +213,28 @@ async fn run_request_entry(
     };
 
     match entry {
-        RequestEntry::Request(..) => 
-            match run_request(
-                context.clone(),
-                &request_or_group_id,
-                Arc::new(new_params),
-                new_state,
-            )
-            .await? {
-                Some(result) => Ok(Some(ApicizeResult::Request(result))),
-                None => Ok(None),
-            },
-        RequestEntry::Group(..) => 
-            match run_group(
-                context.clone(),
-                &request_or_group_id,
-                Arc::new(new_params),
-                new_state,
-            )
-            .await? {
-                Some(result) => Ok(Some(ApicizeResult::Group(result))),
-                None => Ok(None),
-            },
+        RequestEntry::Request(..) => match run_request(
+            context.clone(),
+            &request_or_group_id,
+            Arc::new(new_params),
+            new_state,
+        )
+        .await?
+        {
+            Some(result) => Ok(Some(ApicizeResult::Request(result))),
+            None => Ok(None),
+        },
+        RequestEntry::Group(..) => match run_group(
+            context.clone(),
+            &request_or_group_id,
+            Arc::new(new_params),
+            new_state,
+        )
+        .await?
+        {
+            Some(result) => Ok(Some(ApicizeResult::Group(result))),
+            None => Ok(None),
+        },
     }
 }
 
@@ -318,7 +318,6 @@ async fn run_request_rows(
     match params.data_set.as_ref() {
         None => Err(ApicizeError::Error {
             description: "run_request_rows called with no rows defined".to_string(),
-            source: None,
         }),
         Some(data_set) => {
             let mut rows = Vec::<ApicizeRequestResultRow>::with_capacity(data_set.data.len());
@@ -465,9 +464,7 @@ async fn run_request_runs(
 
                 executing_runs.spawn(async move {
                     select! {
-                        _ = context.cancellation.cancelled() => Err(ApicizeError::Cancelled {
-                            source: None
-                        }),
+                        _ = context.cancellation.cancelled() => Err(ApicizeError::Cancelled),
                         result = dispatch_request_and_test(
                             context.clone(),
                             request_id,
@@ -508,7 +505,7 @@ async fn run_request_runs(
 
             runs = executing_runs.join_all().await.into_iter().try_fold(
                 vec![],
-                |mut unrolled, result| {
+                |mut unrolled, result| -> Result<Vec<ApicizeRequestResultRun>, ApicizeError> {
                     unrolled.push(result?);
                     Ok(unrolled)
                 },
@@ -641,9 +638,7 @@ async fn run_group_children(
 
                     executing_children.spawn(async move {
                         select! {
-                            _ = context.cancellation.cancelled() => Err(ApicizeError::Cancelled {
-                                source: None
-                            }),
+                            _ = context.cancellation.cancelled() => Err(ApicizeError::Cancelled),
                             result = run_request_entry(
                                 context.clone(),
                                 child_id,
@@ -794,7 +789,8 @@ async fn run_group_runs(
         group.runs
     };
     let child_ids = context.get_group_children(group_id);
-    let mut runs = Vec::<ApicizeGroupResultRun>::with_capacity(group.runs);
+    let mut runs: Vec<ApicizeGroupResultRun> =
+        Vec::<ApicizeGroupResultRun>::with_capacity(group.runs);
 
     match group.multi_run_execution {
         ExecutionConcurrency::Sequential => {
@@ -842,9 +838,7 @@ async fn run_group_runs(
 
                 executing_runs.spawn(async move {
                     select! {
-                        _ = context.cancellation.cancelled() => Err(ApicizeError::Cancelled {
-                            source: None
-                        }),
+                        _ = context.cancellation.cancelled() => Err(ApicizeError::Cancelled),
                         executed_results = run_group_children(
                             context.clone(),
                             child_ids,
@@ -877,7 +871,7 @@ async fn run_group_runs(
             }
             runs = executing_runs.join_all().await.into_iter().try_fold(
                 vec![],
-                |mut unrolled, result| {
+                |mut unrolled, result| -> Result<Vec<ApicizeGroupResultRun>, ApicizeError> {
                     unrolled.push(result?);
                     Ok(unrolled)
                 },
@@ -1013,8 +1007,8 @@ async fn dispatch_request_and_test(
     }
 
     // If there was a cancellation, return a cancellation error instead of recording the error in the execution
-    if let Some(ApicizeError::Cancelled { source }) = error {
-        return Err(ApicizeError::Cancelled { source });
+    if let Some(ApicizeError::Cancelled) = error {
+        return Err(ApicizeError::Cancelled);
     }
 
     let success = error.is_none() && (test_count == 0 || test_fail_count == 0);
@@ -1109,7 +1103,7 @@ async fn dispatch_request(
     if let Some(proxy) = context.workspace.proxies.get_optional(&params.proxy_id) {
         match proxy.append_to_builder(reqwest_builder) {
             Ok(updated_builder) => reqwest_builder = updated_builder,
-            Err(err) => return Err(ApicizeError::from_reqwest(err)),
+            Err(err) => return Err(ApicizeError::from_reqwest(err, None)),
         }
     }
 
@@ -1118,378 +1112,351 @@ async fn dispatch_request(
 
     let name = RequestEntry::clone_and_sub(&request.name, subs);
 
-    match builder_result {
-        Ok(client) => {
-            let mut url = RequestEntry::clone_and_sub(request.url.as_str(), subs)
-                .trim()
-                .to_string();
-            if !(url.starts_with("https://") || url.starts_with("http://")) {
-                // If no prefix, check port 443.  If that's responding then assume https
-                let mut https = false;
-                let regex = Regex::new(r".+:(\d{1,5})(?:\?.*)?$").unwrap();
-                if let Some(result) = regex.captures(&url) {
-                    if let Some(m) = result.get(1) {
-                        if let Ok(port) = m.as_str().parse::<u32>() {
-                            https = (port % 1000) == 443;
-                        }
-                    }
+    let client = builder_result.map_err(|err| ApicizeError::from_reqwest(err, None))?;
+
+    let mut url = RequestEntry::clone_and_sub(request.url.as_str(), subs)
+        .trim()
+        .to_string();
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        // If no prefix, check port 443.  If that's responding then assume https
+        let mut https = false;
+        let regex = Regex::new(r".+:(\d{1,5})(?:\?.*)?$").unwrap();
+        if let Some(result) = regex.captures(&url) {
+            if let Some(m) = result.get(1) {
+                if let Ok(port) = m.as_str().parse::<u32>() {
+                    https = (port % 1000) == 443;
                 }
-
-                if !https {
-                    if let Ok(addrs) = &mut format!("{url}:443").to_socket_addrs() {
-                        if let Some(addr) = addrs.next() {
-                            https =
-                                TcpStream::connect_timeout(&addr, Duration::from_secs(2)).is_ok();
-                        }
-                    }
-                }
-                url = format!("{}://{}", if https { "https" } else { "http" }, url);
-            }
-
-            let mut request_builder = client.request(method, &url);
-
-            // Add headers, including authorization if applicable
-            let mut headers = match &request.headers {
-                Some(h) => {
-                    let capacity = h.iter().filter(|nvp| nvp.disabled != Some(true)).count();
-                    reqwest::header::HeaderMap::with_capacity(capacity)
-                }
-                None => reqwest::header::HeaderMap::new(),
-            };
-
-            if let Some(h) = &request.headers {
-                for nvp in h {
-                    if nvp.disabled != Some(true) {
-                        let name_str = RequestEntry::clone_and_sub(&nvp.name, subs);
-                        let value_str = RequestEntry::clone_and_sub(&nvp.value, subs);
-                        headers.insert(
-                            reqwest::header::HeaderName::try_from(name_str).unwrap(),
-                            reqwest::header::HeaderValue::try_from(value_str).unwrap(),
-                        );
-                    }
-                }
-            }
-
-            match context
-                .workspace
-                .authorizations
-                .get_optional(&params.authorization_id)
-            {
-                Some(Authorization::Basic {
-                    username, password, ..
-                }) => {
-                    request_builder = request_builder.basic_auth(username, Some(password));
-                }
-                Some(Authorization::ApiKey { header, value, .. }) => {
-                    headers.append(
-                        reqwest::header::HeaderName::try_from(header).unwrap(),
-                        reqwest::header::HeaderValue::try_from(value).unwrap(),
-                    );
-                }
-                Some(Authorization::OAuth2Client {
-                    id,
-                    access_token_url,
-                    client_id,
-                    client_secret,
-                    audience,
-                    scope,
-                    send_credentials_in_body,
-                    ..
-                }) => {
-                    match get_oauth2_client_credentials(
-                        id.as_str(),
-                        access_token_url.as_str(),
-                        client_id.as_str(),
-                        client_secret.as_str(),
-                        send_credentials_in_body.unwrap_or(false),
-                        scope,
-                        audience,
-                        context
-                            .workspace
-                            .certificates
-                            .get_optional(&params.auth_certificate_id),
-                        context
-                            .workspace
-                            .proxies
-                            .get_optional(&params.auth_proxy_id),
-                        context.enable_trace,
-                    )
-                    .await
-                    {
-                        Ok(token_result) => {
-                            request_builder =
-                                request_builder.bearer_auth(token_result.token.clone());
-                            oauth2_token = Some(token_result);
-                        }
-                        Err(err) => return Err(err),
-                    }
-                }
-                Some(Authorization::OAuth2Pkce { id, .. }) => {
-                    match retrieve_oauth2_token_from_cache(id).await {
-                        Some(t) => {
-                            request_builder = request_builder.bearer_auth(t.access_token.clone());
-                        }
-                        None => {
-                            return Err(ApicizeError::Error {
-                                description: String::from("PKCE access token is not available"),
-                                source: None,
-                            });
-                        }
-                    }
-                }
-                None => {}
-            }
-
-            if !headers.is_empty() {
-                request_builder = request_builder.headers(headers);
-            }
-
-            // Add query string parameters, if applicable
-            if let Some(q) = &request.query_string_params {
-                let mut query: Vec<(String, String)> = vec![];
-                for nvp in q {
-                    if nvp.disabled != Some(true) {
-                        query.push((
-                            RequestEntry::clone_and_sub(&nvp.name, subs),
-                            RequestEntry::clone_and_sub(&nvp.value, subs),
-                        ));
-                    }
-                }
-                request_builder = request_builder.query(&query);
-            }
-
-            // Add body, if applicable
-            let mut request_body: Option<ApicizeBody>;
-            match &request.body {
-                Some(RequestBody::Text { data }) => {
-                    let s = RequestEntry::clone_and_sub(data, subs);
-                    request_body = Some(ApicizeBody::Text {
-                        text: "".to_string(),
-                    });
-                    request_builder = request_builder.body(Body::from(s.clone()));
-                }
-                Some(RequestBody::JSON { data, .. }) => {
-                    let s = RequestEntry::clone_and_sub(data, subs);
-                    request_body = match serde_json::from_str::<Value>(&s) {
-                        Ok(data) => Some(ApicizeBody::JSON {
-                            text: "".to_string(),
-                            data,
-                        }),
-                        Err(_) => Some(ApicizeBody::Text { text: s.clone() }),
-                    };
-                    request_builder = request_builder.body(Body::from(s));
-                }
-                Some(RequestBody::XML { data }) => {
-                    let s = RequestEntry::clone_and_sub(data, subs);
-                    request_body = match to_json(data) {
-                        Ok(data) => Some(ApicizeBody::XML {
-                            text: "".to_string(),
-                            data,
-                        }),
-                        Err(_) => Some(ApicizeBody::Text { text: s.clone() }),
-                    };
-                    request_builder = request_builder.body(Body::from(s));
-                }
-                Some(RequestBody::Form { data }) => {
-                    let form_data = data
-                        .iter()
-                        .map(|pair| {
-                            (
-                                RequestEntry::clone_and_sub(&pair.name, subs),
-                                RequestEntry::clone_and_sub(&pair.value, subs),
-                            )
-                        })
-                        .collect::<HashMap<String, String>>();
-                    request_body = Some(ApicizeBody::Form {
-                        text: "".to_string(),
-                        data: form_data.clone(),
-                    });
-                    request_builder = request_builder.form(&form_data);
-                }
-                Some(RequestBody::Raw { data }) => {
-                    request_body = Some(ApicizeBody::Binary { data: data.clone() });
-                    request_builder = request_builder.body(Body::from(data.clone()));
-                }
-                None => {
-                    request_body = None;
-                }
-            }
-
-            // let mut web_request = request_builder.build()?;
-            match request_builder.build() {
-                Ok(mut web_request) => {
-                    // Copy value generated for the request so that we can include in the function results
-                    let request_url = web_request.url().to_string();
-                    let request_headers = web_request
-                        .headers()
-                        .iter()
-                        .map(|(h, v)| {
-                            (
-                                String::from(h.as_str()),
-                                String::from(
-                                    v.to_str().unwrap_or("(Header Contains Non-ASCII Data)"),
-                                ),
-                            )
-                        })
-                        .collect::<HashMap<String, String>>();
-                    let ref_body = web_request.body_mut();
-                    if let Some(data) = ref_body {
-                        let bytes = data.as_bytes().unwrap();
-                        if !bytes.is_empty() {
-                            let request_encoding = UTF_8;
-                            let data = bytes.to_vec();
-                            match request_body.as_mut() {
-                                None => {}
-                                Some(ApicizeBody::Binary { .. }) => {}
-                                Some(ApicizeBody::Form { text, .. })
-                                | Some(ApicizeBody::JSON { text, .. })
-                                | Some(ApicizeBody::XML { text, .. })
-                                | Some(ApicizeBody::Text { text, .. }) => {
-                                    let (decoded, _, malformed) = request_encoding.decode(&data);
-                                    *text = if malformed {
-                                        "Malformed UTF8".to_string()
-                                    } else {
-                                        decoded.to_string()
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    let client_response: Result<Response, ApicizeError> = select! {
-                        _ = context.cancellation.cancelled() => Err(ApicizeError::Cancelled {
-                            source: None
-                        }),
-                        result = client.execute(web_request) => {
-                            match result {
-                                Ok(response) => Ok(response),
-                                Err(error) => Err(ApicizeError::from_reqwest(error)),
-                            }
-                        }
-                    };
-
-                    // Execute the request
-                    match client_response {
-                        Err(error) => Err(error),
-                        Ok(response) => {
-                            // Collect headers for response
-                            let response_headers = response.headers();
-                            let mut may_have_json = false;
-                            let headers = if response_headers.is_empty() {
-                                None
-                            } else {
-                                Some(HashMap::from_iter(
-                                    response_headers
-                                        .iter()
-                                        .map(|(h, v)| {
-                                            let name = h.as_str();
-                                            let value = v
-                                                .to_str()
-                                                .unwrap_or("(Header Contains Non-ASCII Data)");
-                                            if name.eq_ignore_ascii_case("content-type")
-                                                && value.to_ascii_lowercase().contains("json")
-                                            {
-                                                may_have_json = true;
-                                            }
-                                            (name.to_string(), value.to_string())
-                                        })
-                                        .collect::<HashMap<String, String>>(),
-                                ))
-                            };
-
-                            // Determine the default text encoding
-                            let response_content_type = response_headers
-                                .get(reqwest::header::CONTENT_TYPE)
-                                .and_then(|value| value.to_str().ok())
-                                .and_then(|value| value.parse::<Mime>().ok());
-
-                            let response_encoding_name = response_content_type
-                                .as_ref()
-                                .and_then(|mime| {
-                                    mime.get_param("charset").map(|charset| charset.as_str())
-                                })
-                                .unwrap_or("utf-8");
-
-                            let response_encoding =
-                                Encoding::for_label(response_encoding_name.as_bytes())
-                                    .unwrap_or(UTF_8);
-
-                            // Collect status for response
-                            let status = response.status();
-                            let status_text =
-                                String::from(status.canonical_reason().unwrap_or("Unknown"));
-
-                            // Retrieve response bytes and convert raw data to string
-                            match response.bytes().await {
-                                Ok(bytes) => {
-                                    let mut output_variables: Option<Map<String, Value>> = None;
-                                    let response_body = if bytes.is_empty() {
-                                        None
-                                    } else {
-                                        let data = Vec::from(bytes.as_ref());
-                                        let (decoded, _, malformed) =
-                                            response_encoding.decode(&data);
-
-                                        if malformed {
-                                            Some(ApicizeBody::Binary { data })
-                                        } else {
-                                            let text = decoded.to_string();
-                                            if may_have_json {
-                                                if let Ok(parsed) =
-                                                    serde_json::from_str::<Value>(&text)
-                                                {
-                                                    if let Some(obj) = parsed.as_object() {
-                                                        output_variables = Some(obj.clone());
-                                                    }
-
-                                                    Some(ApicizeBody::JSON {
-                                                        text: decoded.to_string(),
-                                                        data: parsed,
-                                                    })
-                                                } else {
-                                                    Some(ApicizeBody::Text { text })
-                                                }
-                                            } else {
-                                                Some(ApicizeBody::Text { text })
-                                            }
-                                        }
-                                    };
-
-                                    let response = (
-                                        name,
-                                        url,
-                                        ApicizeHttpRequest {
-                                            url: request_url,
-                                            method: request
-                                                .method
-                                                .as_ref()
-                                                .unwrap()
-                                                .as_str()
-                                                .to_string(),
-                                            headers: request_headers,
-                                            body: request_body,
-                                        },
-                                        ApicizeHttpResponse {
-                                            status: status.as_u16(),
-                                            status_text,
-                                            headers,
-                                            body: response_body,
-                                            oauth2_token,
-                                        },
-                                        output_variables,
-                                    );
-
-                                    Ok(response)
-                                }
-                                Err(err) => Err(ApicizeError::from_reqwest(err)),
-                            }
-                        }
-                    }
-                }
-                Err(err) => Err(ApicizeError::from_reqwest(err)),
             }
         }
-        Err(err) => Err(ApicizeError::from_reqwest(err)),
+
+        if !https {
+            if let Ok(addrs) = &mut format!("{url}:443").to_socket_addrs() {
+                if let Some(addr) = addrs.next() {
+                    https = TcpStream::connect_timeout(&addr, Duration::from_secs(2)).is_ok();
+                }
+            }
+        }
+        url = format!("{}://{}", if https { "https" } else { "http" }, url);
+    }
+
+    let mut request_builder = client.request(method, &url);
+
+    // Add headers, including authorization if applicable
+    let mut headers = match &request.headers {
+        Some(h) => {
+            let capacity = h.iter().filter(|nvp| nvp.disabled != Some(true)).count();
+            reqwest::header::HeaderMap::with_capacity(capacity)
+        }
+        None => reqwest::header::HeaderMap::new(),
+    };
+
+    if let Some(h) = &request.headers {
+        for nvp in h {
+            if nvp.disabled != Some(true) {
+                let name_str = RequestEntry::clone_and_sub(&nvp.name, subs);
+                let value_str = RequestEntry::clone_and_sub(&nvp.value, subs);
+                headers.insert(
+                    reqwest::header::HeaderName::try_from(name_str).unwrap(),
+                    reqwest::header::HeaderValue::try_from(value_str).unwrap(),
+                );
+            }
+        }
+    }
+
+    match context
+        .workspace
+        .authorizations
+        .get_optional(&params.authorization_id)
+    {
+        Some(Authorization::Basic {
+            username, password, ..
+        }) => {
+            request_builder = request_builder.basic_auth(username, Some(password));
+        }
+        Some(Authorization::ApiKey { header, value, .. }) => {
+            headers.append(
+                reqwest::header::HeaderName::try_from(header).unwrap(),
+                reqwest::header::HeaderValue::try_from(value).unwrap(),
+            );
+        }
+        Some(Authorization::OAuth2Client {
+            id,
+            access_token_url,
+            client_id,
+            client_secret,
+            audience,
+            scope,
+            send_credentials_in_body,
+            ..
+        }) => {
+            match get_oauth2_client_credentials(
+                id.as_str(),
+                access_token_url.as_str(),
+                client_id.as_str(),
+                client_secret.as_str(),
+                send_credentials_in_body.unwrap_or(false),
+                scope,
+                audience,
+                context
+                    .workspace
+                    .certificates
+                    .get_optional(&params.auth_certificate_id),
+                context
+                    .workspace
+                    .proxies
+                    .get_optional(&params.auth_proxy_id),
+                context.enable_trace,
+            )
+            .await
+            {
+                Ok(token_result) => {
+                    request_builder = request_builder.bearer_auth(token_result.token.clone());
+                    oauth2_token = Some(token_result);
+                }
+                Err(err) => return Err(err),
+            }
+        }
+        Some(Authorization::OAuth2Pkce { id, .. }) => {
+            match retrieve_oauth2_token_from_cache(id).await {
+                Some(t) => {
+                    request_builder = request_builder.bearer_auth(t.access_token.clone());
+                }
+                None => {
+                    return Err(ApicizeError::Error {
+                        description: String::from("PKCE access token is not available"),
+                    });
+                }
+            }
+        }
+        None => {}
+    }
+
+    if !headers.is_empty() {
+        request_builder = request_builder.headers(headers);
+    }
+
+    // Add query string parameters, if applicable
+    if let Some(q) = &request.query_string_params {
+        let mut query: Vec<(String, String)> = vec![];
+        for nvp in q {
+            if nvp.disabled != Some(true) {
+                query.push((
+                    RequestEntry::clone_and_sub(&nvp.name, subs),
+                    RequestEntry::clone_and_sub(&nvp.value, subs),
+                ));
+            }
+        }
+        request_builder = request_builder.query(&query);
+    }
+
+    // Add body, if applicable
+    let mut request_body: Option<ApicizeBody>;
+    match &request.body {
+        Some(RequestBody::Text { data }) => {
+            let s = RequestEntry::clone_and_sub(data, subs);
+            request_body = Some(ApicizeBody::Text {
+                text: "".to_string(),
+            });
+            request_builder = request_builder.body(Body::from(s.clone()));
+        }
+        Some(RequestBody::JSON { data, .. }) => {
+            let s = RequestEntry::clone_and_sub(data, subs);
+            request_body = match serde_json::from_str::<Value>(&s) {
+                Ok(data) => Some(ApicizeBody::JSON {
+                    text: "".to_string(),
+                    data,
+                }),
+                Err(_) => Some(ApicizeBody::Text { text: s.clone() }),
+            };
+            request_builder = request_builder.body(Body::from(s));
+        }
+        Some(RequestBody::XML { data }) => {
+            let s = RequestEntry::clone_and_sub(data, subs);
+            request_body = match to_json(data) {
+                Ok(data) => Some(ApicizeBody::XML {
+                    text: "".to_string(),
+                    data,
+                }),
+                Err(_) => Some(ApicizeBody::Text { text: s.clone() }),
+            };
+            request_builder = request_builder.body(Body::from(s));
+        }
+        Some(RequestBody::Form { data }) => {
+            let form_data = data
+                .iter()
+                .map(|pair| {
+                    (
+                        RequestEntry::clone_and_sub(&pair.name, subs),
+                        RequestEntry::clone_and_sub(&pair.value, subs),
+                    )
+                })
+                .collect::<HashMap<String, String>>();
+            request_body = Some(ApicizeBody::Form {
+                text: "".to_string(),
+                data: form_data.clone(),
+            });
+            request_builder = request_builder.form(&form_data);
+        }
+        Some(RequestBody::Raw { data }) => {
+            request_body = Some(ApicizeBody::Binary { data: data.clone() });
+            request_builder = request_builder.body(Body::from(data.clone()));
+        }
+        None => {
+            request_body = None;
+        }
+    }
+
+    let mut web_request = request_builder
+        .build()
+        .map_err(|err| ApicizeError::from_reqwest(err, None))?;
+    // Copy value generated for the request so that we can include in the function results
+    let request_url = web_request.url().to_string();
+    let request_headers = web_request
+        .headers()
+        .iter()
+        .map(|(h, v)| {
+            (
+                String::from(h.as_str()),
+                String::from(v.to_str().unwrap_or("(Header Contains Non-ASCII Data)")),
+            )
+        })
+        .collect::<HashMap<String, String>>();
+    let ref_body = web_request.body_mut();
+    if let Some(data) = ref_body {
+        let bytes = data.as_bytes().unwrap();
+        if !bytes.is_empty() {
+            let request_encoding = UTF_8;
+            let data = bytes.to_vec();
+            match request_body.as_mut() {
+                None => {}
+                Some(ApicizeBody::Binary { .. }) => {}
+                Some(ApicizeBody::Form { text, .. })
+                | Some(ApicizeBody::JSON { text, .. })
+                | Some(ApicizeBody::XML { text, .. })
+                | Some(ApicizeBody::Text { text, .. }) => {
+                    let (decoded, _, malformed) = request_encoding.decode(&data);
+                    *text = if malformed {
+                        "Malformed UTF8".to_string()
+                    } else {
+                        decoded.to_string()
+                    }
+                }
+            }
+        }
+    }
+
+    let client_response: Result<Response, ApicizeError> = select! {
+        _ = context.cancellation.cancelled() => Err(ApicizeError::Cancelled),
+        result = client.execute(web_request) => {
+            match result {
+                Ok(response) => Ok(response),
+                Err(error) => Err(ApicizeError::from_reqwest(error, None)),
+            }
+        }
+    };
+
+    // Execute the request
+    match client_response {
+        Err(error) => Err(error),
+        Ok(response) => {
+            // Collect headers for response
+            let response_headers = response.headers();
+            let mut may_have_json = false;
+            let headers = if response_headers.is_empty() {
+                None
+            } else {
+                Some(HashMap::from_iter(
+                    response_headers
+                        .iter()
+                        .map(|(h, v)| {
+                            let name = h.as_str();
+                            let value = v.to_str().unwrap_or("(Header Contains Non-ASCII Data)");
+                            if name.eq_ignore_ascii_case("content-type")
+                                && value.to_ascii_lowercase().contains("json")
+                            {
+                                may_have_json = true;
+                            }
+                            (name.to_string(), value.to_string())
+                        })
+                        .collect::<HashMap<String, String>>(),
+                ))
+            };
+
+            // Determine the default text encoding
+            let response_content_type = response_headers
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse::<Mime>().ok());
+
+            let response_encoding_name = response_content_type
+                .as_ref()
+                .and_then(|mime| mime.get_param("charset").map(|charset| charset.as_str()))
+                .unwrap_or("utf-8");
+
+            let response_encoding =
+                Encoding::for_label(response_encoding_name.as_bytes()).unwrap_or(UTF_8);
+
+            // Collect status for response
+            let status = response.status();
+            let status_text = String::from(status.canonical_reason().unwrap_or("Unknown"));
+
+            // Retrieve response bytes and convert raw data to string
+            match response.bytes().await {
+                Ok(bytes) => {
+                    let mut output_variables: Option<Map<String, Value>> = None;
+                    let response_body = if bytes.is_empty() {
+                        None
+                    } else {
+                        let data = Vec::from(bytes.as_ref());
+                        let (decoded, _, malformed) = response_encoding.decode(&data);
+
+                        if malformed {
+                            Some(ApicizeBody::Binary { data })
+                        } else {
+                            let text = decoded.to_string();
+                            if may_have_json {
+                                if let Ok(parsed) = serde_json::from_str::<Value>(&text) {
+                                    if let Some(obj) = parsed.as_object() {
+                                        output_variables = Some(obj.clone());
+                                    }
+
+                                    Some(ApicizeBody::JSON {
+                                        text: decoded.to_string(),
+                                        data: parsed,
+                                    })
+                                } else {
+                                    Some(ApicizeBody::Text { text })
+                                }
+                            } else {
+                                Some(ApicizeBody::Text { text })
+                            }
+                        }
+                    };
+
+                    let response = (
+                        name,
+                        url,
+                        ApicizeHttpRequest {
+                            url: request_url,
+                            method: request.method.as_ref().unwrap().as_str().to_string(),
+                            headers: request_headers,
+                            body: request_body,
+                        },
+                        ApicizeHttpResponse {
+                            status: status.as_u16(),
+                            status_text,
+                            headers,
+                            body: response_body,
+                            oauth2_token,
+                        },
+                        output_variables,
+                    );
+
+                    Ok(response)
+                }
+                Err(err) => Err(ApicizeError::from_reqwest(err, None)),
+            }
+        }
     }
 }
 

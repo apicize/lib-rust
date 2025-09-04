@@ -107,71 +107,48 @@ pub async fn get_oauth2_client_credentials<'a>(
 
     // Add certificate to builder if configured
     if let Some(active_cert) = certificate {
-        match active_cert.append_to_builder(reqwest_builder) {
-            Ok(updated_builder) => reqwest_builder = updated_builder,
-            Err(err) => {
-                return Err(ApicizeError::OAuth2Client {
-                    description: String::from("Error assigning OAuth certificate"),
-                    source: Some(Box::new(err)),
-                })
-            }
-        }
+        reqwest_builder = active_cert.append_to_builder(reqwest_builder)
+            .map_err(|err| ApicizeError::OAuth2Client{
+                description: err.to_string(), 
+                context: Some("Unable to assign OAuth certificate".to_string()),
+            })?;
     }
 
     // Add proxy to builder if configured
     if let Some(active_proxy) = proxy {
-        match active_proxy.append_to_builder(reqwest_builder) {
-            Ok(updated_builder) => reqwest_builder = updated_builder,
-            Err(err) => {
-                return Err(ApicizeError::OAuth2Client {
-                    description: String::from("Error assigning OAuth proxy"),
-                    source: Some(Box::new(ApicizeError::from_reqwest(err))),
-                })
-            }
-        }
+        reqwest_builder = active_proxy.append_to_builder(reqwest_builder)
+            .map_err(|err| ApicizeError::OAuth2Client{
+                description: err.to_string(), 
+                context: Some("Unable to assign OAuth proxy".to_string()),
+            })?;
     }
 
-    let http_client = match reqwest_builder.build() {
-        Ok(client) => client,
-        Err(err) => {
-            return Err(ApicizeError::OAuth2Client {
-                description: String::from("Error building OAuth request"),
-                source: Some(Box::new(ApicizeError::from_reqwest(err))),
-            })
-        }
-    };
+    let http_client = reqwest_builder.build()?;
 
-    match token_request.request_async(&http_client).await {
-        Ok(token_response) => {
-            let expiration = token_response.expires_in().map(|token_expires_in| {
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs()
-                    .add(token_expires_in.as_secs())
-            });
-            let token = token_response.access_token().secret().clone();
-            store_oauth2_token_in_cache(
-                id,
-                CachedTokenInfo {
-                    access_token: token.clone(),
-                    refresh_token: None,
-                    expiration,
-                },
-            ).await;
-            Ok(TokenResult {
-                token,
-                cached: false,
-                url: Some(String::from(token_url)),
-                certificate: certificate.map(|c| c.get_name().to_owned()),
-                proxy: proxy.map(|p| p.get_name().to_owned()),
-            })
-        }
-        Err(err) => Err(ApicizeError::OAuth2Client {
-            description: String::from("Error dispatching OAuth2 token request"),
-            source: Some(Box::new(ApicizeError::from_oauth2(err))),
-        }),
-    }
+    let token_response = token_request.request_async(&http_client).await?;
+    let expiration = token_response.expires_in().map(|token_expires_in| {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            .add(token_expires_in.as_secs())
+    });
+    let token = token_response.access_token().secret().clone();
+    store_oauth2_token_in_cache(
+        id,
+        CachedTokenInfo {
+            access_token: token.clone(),
+            refresh_token: None,
+            expiration,
+        },
+    ).await;
+    Ok(TokenResult {
+        token,
+        cached: false,
+        url: Some(String::from(token_url)),
+        certificate: certificate.map(|c| c.get_name().to_owned()),
+        proxy: proxy.map(|p| p.get_name().to_owned()),
+    })
 }
 
 // #[cfg(test)]

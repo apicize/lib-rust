@@ -88,7 +88,6 @@ impl<T: Identifiable + Clone> IndexedEntities<T> {
                 } else {
                     Err(ApicizeError::Error {
                         description: format!("Invalid ID {}", &id_to_find),
-                        source: None,
                     })
                 }
             }

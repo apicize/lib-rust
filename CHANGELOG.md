@@ -1,5 +1,10 @@
 # Change Log
 
+# 0.29.0
+
+* Clean-up of error enum
+* Move overriden defaults for parameters to Workspace::Open
+
 # 0.28.1
 
 * Support setting request and group runs to zero

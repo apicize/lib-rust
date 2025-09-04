@@ -4,8 +4,7 @@ use dirs::config_dir;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    delete_data_file, open_data_file, save_data_file, Authorization, Certificate, Proxy, Scenario,
-    SerializationError, FileAccessError, SerializationSaveSuccess,
+    delete_data_file, open_data_file, save_data_file, ApicizeError, Authorization, Certificate, Proxy, Scenario, SerializationSaveSuccess
 };
 
 /// Stored parameters, authorization, client certificates and proxies
@@ -65,19 +64,16 @@ impl Parameters {
     pub fn open(
         file_name: &PathBuf,
         create_new_if_missing: bool,
-    ) -> Result<Parameters, FileAccessError> {
+    ) -> Result<Parameters, ApicizeError> {
         if Path::new(&file_name).is_file() {
             let params = open_data_file::<Parameters>(file_name)?.data;
             Ok(params)
         } else if create_new_if_missing {
             Ok(Parameters::default())
         } else {
-            Err(FileAccessError {
-                file_name: String::from(file_name.to_string_lossy()),
-                error: SerializationError::IO(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    format!("{} not found", &file_name.to_string_lossy()),
-                )),
+            Err(ApicizeError::FileAccess {
+                file_name: Some(file_name.to_string_lossy().to_string()),
+                description: "Not found".to_string(),
             })
         }
     }
@@ -86,7 +82,7 @@ impl Parameters {
     pub fn save(
         &self,
         file_name: &PathBuf,
-    ) -> Result<SerializationSaveSuccess, FileAccessError> {
+    ) -> Result<SerializationSaveSuccess, ApicizeError> {
         let scenarios = match &self.scenarios {
             Some(entities) => entities.iter().map(|e| e.to_owned()).collect(),
             None => vec![],

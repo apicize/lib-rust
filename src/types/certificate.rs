@@ -68,24 +68,16 @@ pub enum Certificate {
 impl Certificate {
     /// Append certificate to builder
     pub fn append_to_builder(&self, builder: ClientBuilder) -> Result<ClientBuilder, ApicizeError> {
-        let identity_result = match self {
+        let identity = match self {
             Certificate::PKCS12 { pfx, password, .. } => Identity::from_pkcs12_der(
                 pfx,
                 password.clone().unwrap_or(String::from("")).as_str(),
             ),
             Certificate::PKCS8PEM { pem, key, .. } => Identity::from_pkcs8_pem(pem, key),
             Certificate::PEM { pem, .. } => Identity::from_pem(pem),
-        };
+        }.map_err(|err| ApicizeError::from_reqwest(err, None))?;
 
-        match identity_result {
-            Ok(identity) => {
-                // request_certificate = Some(cert.clone());
-                Ok(
-                    builder.identity(identity).use_native_tls(), // .tls_info(true)
-                )
-            }
-            Err(err) => Err(ApicizeError::from_reqwest(err)),
-        }
+        Ok(builder.identity(identity).use_native_tls())
     }
 }
 

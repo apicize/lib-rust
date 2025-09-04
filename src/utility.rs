@@ -2,7 +2,7 @@
 //! 
 //! This submodule defines utility functions used for serialization and deserialization
 
-use std::{fs::File, io, path::PathBuf};
+use std::{fs::File, path::PathBuf};
 
 use serde_json::{Map, Value};
 use uuid::Uuid;
@@ -23,7 +23,7 @@ pub fn sequential() -> ExecutionConcurrency {
 pub fn convert_json(name: &str, value: &str) -> Result<Value, ApicizeError> {
     match serde_json::from_str::<Value>(value) {
         Ok(v) => Ok(v),
-        Err(err) => Err(ApicizeError::from_serde(err, name)),
+        Err(err) => Err(ApicizeError::from_serde(err, name.to_string())),
     }
 }
 
@@ -37,9 +37,9 @@ pub fn extract_json(
         Ok(full_file_name) => match File::open(full_file_name) {
             Ok(file) => match serde_json::from_reader::<File, Value>(file) {
                 Ok(v) => Ok(v),
-                Err(err) => Err(ApicizeError::from_serde(err, name)),
+                Err(err) => Err(ApicizeError::from_serde(err, name.to_string())),
             },
-            Err(err) => Err(ApicizeError::from_io(err)),
+            Err(err) => Err(ApicizeError::from_io(err, Some(file_name.to_string()))),
         },
         Err(err) => Err(err),
     }
@@ -52,19 +52,20 @@ pub fn extract_csv(
     allowed_path: &Option<PathBuf>,
 ) -> Result<Value, ApicizeError> {
     match get_absolute_file_name(file_name, allowed_path) {
-        Ok(full_file_name) => match File::open(full_file_name) {
+        Ok(full_file_name) => match File::open(full_file_name.clone()) {
             Ok(file) => {
                 let mut rdr = csv::Reader::from_reader(file);
                 let mut data = Vec::<Value>::new();
                 for record in rdr.deserialize::<Map<String, Value>>() {
                     match record {
                         Ok(r) => data.push(serde_json::Value::Object(r)),
-                        Err(err) => return Err(ApicizeError::from_csv(err, name)),
+                        Err(err) => return Err(ApicizeError::from_csv(err, name.to_string())),
                     }
                 }
                 Ok(serde_json::Value::Array(data))
             }
-            Err(err) => Err(ApicizeError::from_io(err)),
+            Err(err) => Err(ApicizeError::from_io(
+                err, Some(full_file_name.to_string_lossy().to_string()))),
         },
         Err(err) => Err(err),
     }
@@ -81,16 +82,15 @@ pub fn get_absolute_file_name(
             if data_path.exists() {
                 Ok(data_path)
             } else {
-                Err(ApicizeError::from_io(io::Error::new(
-                    io::ErrorKind::NotFound,
-                    format!("{file_name} not found"),
-                )))
+                Err(ApicizeError::FileAccess {
+                    description: "Not found".to_string(),
+                    file_name: Some(file_name.to_string()),
+                })
             }
         }
         None => Err(ApicizeError::Error {
             description: "External scenario variable files are unavailable in an unsaved workbook"
                 .to_string(),
-            source: None,
         }),
     }
 }
