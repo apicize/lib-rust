@@ -89,16 +89,14 @@ pub async fn get_oauth2_client_credentials<'a>(
 
     let mut token_request = client.exchange_client_credentials();
 
-    if let Some(scope_value) = &scopes {
-        if !scope_value.is_empty() {
+    if let Some(scope_value) = &scopes 
+        && !scope_value.is_empty() {
             token_request = token_request.add_scope(Scope::new(scope_value.clone()));
-        }
     }
 
-    if let Some(audience_value) = &audience {
-        if !audience_value.is_empty() {
+    if let Some(audience_value) = &audience 
+        && !audience_value.is_empty() {
             token_request = token_request.add_extra_param("audience", audience_value);
-        }
     }
 
     let mut reqwest_builder = reqwest::ClientBuilder::new()

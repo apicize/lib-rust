@@ -3,19 +3,27 @@
 //! This submodule defines modules used to manage workspaces
 
 use crate::{
-    open_data_file, open_data_stream, save_data_file, ApicizeError, Authorization, Certificate, ExecutionReportCsv, ExecutionReportFormat, ExecutionReportJson, ExecutionResultSummary, ExternalDataSourceType, Identifiable, PersistedIndex, Proxy, RequestEntry, Scenario, SelectedParameters, Selection, SerializationSaveSuccess, StoredRequestEntry, Workbook, WorkbookDefaultParameters
+    ApicizeError, Authorization, Certificate, ExecutionReportCsv, ExecutionReportFormat,
+    ExecutionReportJson, ExecutionResultSummary, ExternalDataSourceType, Identifiable,
+    PersistedIndex, Proxy, RequestEntry, Scenario, SelectedParameters, Selection,
+    SerializationSaveSuccess, StoredRequestEntry, Workbook, WorkbookDefaultParameters,
+    open_data_file, open_data_stream, save_data_file,
 };
 
 use csv::WriterBuilder;
 use serde::{Deserialize, Serialize};
-use serde_json::{ser::PrettyFormatter, Map, Value};
+use serde_json::{Map, Value, ser::PrettyFormatter};
 use std::{
-    collections::{HashMap, HashSet}, ffi::OsStr, io::stdin, path::{Path, PathBuf}, sync::{Arc, Mutex}
+    collections::{HashMap, HashSet},
+    ffi::OsStr,
+    io::stdin,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
 
 use super::{
-    indexed_entities::NO_SELECTION_ID, validated_selected_parameters::ValidatedSelectedParameters,
-    ExternalData, IndexedEntities, Parameters, VariableCache,
+    ExternalData, IndexedEntities, Parameters, VariableCache, indexed_entities::NO_SELECTION_ID,
+    validated_selected_parameters::ValidatedSelectedParameters,
 };
 
 /// Data type for entities used by Apicize during testing and editing.  This will be
@@ -92,7 +100,8 @@ impl Workspace {
         let mut workbook: Workbook = match workbook_file_name {
             Some(input_file_name) => open_data_file(input_file_name),
             None => open_data_stream("STDIN".to_string(), &mut stdin()),
-        }?.data;
+        }?
+        .data;
         // Load private parameters if file exists
         let private_parameters = match workbook_file_name {
             Some(input_file_name) => Parameters::open(
@@ -111,7 +120,11 @@ impl Workspace {
 
         if let Some(s) = Self::find_selection(
             &override_default_scenario,
-            vec![&workbook.scenarios, &private_parameters.scenarios, &global_parameters.scenarios],
+            vec![
+                &workbook.scenarios,
+                &private_parameters.scenarios,
+                &global_parameters.scenarios,
+            ],
             "scenario",
         )? {
             workbook.defaults.as_mut().unwrap().selected_scenario = Some(s);
@@ -119,7 +132,11 @@ impl Workspace {
 
         if let Some(s) = Self::find_selection(
             &override_default_authorization,
-            vec![&workbook.authorizations, &private_parameters.authorizations, &global_parameters.authorizations],
+            vec![
+                &workbook.authorizations,
+                &private_parameters.authorizations,
+                &global_parameters.authorizations,
+            ],
             "authorization",
         )? {
             workbook.defaults.as_mut().unwrap().selected_authorization = Some(s);
@@ -127,7 +144,11 @@ impl Workspace {
 
         if let Some(s) = Self::find_selection(
             &override_default_certificate,
-            vec![&workbook.certificates, &private_parameters.certificates, &global_parameters.certificates],
+            vec![
+                &workbook.certificates,
+                &private_parameters.certificates,
+                &global_parameters.certificates,
+            ],
             "certificate",
         )? {
             workbook.defaults.as_mut().unwrap().selected_certificate = Some(s);
@@ -135,7 +156,11 @@ impl Workspace {
 
         if let Some(s) = Self::find_selection(
             &override_default_proxy,
-            vec![&workbook.proxies, &private_parameters.proxies, &global_parameters.proxies],
+            vec![
+                &workbook.proxies,
+                &private_parameters.proxies,
+                &global_parameters.proxies,
+            ],
             "proxy",
         )? {
             workbook.defaults.as_mut().unwrap().selected_proxy = Some(s);
@@ -145,25 +170,25 @@ impl Workspace {
         if let Some(seed) = override_data_seed {
             let mut found_data = false;
 
-            if let Some(workbook_data) = workbook.data.as_mut() {
-                if let Some(id) = workbook_data.iter().find_map(|d| {
+            if let Some(workbook_data) = workbook.data.as_mut()
+                && let Some(id) = workbook_data.iter().find_map(|d| {
                     if d.id == seed || d.name == seed {
                         Some(d.id.clone())
                     } else {
                         None
                     }
-                }) {
-                    // writeln!(feedback, "Using seed entry \"{}\"", seed.white()).unwrap();
+                })
+            {
+                // writeln!(feedback, "Using seed entry \"{}\"", seed.white()).unwrap();
 
-                    workbook.defaults.as_mut().unwrap().selected_data = Some(Selection {
-                        id,
-                        name: "Command line seed".to_string(),
-                    });
-                    found_data = true;
-                }
+                workbook.defaults.as_mut().unwrap().selected_data = Some(Selection {
+                    id,
+                    name: "Command line seed".to_string(),
+                });
+                found_data = true;
             }
 
-            if ! found_data {
+            if !found_data {
                 let full_seed_name = allowed_data_path.join(&seed);
                 if full_seed_name.is_file() {
                     // writeln!(
@@ -183,7 +208,9 @@ impl Workspace {
                         "csv" => ExternalDataSourceType::FileCSV,
                         _ => {
                             return Err(ApicizeError::Error {
-                                description: format!("Error: seed file \"{seed}\" does not end with .csv or .json")
+                                description: format!(
+                                    "Error: seed file \"{seed}\" does not end with .csv or .json"
+                                ),
                             });
                         }
                     };
@@ -193,11 +220,11 @@ impl Workspace {
                         source: seed,
                         ..Default::default()
                     };
-                    
+
                     match workbook.data.as_mut() {
                         Some(data) => {
                             data.insert(0, default_data);
-                        },
+                        }
                         None => {
                             workbook.data = Some(vec![default_data]);
                         }
@@ -208,9 +235,9 @@ impl Workspace {
                         name: "Command line seed".to_string(),
                     });
                 } else {
-                    return Err(ApicizeError::FileAccess { 
-                        description: "seed file not found".to_string(), 
-                        file_name: Some(seed)
+                    return Err(ApicizeError::FileAccess {
+                        description: "seed file not found".to_string(),
+                        file_name: Some(seed),
                     });
                 }
             }
@@ -537,17 +564,19 @@ impl Workspace {
                     }
                 }
             }
-            if allow_data && data.is_none() {
-                if let Some(sd) = current.selected_data() {
-                    if sd.id == NO_SELECTION_ID {
-                        allow_data = false;
-                    } else if let Some(matching_data) = self.data.iter().find(|d| d.id == sd.id) {
-                        data = Some(matching_data);
-                    } else {
-                        allow_data = false;
-                    };
-                }
+            if allow_data
+                && data.is_none()
+                && let Some(sd) = current.selected_data()
+            {
+                if sd.id == NO_SELECTION_ID {
+                    allow_data = false;
+                } else if let Some(matching_data) = self.data.iter().find(|d| d.id == sd.id) {
+                    data = Some(matching_data);
+                } else {
+                    allow_data = false;
+                };
             }
+
             done = (scenario.is_some() || !allow_scenario)
                 && (authorization.is_some() || !allow_authorization)
                 && (certificate.is_some() || !allow_certificate)
@@ -582,44 +611,50 @@ impl Workspace {
         }
 
         // Load from defaults if required
-        if scenario.is_none() && allow_scenario {
-            if let SelectedOption::Some(s) = self.scenarios.find(&self.defaults.selected_scenario) {
-                scenario = Some(s);
-            }
+        if scenario.is_none()
+            && allow_scenario
+            && let SelectedOption::Some(s) = self.scenarios.find(&self.defaults.selected_scenario)
+        {
+            scenario = Some(s);
         }
-        if authorization.is_none() && allow_authorization {
-            if let SelectedOption::Some(a) = self
+
+        if authorization.is_none()
+            && allow_authorization
+            && let SelectedOption::Some(a) = self
                 .authorizations
                 .find(&self.defaults.selected_authorization)
-            {
-                authorization = Some(a);
-            }
+        {
+            authorization = Some(a);
         }
-        if certificate.is_none() && allow_certificate {
-            if let SelectedOption::Some(c) =
+
+        if certificate.is_none()
+            && allow_certificate
+            && let SelectedOption::Some(c) =
                 self.certificates.find(&self.defaults.selected_certificate)
+        {
+            certificate = Some(c);
+        }
+
+        if proxy.is_none()
+            && allow_proxy
+            && let SelectedOption::Some(p) = self.proxies.find(&self.defaults.selected_proxy)
+        {
+            proxy = Some(p);
+        }
+        if data.is_none()
+            && allow_data
+            && let Some(selected_data) = &self.defaults.selected_data
+        {
+            if selected_data.id == NO_SELECTION_ID {
+                allow_data = false;
+            } else if let Some(selected_data) = self
+                .data
+                .iter()
+                .find(|data| data.id == selected_data.id || data.name == selected_data.name)
             {
-                certificate = Some(c);
-            }
-        }
-        if proxy.is_none() && allow_proxy {
-            if let SelectedOption::Some(p) = self.proxies.find(&self.defaults.selected_proxy) {
-                proxy = Some(p);
-            }
-        }
-        if data.is_none() && allow_data {
-            if let Some(selected_data) = &self.defaults.selected_data {
-                if selected_data.id == NO_SELECTION_ID {
-                    allow_data = false;
-                } else if let Some(selected_data) = self
-                    .data
-                    .iter()
-                    .find(|data| data.id == selected_data.id || data.name == selected_data.name)
-                {
-                    data = Some(selected_data);
-                } else {
-                    allow_data = false;
-                }
+                data = Some(selected_data);
+            } else {
+                allow_data = false;
             }
         }
 
@@ -704,11 +739,11 @@ impl Workspace {
 
     /// Append specified index, including children, to the results
     fn generate_json(
-        summary_index: usize,
-        summaries: &Vec<ExecutionResultSummary>,
+        exec_ctr: usize,
+        summaries: &Vec<&ExecutionResultSummary>,
         report: &mut Vec<ExecutionReportJson>,
     ) -> Result<(), ApicizeError> {
-        match summaries.get(summary_index) {
+        match summaries.get(exec_ctr) {
             Some(summary) => {
                 if summary.error.is_some() {
                     // Deal with summaries with errors
@@ -732,7 +767,7 @@ impl Workspace {
                         children: None,
                     });
                     Ok(())
-                } else if let Some(child_indexes) = &summary.child_indexes {
+                } else if let Some(child_indexes) = &summary.child_exec_ctrs {
                     let mut children = Vec::<ExecutionReportJson>::new();
                     for child_index in child_indexes {
                         Self::generate_json(*child_index, summaries, &mut children)?;
@@ -783,19 +818,19 @@ impl Workspace {
                 }
             }
             None => Err(ApicizeError::Error {
-                description: "Invalid summary index".to_string(),
+                description: format!("Invalid execution counter ({exec_ctr})").to_string(),
             }),
         }
     }
 
     // Append specified index, including children, to the results
     fn generate_csv(
-        summary_index: usize,
-        summaries: &Vec<ExecutionResultSummary>,
+        exec_ctr: usize,
+        summaries: &Vec<&ExecutionResultSummary>,
         parent_names: &[&str],
         report: &mut Vec<ExecutionReportCsv>,
     ) -> Result<(), ApicizeError> {
-        match summaries.get(summary_index) {
+        match summaries.get(exec_ctr) {
             Some(summary) => {
                 let mut name_parts = Vec::from(parent_names);
                 let is_first = parent_names.is_empty();
@@ -839,7 +874,7 @@ impl Workspace {
                         test_error: None,
                         error: summary.error.clone(),
                     });
-                } else if let Some(child_indexes) = &summary.child_indexes {
+                } else if let Some(child_indexes) = &summary.child_exec_ctrs {
                     // Deal with "parent" scenarois
                     for child_index in child_indexes {
                         Self::generate_csv(*child_index, summaries, &name_parts, report)?;
@@ -888,21 +923,21 @@ impl Workspace {
                 Ok(())
             }
             None => Err(ApicizeError::Error {
-                description: "Invalid summary index".to_string(),
+                description: format!("Invalid execution counter ({exec_ctr})").to_string(),
             }),
         }
     }
 
     /// Generate a report from summarized execution results
     pub fn geneate_report(
-        summary_index: usize,
-        summaries: &Vec<ExecutionResultSummary>,
+        exec_ctr: usize,
+        summaries: &Vec<&ExecutionResultSummary>,
         format: ExecutionReportFormat,
     ) -> Result<String, ApicizeError> {
         match format {
             ExecutionReportFormat::JSON => {
                 let mut data = Vec::<ExecutionReportJson>::new();
-                Self::generate_json(summary_index, summaries, &mut data)?;
+                Self::generate_json(exec_ctr, summaries, &mut data)?;
                 let mut buf = Vec::new();
                 let formatter = PrettyFormatter::with_indent(b"    ");
                 let mut ser = serde_json::Serializer::with_formatter(&mut buf, formatter);
@@ -911,7 +946,7 @@ impl Workspace {
             }
             ExecutionReportFormat::CSV => {
                 let mut data = Vec::<ExecutionReportCsv>::new();
-                Self::generate_csv(summary_index, summaries, &[], &mut data)?;
+                Self::generate_csv(exec_ctr, summaries, &[], &mut data)?;
                 let mut writer = WriterBuilder::new().from_writer(Vec::new());
                 for d in data {
                     if let Err(err) = writer.serialize(d) {
@@ -927,7 +962,7 @@ impl Workspace {
 
     /// Generate a report from summarized execution results
     pub fn generate_multirun_report(
-        run_summaries: &HashMap<usize, Vec<ExecutionResultSummary>>,
+        run_summaries: &HashMap<usize, Vec<&ExecutionResultSummary>>,
         format: &ExecutionReportFormat,
     ) -> Result<String, ApicizeError> {
         match format {
@@ -939,8 +974,8 @@ impl Workspace {
                     let root_indexes: Vec<usize> = summaries
                         .iter()
                         .filter_map(|s| {
-                            if s.parent_index.is_none() {
-                                Some(s.index)
+                            if s.parent_exec_ctr.is_none() {
+                                Some(s.exec_ctr)
                             } else {
                                 None
                             }
@@ -970,8 +1005,8 @@ impl Workspace {
                     let root_indexes: Vec<usize> = summaries
                         .iter()
                         .filter_map(|s| {
-                            if s.parent_index.is_none() {
-                                Some(s.index)
+                            if s.parent_exec_ctr.is_none() {
+                                Some(s.exec_ctr)
                             } else {
                                 None
                             }

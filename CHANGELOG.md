@@ -1,5 +1,10 @@
 # Change Log
 
+# 0.30.0
+
+* Standardize validation state storage (for later refinement)
+* Store rolled-up execution state
+
 # 0.29.0
 
 * Clean-up of error enum

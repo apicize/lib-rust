@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 
-use super::{identifiable::CloneIdentifiable, Selection, Warnings};
-use crate::{utility::*, Identifiable};
+use super::{identifiable::CloneIdentifiable, Selection, ValidationState};
+use crate::{utility::*, Identifiable, Validated};
 use serde::{Deserialize, Serialize};
-use super::ValidationErrors;
 
 /// Authorization information used when dispatching an Apicize Request
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
@@ -21,8 +20,14 @@ pub enum Authorization {
         username: String,
         /// Password
         password: String,
+        /// Validation state
+        #[serde(default, skip_serializing_if = "ValidationState::is_empty")]
+        validation_state: ValidationState,
+        /// Warnings for invalid values
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        validation_warnings: Option<Vec<String>>,
         /// Validation errors
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         validation_errors: Option<HashMap<String, String>>,
     },
     /// OAuth2 client flow (bearer authorization header)
@@ -52,12 +57,17 @@ pub enum Authorization {
         /// Selected proxy, if applicable
         #[serde(skip_serializing_if = "Option::is_none")]
         selected_proxy: Option<Selection>,
+        /// If true, OAuth credentials are sent in body instead of header
         #[serde(skip_serializing_if = "Option::is_none")]
         send_credentials_in_body: Option<bool>,
+        /// Validation state
+        #[serde(default, skip_serializing_if = "ValidationState::is_empty")]
+        validation_state: ValidationState,
         /// Warnings for invalid values
-        warnings: Option<Vec<String>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        validation_warnings: Option<Vec<String>>,
         /// Validation errors
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         validation_errors: Option<HashMap<String, String>>,
     },
     /// OAuth2 PKCE flow (note, this can only be used interactively)
@@ -89,8 +99,14 @@ pub enum Authorization {
         expiration: Option<u64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         send_credentials_in_body: Option<bool>,
+        /// Validation state
+        #[serde(default, skip_serializing_if = "ValidationState::is_empty")]
+        validation_state: ValidationState,
+        /// Warnings for invalid values
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        validation_warnings: Option<Vec<String>>,
         /// Validation errors
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         validation_errors: Option<HashMap<String, String>>,
     },
     /// API key authentication (sent in HTTP header)
@@ -106,10 +122,14 @@ pub enum Authorization {
         header: String,
         /// Value of key to include as header value
         value: String,
+        /// Validation state
+        #[serde(default, skip_serializing_if = "ValidationState::is_empty")]
+        validation_state: ValidationState,
         /// Warnings for invalid values
-        warnings: Option<Vec<String>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        validation_warnings: Option<Vec<String>>,
         /// Validation errors
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         validation_errors: Option<HashMap<String, String>>,
     },
 }
@@ -118,10 +138,11 @@ impl Default for Authorization {
     fn default() -> Self {
         Authorization::ApiKey {
             id: generate_uuid(),
-            name: String::default(),
-            header: String::default(),
-            value: String::default(),
-            warnings: None,
+            name: Default::default(),
+            header: Default::default(),
+            value: Default::default(),
+            validation_state: Default::default(),
+            validation_warnings: None,
             validation_errors: None,
         }
     }
@@ -176,16 +197,47 @@ impl CloneIdentifiable for Authorization {
     }
 }
 
-impl Warnings for Authorization {
-    fn get_warnings(&self) -> &Option<Vec<String>> {
+impl Validated for Authorization {
+    fn get_validation_state(&self) -> &ValidationState {
         match self {
-            Authorization::OAuth2Client { warnings, .. } => warnings,
+            Authorization::Basic { validation_state, .. } => validation_state,
+            Authorization::OAuth2Client { validation_state, .. } => validation_state,
+            Authorization::OAuth2Pkce { validation_state, .. } => validation_state,
+            Authorization::ApiKey { validation_state, .. } => validation_state,
+        }
+    }
+
+    fn get_validation_warnings(&self) -> &Option<Vec<String>> {
+        match self {
+            Authorization::OAuth2Client { validation_warnings: warnings, .. } => warnings,
             _ => &None,
         }
     }
-}
 
-impl ValidationErrors for Authorization {
+    fn set_validation_warnings(&mut self, warnings: Option<Vec<String>>) {
+        match self {
+            Authorization::Basic {validation_warnings, validation_errors, validation_state, ..} => {
+                *validation_warnings = warnings;
+                *validation_state = ValidationState::from(validation_warnings, validation_errors);
+
+            },
+            Authorization::OAuth2Client {validation_warnings, validation_errors, validation_state, ..} => {
+                *validation_warnings = warnings;
+                *validation_state = ValidationState::from(validation_warnings, validation_errors);
+
+            },
+            Authorization::OAuth2Pkce {validation_warnings, validation_errors, validation_state, ..} => {
+                *validation_warnings = warnings;
+                *validation_state = ValidationState::from(validation_warnings, validation_errors);
+
+            },
+            Authorization::ApiKey {validation_warnings, validation_errors, validation_state, ..} => {
+                *validation_warnings = warnings;
+                *validation_state = ValidationState::from(validation_warnings, validation_errors);
+            },
+        }
+    }
+
     fn get_validation_errors(&self) -> &Option<HashMap<String, String>> {
         match self {
             Authorization::Basic { validation_errors, .. } => validation_errors,
@@ -194,4 +246,29 @@ impl ValidationErrors for Authorization {
             Authorization::ApiKey { validation_errors, .. } => validation_errors,
         }
     }
+
+    fn set_validation_errors(&mut self, errors: Option<HashMap<String, String>>) {
+        match self {
+            Authorization::Basic {validation_warnings, validation_errors, validation_state, ..} => {
+                *validation_errors = errors;
+                *validation_state = ValidationState::from(validation_warnings, validation_errors);
+
+            },
+            Authorization::OAuth2Client {validation_warnings, validation_errors, validation_state, ..} => {
+                *validation_errors = errors;
+                *validation_state = ValidationState::from(validation_warnings, validation_errors);
+
+            },
+            Authorization::OAuth2Pkce {validation_warnings, validation_errors, validation_state, ..} => {
+                *validation_errors = errors;
+                *validation_state = ValidationState::from(validation_warnings, validation_errors);
+
+            },
+            Authorization::ApiKey {validation_warnings, validation_errors, validation_state, ..} => {
+                *validation_errors = errors;
+                *validation_state = ValidationState::from(validation_warnings, validation_errors);
+            },
+        }
+    }
+    
 }

@@ -1,13 +1,13 @@
 //! Apicize execution error types
-use std::fmt::Display;
-use std::io;
-
 use oauth2::basic::BasicErrorResponseType;
 use oauth2::{RequestTokenError, StandardErrorResponse};
 use serde::{Deserialize, Serialize};
+use std::fmt::Display;
+use std::io;
+use thiserror::Error;
 use tokio::task::JoinError;
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Error, Debug)]
 #[serde(tag = "type")]
 /// Errors that can result from Apicize operations
 pub enum ApicizeError {

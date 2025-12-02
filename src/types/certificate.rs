@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{utility::*, ApicizeError, Identifiable};
+use crate::{ApicizeError, Identifiable, Validated, ValidationState, utility::*};
 use reqwest::{ClientBuilder, Identity};
 use serde::{Deserialize, Serialize};
 use serde_with::base64::{Base64, Standard};
@@ -8,7 +8,6 @@ use serde_with::formats::Unpadded;
 use serde_with::serde_as;
 
 use super::identifiable::CloneIdentifiable;
-use super::{ValidationErrors, Warnings};
 
 /// Client certificate used to identify caller
 #[serde_as]
@@ -29,7 +28,14 @@ pub enum Certificate {
         /// Password
         #[serde(skip_serializing_if = "Option::is_none")]
         password: Option<String>,
+        /// Validation state
+        #[serde(default, skip_serializing_if = "ValidationState::is_empty")]
+        validation_state: ValidationState,
+        /// Warnings for invalid values
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        validation_warnings: Option<Vec<String>>,
         /// Validation errors
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         validation_errors: Option<HashMap<String, String>>,
     },
     /// PEM-encoded certificate and PKCS8 encoded private key files
@@ -46,7 +52,14 @@ pub enum Certificate {
         /// Optional key file, if not combining in PKCS8 format
         #[serde_as(as = "Base64<Standard, Unpadded>")]
         key: Vec<u8>,
+        /// Validation state
+        #[serde(default, skip_serializing_if = "ValidationState::is_empty")]
+        validation_state: ValidationState,
+        /// Warnings for invalid values
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        validation_warnings: Option<Vec<String>>,
         /// Validation errors
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         validation_errors: Option<HashMap<String, String>>,
     },
     /// PEM encoded certificate and key file
@@ -60,7 +73,14 @@ pub enum Certificate {
         /// Certificate information
         #[serde_as(as = "Base64<Standard, Unpadded>")]
         pem: Vec<u8>,
+        /// Validation state
+        #[serde(default, skip_serializing_if = "ValidationState::is_empty")]
+        validation_state: ValidationState,
+        /// Warnings for invalid values
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        validation_warnings: Option<Vec<String>>,
         /// Validation errors
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         validation_errors: Option<HashMap<String, String>>,
     },
 }
@@ -87,6 +107,8 @@ impl Default for Certificate {
             id: generate_uuid(),
             name: String::default(),
             pem: Vec::default(),
+            validation_state: Default::default(),
+            validation_warnings: None,
             validation_errors: None,
         }
     }
@@ -155,13 +177,58 @@ impl CloneIdentifiable for Certificate {
     }
 }
 
-impl Warnings for Certificate {
-    fn get_warnings(&self) -> &Option<Vec<String>> {
-        &None
+impl Validated for Certificate {
+    fn get_validation_state(&self) -> &ValidationState {
+        match self {
+            Certificate::PKCS12 {
+                validation_state, ..
+            } => validation_state,
+            Certificate::PKCS8PEM {
+                validation_state, ..
+            } => validation_state,
+            Certificate::PEM {
+                validation_state, ..
+            } => validation_state,
+        }
     }
-}
 
-impl ValidationErrors for Certificate {
+    fn get_validation_warnings(&self) -> &Option<Vec<String>> {
+        match self {
+            Certificate::PKCS12 {
+                validation_warnings, ..
+            } => validation_warnings,
+            Certificate::PKCS8PEM {
+                validation_warnings, ..
+            } => validation_warnings,
+            Certificate::PEM {
+                validation_warnings, ..
+            } => validation_warnings,
+        }
+    }
+
+    fn set_validation_warnings(&mut self, warnings: Option<Vec<String>>) {
+        match self {
+            Certificate::PKCS12 {
+                validation_warnings, validation_errors, validation_state, ..
+            } => {
+                *validation_warnings = warnings;
+                *validation_state = ValidationState::from(validation_warnings, validation_errors);
+            },
+            Certificate::PKCS8PEM {
+                validation_warnings, validation_errors, validation_state, ..
+            } => {
+                *validation_warnings = warnings;
+                *validation_state = ValidationState::from(validation_warnings, validation_errors);
+            },
+            Certificate::PEM {
+                validation_warnings, validation_errors, validation_state, ..
+            } => {
+                *validation_warnings = warnings;
+                *validation_state = ValidationState::from(validation_warnings, validation_errors);
+            },
+        }
+    }
+    
     fn get_validation_errors(&self) -> &Option<HashMap<String, String>> {
         match self {
             Certificate::PKCS12 {
@@ -173,6 +240,30 @@ impl ValidationErrors for Certificate {
             Certificate::PEM {
                 validation_errors, ..
             } => validation_errors,
+        }
+    }
+    
+    
+    fn set_validation_errors(&mut self, errors: Option<HashMap<String, String>>) {
+        match self {
+            Certificate::PKCS12 {
+                validation_warnings, validation_errors, validation_state, ..
+            } => {
+                *validation_errors = errors;
+                *validation_state = ValidationState::from(validation_warnings, validation_errors);
+            },
+            Certificate::PKCS8PEM {
+                validation_warnings,validation_errors, validation_state, ..
+            } => {
+                *validation_errors = errors;
+                *validation_state = ValidationState::from(validation_warnings, validation_errors);
+            },
+            Certificate::PEM {
+                validation_warnings,validation_errors, validation_state, ..
+            } => {
+                *validation_errors = errors;
+                *validation_state = ValidationState::from(validation_warnings, validation_errors);
+            },
         }
     }
 }

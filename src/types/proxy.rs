@@ -1,13 +1,10 @@
 use std::collections::HashMap;
 
-use crate::utility::*;
-use crate::Identifiable;
+use crate::{
+    Identifiable, Validated, ValidationState, identifiable::CloneIdentifiable, utility::*,
+};
 use reqwest::{ClientBuilder, Error};
 use serde::{Deserialize, Serialize};
-
-use super::identifiable::CloneIdentifiable;
-use super::ValidationErrors;
-use super::Warnings;
 
 /// An HTTP or SOCKS5 proxy that can be used to tunnel requests
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
@@ -19,7 +16,14 @@ pub struct Proxy {
     pub name: String,
     /// Location of proxy (URL for HTTP proxy, IP for SOCKS)
     pub url: String,
+    /// Validation state
+    #[serde(default, skip_serializing_if = "ValidationState::is_empty")]
+    pub validation_state: ValidationState,
+    /// Warnings for invalid values
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validation_warnings: Option<Vec<String>>,
     /// Validation errors
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub validation_errors: Option<HashMap<String, String>>,
 }
 
@@ -39,7 +43,9 @@ impl Default for Proxy {
             id: generate_uuid(),
             name: Default::default(),
             url: Default::default(),
-            validation_errors: Default::default(),
+            validation_state: Default::default(),
+            validation_warnings: None,
+            validation_errors: None,
         }
     }
 }
@@ -70,14 +76,28 @@ impl CloneIdentifiable for Proxy {
     }
 }
 
-impl Warnings for Proxy {
-    fn get_warnings(&self) -> &Option<Vec<String>> {
-        &None
+impl Validated for Proxy {
+    fn get_validation_state(&self) -> &super::ValidationState {
+        &self.validation_state
     }
-}
 
-impl ValidationErrors for Proxy {
+    fn get_validation_warnings(&self) -> &Option<Vec<String>> {
+        &self.validation_warnings
+    }
+
+    fn set_validation_warnings(&mut self, warnings: Option<Vec<String>>) {
+        self.validation_warnings = warnings;
+        self.validation_state =
+            ValidationState::from(&self.validation_warnings, &self.validation_errors);
+    }
+
     fn get_validation_errors(&self) -> &Option<HashMap<String, String>> {
         &self.validation_errors
+    }
+
+    fn set_validation_errors(&mut self, errors: Option<HashMap<String, String>>) {
+        self.validation_errors = errors;
+        self.validation_state =
+            ValidationState::from(&self.validation_warnings, &self.validation_errors);
     }
 }

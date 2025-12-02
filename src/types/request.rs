@@ -3,15 +3,17 @@ use std::fmt::Display;
 use std::str::FromStr;
 
 use super::identifiable::CloneIdentifiable;
-use super::{EditableWarnings, NameValuePair, Selection, ValidationErrors, Warnings};
-use crate::{utility::*, Identifiable, SelectedParameters};
+use super::{NameValuePair, Selection};
+use crate::{
+    Identifiable, SelectedParameters, Validated, ValidatedSelectedParameters, ValidationState,
+    utility::*, validate_selection,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_with::base64::{Base64, Standard};
 use serde_with::formats::Unpadded;
 use serde_with::serde_as;
 use xmltojson::to_json;
-
 
 pub fn default_runs() -> usize {
     1
@@ -96,12 +98,12 @@ pub struct Request {
     pub id: String,
     /// Human-readable name describing the Apicize Request
     pub name: String,
+    // /// Current execution state of request
+    // #[serde(default, skip_serializing_if = "ExecutionState::is_empty")]
+    // pub execution_state: ExecutionState,
     /// Optional identifier for the Apicize Requset
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
-    /// Test to execute after dispatching request and receiving response
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub test: Option<String>,
     /// URL to dispatch the HTTP request to
     pub url: String,
     /// HTTP method
@@ -134,6 +136,9 @@ pub struct Request {
     /// Execution of multiple runs
     #[serde(default)]
     pub multi_run_execution: ExecutionConcurrency,
+    /// Test to execute after dispatching request and receiving response
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub test: Option<String>,
     /// Selected scenario, if applicable
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selected_scenario: Option<Selection>,
@@ -149,11 +154,14 @@ pub struct Request {
     /// Selected external data, if any
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selected_data: Option<Selection>,
-    /// Populated with any warnings regarding how the request is set up upon load
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub warnings: Option<Vec<String>>,
+    /// Validation state
+    #[serde(default, skip_serializing_if = "ValidationState::is_empty")]
+    pub validation_state: ValidationState,
+    /// Warnings for invalid values
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validation_warnings: Option<Vec<String>>,
     /// Validation errors
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub validation_errors: Option<HashMap<String, String>>,
 }
 
@@ -166,6 +174,9 @@ pub struct RequestGroup {
     pub id: String,
     /// Human-readable name of the Apicize Group
     pub name: String,
+    // /// Current execution state of request
+    // #[serde(default, skip_serializing_if = "ExecutionState::is_empty")]
+    // pub execution_state: ExecutionState,
     /// Optional identifier for the Apicize Group,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
@@ -195,11 +206,14 @@ pub struct RequestGroup {
     /// Selected external data, if any
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selected_data: Option<Selection>,
-    /// Populated with any warnings regarding how the group is set up
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub warnings: Option<Vec<String>>,
+    /// Validation state
+    #[serde(default, skip_serializing_if = "ValidationState::is_empty")]
+    pub validation_state: ValidationState,
+    /// Warnings for invalid values
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validation_warnings: Option<Vec<String>>,
     /// Validation errors
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub validation_errors: Option<HashMap<String, String>>,
 }
 
@@ -237,6 +251,53 @@ impl Identifiable for RequestEntry {
     }
 }
 
+impl Validated for RequestEntry {
+    fn get_validation_state(&self) -> &ValidationState {
+        match self {
+            RequestEntry::Request(request) => &request.validation_state,
+            RequestEntry::Group(group) => &group.validation_state,
+        }
+    }
+
+    /// Retrieve warnings
+    fn get_validation_warnings(&self) -> &Option<Vec<String>> {
+        match self {
+            RequestEntry::Request(request) => &request.validation_warnings,
+            RequestEntry::Group(group) => &group.validation_warnings,
+        }
+    }
+
+    fn set_validation_warnings(&mut self, warnings: Option<Vec<String>>) {
+        match self {
+            RequestEntry::Request(request) => request.set_validation_warnings(warnings),
+            RequestEntry::Group(group) => group.set_validation_warnings(warnings),
+        }
+    }
+
+    fn get_validation_errors(&self) -> &Option<HashMap<String, String>> {
+        match self {
+            RequestEntry::Request(request) => &request.validation_errors,
+            RequestEntry::Group(group) => &group.validation_errors,
+        }
+    }
+
+    fn set_validation_errors(&mut self, errors: Option<HashMap<String, String>>) {
+        match self {
+            RequestEntry::Request(request) => request.set_validation_errors(errors),
+            RequestEntry::Group(group) => group.set_validation_errors(errors),
+        }
+    }
+}
+
+// impl Executable for RequestEntry {
+//     fn get_execution_state(&self) -> &ExecutionState {
+//         match self {
+//             RequestEntry::Request(request) => &request.execution_state,
+//             RequestEntry::Group(group) => &group.execution_state,
+//         }
+//     }
+// }
+
 impl CloneIdentifiable for RequestEntry {
     fn clone_as_new(&self, new_name: String) -> Self {
         match self {
@@ -246,11 +307,129 @@ impl CloneIdentifiable for RequestEntry {
     }
 }
 
-impl ValidationErrors for RequestEntry {
-    fn get_validation_errors(&self) -> &Option<HashMap<String, String>> {
+impl ValidatedSelectedParameters for RequestEntry {
+    fn validate_scenario(&mut self, valid_values: &HashMap<String, String>) {
         match self {
-            RequestEntry::Request(request) => &request.validation_errors,
-            RequestEntry::Group(group) => &group.validation_errors,
+            RequestEntry::Request(request) => {
+                if let Some(warning) = validate_selection(
+                    &request.get_title(),
+                    &mut request.selected_scenario,
+                    "scenario",
+                    valid_values,
+                ) {
+                    request.set_validation_warnings(Some(vec![warning]));
+                }
+            }
+            RequestEntry::Group(group) => {
+                if let Some(warning) = validate_selection(
+                    &group.get_title(),
+                    &mut group.selected_scenario,
+                    "scenario",
+                    valid_values,
+                ) {
+                    group.set_validation_warnings(Some(vec![warning]));
+                }
+            }
+        }
+    }
+
+    fn validate_authorization(&mut self, valid_values: &HashMap<String, String>) {
+        match self {
+            RequestEntry::Request(request) => {
+                if let Some(warning) = validate_selection(
+                    &request.get_title(),
+                    &mut request.selected_authorization,
+                    "authorization",
+                    valid_values,
+                ) {
+                    request.set_validation_warnings(Some(vec![warning]));
+                }
+            }
+            RequestEntry::Group(group) => {
+                if let Some(warning) = validate_selection(
+                    &group.get_title(),
+                    &mut group.selected_authorization,
+                    "authorization",
+                    valid_values,
+                ) {
+                    group.set_validation_warnings(Some(vec![warning]));
+                }
+            }
+        }
+    }
+
+    fn validate_certificate(&mut self, valid_values: &HashMap<String, String>) {
+        match self {
+            RequestEntry::Request(request) => {
+                if let Some(warning) = validate_selection(
+                    &request.get_title(),
+                    &mut request.selected_certificate,
+                    "certificate",
+                    valid_values,
+                ) {
+                    request.set_validation_warnings(Some(vec![warning]));
+                }
+            }
+            RequestEntry::Group(group) => {
+                if let Some(warning) = validate_selection(
+                    &group.get_title(),
+                    &mut group.selected_certificate,
+                    "certificate",
+                    valid_values,
+                ) {
+                    group.set_validation_warnings(Some(vec![warning]));
+                }
+            }
+        }
+    }
+
+    fn validate_proxy(&mut self, valid_values: &HashMap<String, String>) {
+        match self {
+            RequestEntry::Request(request) => {
+                if let Some(warning) = validate_selection(
+                    &request.get_title(),
+                    &mut request.selected_proxy,
+                    "proxy",
+                    valid_values,
+                ) {
+                    request.set_validation_warnings(Some(vec![warning]));
+                }
+            }
+            RequestEntry::Group(group) => {
+                if let Some(warning) = validate_selection(
+                    &group.get_title(),
+                    &mut group.selected_proxy,
+                    "proxy",
+                    valid_values,
+                ) {
+                    group.set_validation_warnings(Some(vec![warning]));
+                }
+            }
+        }
+    }
+
+    fn validate_data(&mut self, valid_values: &HashMap<String, String>) {
+        match self {
+            RequestEntry::Request(request) => {
+                if let Some(warning) = validate_selection(
+                    &request.get_title(),
+                    &mut request.selected_data,
+                    "data",
+                    valid_values,
+                ) {
+                    request.set_validation_warnings(Some(vec![warning]));
+                }
+            }
+            RequestEntry::Group(group) => {
+                if let Some(warning) = validate_selection(
+                    &group.get_title(),
+                    &mut group.selected_data,
+                    "data",
+                    valid_values,
+                ) {
+                    group.set_validation_warnings(Some(vec![warning]));
+                }
+            }
         }
     }
 }
@@ -289,6 +468,8 @@ impl Default for Request {
             id: generate_uuid(),
             name: Default::default(),
             key: Default::default(),
+            validation_state: Default::default(),
+            // execution_state: Default::default(),
             test: Some(
                 r#"describe('status', () => {
     it('equals 200', () => {
@@ -311,7 +492,7 @@ impl Default for Request {
             selected_certificate: Default::default(),
             selected_proxy: Default::default(),
             selected_data: Default::default(),
-            warnings: Default::default(),
+            validation_warnings: Default::default(),
             validation_errors: None,
             accept_invalid_certs: false,
             number_of_redirects: default_redirects(),
@@ -344,6 +525,32 @@ impl CloneIdentifiable for Request {
         cloned.id = generate_uuid();
         cloned.name = new_name;
         cloned
+    }
+}
+
+impl Validated for Request {
+    fn get_validation_state(&self) -> &ValidationState {
+        &self.validation_state
+    }
+
+    fn get_validation_warnings(&self) -> &Option<Vec<String>> {
+        &self.validation_warnings
+    }
+
+    fn set_validation_warnings(&mut self, warnings: Option<Vec<String>>) {
+        self.validation_warnings = warnings;
+        self.validation_state =
+            ValidationState::from(&self.validation_warnings, &self.validation_errors);
+    }
+
+    fn get_validation_errors(&self) -> &Option<HashMap<String, String>> {
+        &self.validation_errors
+    }
+
+    fn set_validation_errors(&mut self, errors: Option<HashMap<String, String>>) {
+        self.validation_errors = errors;
+        self.validation_state =
+            ValidationState::from(&self.validation_warnings, &self.validation_errors);
     }
 }
 
@@ -381,6 +588,7 @@ impl Default for RequestGroup {
             id: generate_uuid(),
             name: Default::default(),
             key: Default::default(),
+            // execution_state: Default::default(),
             children: Default::default(),
             execution: ExecutionConcurrency::Sequential,
             runs: 1,
@@ -390,9 +598,36 @@ impl Default for RequestGroup {
             selected_certificate: Default::default(),
             selected_proxy: Default::default(),
             selected_data: Default::default(),
-            warnings: Default::default(),
+            validation_state: Default::default(),
+            validation_warnings: None,
             validation_errors: None,
         }
+    }
+}
+
+impl Validated for RequestGroup {
+    fn get_validation_state(&self) -> &ValidationState {
+        &self.validation_state
+    }
+
+    fn get_validation_warnings(&self) -> &Option<Vec<String>> {
+        &self.validation_warnings
+    }
+
+    fn set_validation_warnings(&mut self, warnings: Option<Vec<String>>) {
+        self.validation_warnings = warnings;
+        self.validation_state =
+            ValidationState::from(&self.validation_warnings, &self.validation_errors);
+    }
+
+    fn get_validation_errors(&self) -> &Option<HashMap<String, String>> {
+        &self.validation_errors
+    }
+
+    fn set_validation_errors(&mut self, errors: Option<HashMap<String, String>>) {
+        self.validation_errors = errors;
+        self.validation_state =
+            ValidationState::from(&self.validation_warnings, &self.validation_errors);
     }
 }
 
@@ -423,13 +658,12 @@ impl RequestEntry {
         match self {
             RequestEntry::Request(info) => {
                 info.runs = runs;
-            },
+            }
             RequestEntry::Group(group) => {
                 group.runs = runs;
-            },
+            }
         }
     }
-
 }
 
 impl Display for RequestEntry {
@@ -510,54 +744,6 @@ impl SelectedParameters for RequestEntry {
             RequestEntry::Request(info) => &mut info.selected_data,
             RequestEntry::Group(group) => &mut group.selected_data,
         }
-    }
-}
-
-// Implement warnings trait for requests and groups
-impl Warnings for RequestEntry {
-    /// Retrieve warnings
-    fn get_warnings(&self) -> &Option<Vec<String>> {
-        match self {
-            RequestEntry::Request(request) => &request.warnings,
-            RequestEntry::Group(group) => &group.warnings,
-        }
-    }
-}
-
-impl EditableWarnings for RequestEntry {
-    fn set_warnings(&mut self, warnings: Option<Vec<String>>) {
-        match self {
-            RequestEntry::Request(request) => request.set_warnings(warnings),
-            RequestEntry::Group(group) => group.set_warnings(warnings),
-        }
-    }
-}
-
-// Implement warnings trait for requests
-impl Warnings for Request {
-    /// Retrieve warnings
-    fn get_warnings(&self) -> &Option<Vec<String>> {
-        &self.warnings
-    }
-}
-
-impl EditableWarnings for Request {
-    fn set_warnings(&mut self, warnings: Option<Vec<String>>) {
-        self.warnings = warnings;
-    }
-}
-
-// Implement warnings trait for groups
-impl Warnings for RequestGroup {
-    /// Retrieve warnings
-    fn get_warnings(&self) -> &Option<Vec<String>> {
-        &self.warnings
-    }
-}
-
-impl EditableWarnings for RequestGroup {
-    fn set_warnings(&mut self, warnings: Option<Vec<String>>) {
-        self.warnings = warnings;
     }
 }
 
@@ -768,7 +954,7 @@ impl StoredRequestEntry {
                 selected_certificate: request.selected_certificate,
                 selected_proxy: request.selected_proxy,
                 selected_data: request.selected_data,
-                warnings: request.warnings,
+                warnings: request.validation_warnings,
             }),
             RequestEntry::Group(group) => StoredRequestEntry::Group(StoredRequestGroup {
                 id: group.id,
@@ -788,7 +974,7 @@ impl StoredRequestEntry {
                 selected_certificate: group.selected_certificate,
                 selected_proxy: group.selected_proxy,
                 selected_data: group.selected_data,
-                warnings: group.warnings,
+                warnings: group.validation_warnings,
             }),
         }
     }
@@ -799,6 +985,8 @@ impl StoredRequestEntry {
                 id: stored_request.id,
                 name: stored_request.name,
                 key: stored_request.key,
+                validation_state: Default::default(),
+                // execution_state: Default::default(),
                 test: stored_request.test,
                 url: stored_request.url,
                 method: stored_request.method,
@@ -845,13 +1033,15 @@ impl StoredRequestEntry {
                 selected_certificate: stored_request.selected_certificate,
                 selected_proxy: stored_request.selected_proxy,
                 selected_data: stored_request.selected_data,
-                warnings: stored_request.warnings,
+                validation_warnings: stored_request.warnings,
                 validation_errors: None,
             }),
             StoredRequestEntry::Group(group) => RequestEntry::Group(RequestGroup {
                 id: group.id,
                 name: group.name,
                 key: group.key,
+                validation_state: Default::default(),
+                // execution_state: Default::default(),
                 children: group.children.map(|children| {
                     children
                         .into_iter()
@@ -866,7 +1056,7 @@ impl StoredRequestEntry {
                 selected_certificate: group.selected_certificate,
                 selected_proxy: group.selected_proxy,
                 selected_data: group.selected_data,
-                warnings: group.warnings,
+                validation_warnings: group.warnings,
                 validation_errors: None,
             }),
         }

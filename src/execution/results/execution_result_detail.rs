@@ -15,8 +15,11 @@ pub enum ExecutionResultDetail {
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionResultDetailRequest {
+    /// Execution counter/identifier (will be the same for summary and detail)
+    pub exec_ctr: usize,
+
     /// Request ID
-    pub id: String,
+    pub request_id: String,
 
     /// Request name
     pub name: String,
@@ -88,8 +91,11 @@ pub struct ExecutionResultDetailRequest {
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionResultDetailGroup {
-    /// Request ID
-    pub id: String,
+    /// Execution identifier (will be the same for summary and detail)
+    pub exec_ctr: usize,
+
+    /// Request group ID
+    pub group_id: String,
 
     /// Request name
     pub name: String,

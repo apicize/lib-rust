@@ -8,19 +8,19 @@ use super::execution_result_success::ExecutionResultSuccess;
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionResultSummary {
+    /// Execution counter/identifier (will be the same for summary and detail)
+    pub exec_ctr: usize,
+
     /// Request or group ID
     pub request_or_group_id: String,
 
-    /// Ordinal position of this result in the response
-    pub index: usize,
-
-    /// Index of parent result, if any
+    /// Counter/identifier of parent execution result, if any
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub parent_index: Option<usize>,
+    pub parent_exec_ctr: Option<usize>,
 
-    /// Indexes of child results, if any
+    ///Counters/identifiers of child execution results, if any
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub child_indexes: Option<Vec<usize>>,
+    pub child_exec_ctrs: Option<Vec<usize>>,
 
     /// Indentation level
     pub level: usize,

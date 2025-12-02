@@ -30,10 +30,10 @@ use crate::oauth2_client_tokens::TokenResult;
 use crate::types::workspace::RequestExecutionParameters;
 use crate::workspace::RequestExecutionState;
 use crate::{
-    get_oauth2_client_credentials, retrieve_oauth2_token_from_cache, ApicizeError,
-    ApicizeGroupResultRowContent, ApicizeRequestResultContent, ApicizeRequestResultRow,
-    ApicizeRequestResultRowContent, Authorization, ExecutionConcurrency, Identifiable, Request,
-    RequestBody, RequestEntry, RequestGroup, RequestMethod, VariableCache, Workspace,
+    ApicizeError, ApicizeGroupResultRowContent, ApicizeRequestResultContent,
+    ApicizeRequestResultRow, ApicizeRequestResultRowContent, Authorization, ExecutionConcurrency,
+    Identifiable, Request, RequestBody, RequestEntry, RequestGroup, RequestMethod, VariableCache,
+    Workspace, get_oauth2_client_credentials, retrieve_oauth2_token_from_cache,
 };
 
 // #[cfg(test)]
@@ -48,12 +48,21 @@ pub trait ApicizeRunner {
     ) -> impl std::future::Future<Output = Vec<Result<ApicizeResult, ApicizeError>>> + Send;
 }
 
+/// Information about a test run
 pub struct TestRunnerContext {
+    /// The workspace the test is being run against
     workspace: Workspace,
+    /// Token to cancel asynchronous execution
     cancellation: CancellationToken,
+    /// The request which is being executed (used to track execution results)
+    executing_request_or_group_id: String,
+    /// Current values of variables (scenario, test-defined)
     value_cache: Mutex<VariableCache>,
+    /// When test execution started
     tests_started: Instant,
+    /// Used for interactive UI runs where a single execution is requested with no timeout
     single_run_no_timeout: bool,
+    /// If true, reqwest trace will be enabled (for I/O logging)
     enable_trace: bool,
 }
 
@@ -61,6 +70,7 @@ impl TestRunnerContext {
     pub fn new(
         workspace: Workspace,
         cancellation: Option<CancellationToken>,
+        executing_request_or_group_id: &str,
         single_run_no_timeout: bool,
         allowed_data_path: &Option<PathBuf>,
         enable_trace: bool,
@@ -75,6 +85,7 @@ impl TestRunnerContext {
         TestRunnerContext {
             workspace,
             cancellation: cancellation.unwrap_or_default(),
+            executing_request_or_group_id: executing_request_or_group_id.to_string(),
             value_cache: Mutex::new(VariableCache::new(allowed_data_path)),
             tests_started: Instant::now(),
             single_run_no_timeout,
@@ -84,6 +95,10 @@ impl TestRunnerContext {
 
     pub fn ellapsed_in_ms(&self) -> u128 {
         self.tests_started.elapsed().as_millis()
+    }
+
+    pub fn get_executing_request_or_group_id(&self) -> &str {
+        self.executing_request_or_group_id.as_str()
     }
 
     pub fn get_request_entry(
@@ -1117,24 +1132,27 @@ async fn dispatch_request(
     let mut url = RequestEntry::clone_and_sub(request.url.as_str(), subs)
         .trim()
         .to_string();
+
+    if url.is_empty() {
+        return Err(ApicizeError::Http { context: None, description: "Missing URL".to_string(), url: None });
+    }
+
     if !(url.starts_with("https://") || url.starts_with("http://")) {
         // If no prefix, check port 443.  If that's responding then assume https
         let mut https = false;
         let regex = Regex::new(r".+:(\d{1,5})(?:\?.*)?$").unwrap();
-        if let Some(result) = regex.captures(&url) {
-            if let Some(m) = result.get(1) {
-                if let Ok(port) = m.as_str().parse::<u32>() {
-                    https = (port % 1000) == 443;
-                }
-            }
+        if let Some(result) = regex.captures(&url)
+            && let Some(m) = result.get(1)
+            && let Ok(port) = m.as_str().parse::<u32>()
+        {
+            https = (port % 1000) == 443;
         }
 
-        if !https {
-            if let Ok(addrs) = &mut format!("{url}:443").to_socket_addrs() {
-                if let Some(addr) = addrs.next() {
-                    https = TcpStream::connect_timeout(&addr, Duration::from_secs(2)).is_ok();
-                }
-            }
+        if !https
+            && let Ok(addrs) = &mut format!("{url}:443").to_socket_addrs()
+            && let Some(addr) = addrs.next()
+        {
+            https = TcpStream::connect_timeout(&addr, Duration::from_secs(2)).is_ok();
         }
         url = format!("{}://{}", if https { "https" } else { "http" }, url);
     }
@@ -1478,10 +1496,9 @@ fn execute_request_test(
     });
 
     // Create a new Isolate and make it the current one.
-    let isolate = &mut v8::Isolate::new(v8::CreateParams::default());
-
-    // Create a stack-allocated handle scope.
-    let scope = &mut v8::HandleScope::new(isolate);
+    let isolate = &mut v8::Isolate::new(Default::default());
+    // let scope = &mut v8::HandleScope::new(isolate);
+    v8::scope!(let scope, isolate);
     let context = v8::Context::new(scope, Default::default());
     let scope = &mut v8::ContextScope::new(scope, context);
 
@@ -1491,7 +1508,8 @@ fn execute_request_test(
     let script = v8::Script::compile(scope, v8_code, None).unwrap();
     script.run(scope).unwrap();
 
-    let tc = &mut v8::TryCatch::new(scope);
+    let scope = std::pin::pin!(v8::TryCatch::new(scope));
+    let scope = scope.init();
 
     let cloned_tests_started = tests_started;
 
@@ -1508,22 +1526,22 @@ fn execute_request_test(
         test,
     );
 
-    let v8_code = v8::String::new(tc, &init_code).unwrap();
+    let v8_code = v8::String::new(&scope, &init_code).unwrap();
 
-    let Some(script) = v8::Script::compile(tc, v8_code, None) else {
-        let message = tc.message().unwrap();
-        let message = message.get(tc).to_rust_string_lossy(tc);
+    let Some(script) = v8::Script::compile(&scope, v8_code, None) else {
+        let message = scope.message().unwrap();
+        let message = message.get(&scope).to_rust_string_lossy(&scope);
         return Err(ApicizeError::from_failed_test(message));
     };
 
-    let Some(value) = script.run(tc) else {
-        let message = tc.message().unwrap();
-        let message = message.get(tc).to_rust_string_lossy(tc);
+    let Some(value) = script.run(&scope) else {
+        let message = scope.message().unwrap();
+        let message = message.get(&scope).to_rust_string_lossy(&scope);
         return Err(ApicizeError::from_failed_test(message));
     };
 
-    let result = value.to_string(tc);
-    let s = result.unwrap().to_rust_string_lossy(tc);
+    let result = value.to_string(&scope);
+    let s = result.unwrap().to_rust_string_lossy(&scope);
 
     // println!("Test result: {}", &s);
 

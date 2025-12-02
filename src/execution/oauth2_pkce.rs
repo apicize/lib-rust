@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use oauth2::{
-    basic::BasicClient, reqwest, url::ParseError, AuthType, AuthUrl, AuthorizationCode, ClientId, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, Scope, TokenResponse, TokenUrl
+    AuthType, AuthUrl, AuthorizationCode, ClientId, CsrfToken, PkceCodeChallenge, PkceCodeVerifier,
+    RedirectUrl, RefreshToken, Scope, TokenResponse, TokenUrl, basic::BasicClient, reqwest,
+    url::ParseError,
 };
 use reqwest::Url;
 
@@ -40,23 +42,21 @@ pub fn generate_authorization(
             AuthType::BasicAuth
         });
 
-    let mut auth = client
-        .authorize_url(CsrfToken::new_random);
+    let mut auth = client.authorize_url(CsrfToken::new_random);
 
-    if let Some(scope_value) = &scopes {
-        if !scope_value.is_empty() {
-            auth = auth.add_scope(Scope::new(scope_value.clone()));
-        }
+    if let Some(scope_value) = &scopes
+        && !scope_value.is_empty()
+    {
+        auth = auth.add_scope(Scope::new(scope_value.clone()));
     }
-    
-    if let Some(audience_value) = &audience {
-        if !audience_value.is_empty() {
-            auth = auth.add_extra_param("audience", audience_value);
-        }
+
+    if let Some(audience_value) = &audience
+        && !audience_value.is_empty()
+    {
+        auth = auth.add_extra_param("audience", audience_value);
     }
 
     let (url, csrf_token) = auth.set_pkce_challenge(pkce_challenge).url();
-
 
     // let (url, csrf_token) = BasicClient::new(ClientId::new(client_id.to_string()))
     //     .set_auth_uri(AuthUrl::new(authorize_uri.to_string())?)
@@ -97,27 +97,27 @@ pub async fn retrieve_access_token(
         .exchange_code(AuthorizationCode::new(code.to_string()))
         .set_pkce_verifier(PkceCodeVerifier::new(verifier.to_string()))
         .request_async(&http_client)
-        .await {
-            Ok(token_result) => {
-                let access_token = token_result.access_token().secret().to_string();
-                let refresh_token = token_result.refresh_token().map(|t| t.secret().to_string());
-                let expiration = token_result.expires_in().map(|e| {
-                    SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs()
-                        + e.as_secs()
-                });
-            
-                Ok(PkceTokenResult {
-                    access_token,
-                    refresh_token,
-                    expiration,
-                })
-            }
-            Err(err) => Err(format!("{err:?}"))
-        }
+        .await
+    {
+        Ok(token_result) => {
+            let access_token = token_result.access_token().secret().to_string();
+            let refresh_token = token_result.refresh_token().map(|t| t.secret().to_string());
+            let expiration = token_result.expires_in().map(|e| {
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+                    + e.as_secs()
+            });
 
+            Ok(PkceTokenResult {
+                access_token,
+                refresh_token,
+                expiration,
+            })
+        }
+        Err(err) => Err(format!("{err:?}")),
+    }
 }
 
 /// Exchange refresh token for access token (after call to retrieve_access_token)
@@ -161,7 +161,7 @@ pub async fn refresh_token(
 #[cfg(test)]
 pub mod tests {
 
-    use base64::{prelude::BASE64_URL_SAFE_NO_PAD, Engine};
+    use base64::{Engine, prelude::BASE64_URL_SAFE_NO_PAD};
     use reqwest::Url;
     use sha2::{Digest, Sha256};
 
@@ -179,9 +179,11 @@ pub mod tests {
         )
         .unwrap();
         let parsed = Url::parse(url.as_str()).unwrap();
-        assert!(parsed
-            .query_pairs()
-            .any(|q| q.0 == "client_id" && q.1 == "client1"));
+        assert!(
+            parsed
+                .query_pairs()
+                .any(|q| q.0 == "client_id" && q.1 == "client1")
+        );
     }
 
     #[test]
@@ -196,9 +198,11 @@ pub mod tests {
         )
         .unwrap();
         let parsed = Url::parse(url.as_str()).unwrap();
-        assert!(parsed
-            .query_pairs()
-            .any(|q| q.0 == "redirect_uri" && q.1 == "https://localhost:3000/"));
+        assert!(
+            parsed
+                .query_pairs()
+                .any(|q| q.0 == "redirect_uri" && q.1 == "https://localhost:3000/")
+        );
     }
 
     #[test]
@@ -213,9 +217,11 @@ pub mod tests {
         )
         .unwrap();
         let parsed = Url::parse(url.as_str()).unwrap();
-        assert!(parsed
-            .query_pairs()
-            .any(|q| q.0 == "response_type" && q.1 == "code"));
+        assert!(
+            parsed
+                .query_pairs()
+                .any(|q| q.0 == "response_type" && q.1 == "code")
+        );
     }
 
     #[test]
@@ -245,9 +251,11 @@ pub mod tests {
         )
         .unwrap();
         let parsed = Url::parse(url.as_str()).unwrap();
-        assert!(parsed
-            .query_pairs()
-            .any(|q| q.0 == "scope" && q.1 == "scope1 scope2"));
+        assert!(
+            parsed
+                .query_pairs()
+                .any(|q| q.0 == "scope" && q.1 == "scope1 scope2")
+        );
     }
 
     #[test]
@@ -262,9 +270,11 @@ pub mod tests {
         )
         .unwrap();
         let parsed = Url::parse(url.as_str()).unwrap();
-        assert!(parsed
-            .query_pairs()
-            .any(|q| q.0 == "code_challenge_method" && q.1 == "S256"));
+        assert!(
+            parsed
+                .query_pairs()
+                .any(|q| q.0 == "code_challenge_method" && q.1 == "S256")
+        );
     }
 
     #[test]

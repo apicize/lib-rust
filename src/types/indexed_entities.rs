@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
 use crate::{
-    ApicizeError, PersistedIndex, RequestEntry, PERSIST_PRIVATE, PERSIST_VAULT, PERSIST_WORKBOOK,
+    ApicizeError, PERSIST_PRIVATE, PERSIST_VAULT, PERSIST_WORKBOOK, PersistedIndex, RequestEntry,
 };
 use serde::{Deserialize, Serialize};
 
 use super::{
-    workspace::SelectedOption, Authorization, Certificate, ExternalData, Identifiable, Proxy,
-    Scenario, Selection,
+    Authorization, Certificate, ExternalData, Identifiable, Proxy, Scenario, Selection,
+    workspace::SelectedOption,
 };
 
 pub const NO_SELECTION_ID: &str = "\tNONE\t";
@@ -53,6 +53,15 @@ impl<T: Identifiable + Clone> IndexedEntities<T> {
             None
         } else {
             self.entities.get(id)
+        }
+    }
+
+    /// Return entry matched by ID as mutable
+    pub fn get_mut(&mut self, id: &str) -> Option<&mut T> {
+        if id == NO_SELECTION_ID {
+            None
+        } else {
+            self.entities.get_mut(id)
         }
     }
 

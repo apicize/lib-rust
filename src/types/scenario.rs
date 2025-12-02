@@ -1,13 +1,10 @@
 use std::collections::HashMap;
 
+use crate::{Identifiable, Validated, ValidationState, utility::*};
 use serde::{Deserialize, Serialize};
-use crate::Identifiable;
-use crate::utility::*;
 
-use super::identifiable::CloneIdentifiable;
-use super::ValidationErrors;
 use super::Variable;
-use super::Warnings;
+use super::identifiable::CloneIdentifiable;
 
 /// A set of variables that can be injected into templated values
 /// when submitting an Apicize Request
@@ -22,8 +19,14 @@ pub struct Scenario {
     /// Value of variable to substitute
     #[serde(skip_serializing_if = "Option::is_none")]
     pub variables: Option<Vec<Variable>>,
+    /// Validation state
+    #[serde(default, skip_serializing_if = "ValidationState::is_empty")]
+    pub validation_state: ValidationState,
+    /// Warnings for invalid values
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validation_warnings: Option<Vec<String>>,
     /// Validation errors
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub validation_errors: Option<HashMap<String, String>>,
 }
 
@@ -47,11 +50,13 @@ impl Identifiable for Scenario {
 
 impl Default for Scenario {
     fn default() -> Self {
-        Self { 
+        Self {
             id: generate_uuid(),
             name: Default::default(),
             variables: Default::default(),
-            validation_errors: Default::default() 
+            validation_state: Default::default(),
+            validation_warnings: Default::default(),
+            validation_errors: Default::default(),
         }
     }
 }
@@ -65,14 +70,28 @@ impl CloneIdentifiable for Scenario {
     }
 }
 
-impl Warnings for Scenario {
-    fn get_warnings(&self) -> &Option<Vec<String>> {
-        &None
+impl Validated for Scenario {
+    fn get_validation_state(&self) -> &super::ValidationState {
+        &self.validation_state
     }
-}
 
-impl ValidationErrors for Scenario {
+    fn get_validation_warnings(&self) -> &Option<Vec<String>> {
+        &self.validation_warnings
+    }
+
+    fn set_validation_warnings(&mut self, warnings: Option<Vec<String>>) {
+        self.validation_warnings = warnings;
+        self.validation_state =
+            ValidationState::from(&self.validation_warnings, &self.validation_errors);
+    }
+
     fn get_validation_errors(&self) -> &Option<HashMap<String, String>> {
         &self.validation_errors
+    }
+
+    fn set_validation_errors(&mut self, errors: Option<HashMap<String, String>>) {
+        self.validation_errors = errors;
+        self.validation_state =
+            ValidationState::from(&self.validation_warnings, &self.validation_errors);
     }
 }

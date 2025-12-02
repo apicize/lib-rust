@@ -1,6 +1,8 @@
-use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
-use super::{indexed_entities::NO_SELECTION_ID, EditableWarnings, SelectedParameters, Selection, Warnings};
+use super::{SelectedParameters, Selection, indexed_entities::NO_SELECTION_ID};
+use crate::{Validated, ValidatedSelectedParameters, ValidationState, validate_selection};
+use serde::{Deserialize, Serialize};
 
 /// Default parameters for the workbook
 #[derive(Serialize, Deserialize, PartialEq, Clone, Default)]
@@ -21,29 +23,65 @@ pub struct WorkbookDefaultParameters {
     /// Selected external data, if applicable
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selected_data: Option<Selection>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub warnings: Option<Vec<String>>,
+    /// Validation state
+    #[serde(default, skip_serializing_if = "ValidationState::is_empty")]
+    pub validation_state: ValidationState,
+    /// Warnings for invalid values
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validation_warnings: Option<Vec<String>>,
+    /// Validation errors
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validation_errors: Option<HashMap<String, String>>,
 }
 
 impl WorkbookDefaultParameters {
     pub fn any_values_set(&self) -> bool {
-        ! (self.selected_scenario.as_ref().is_none_or(|s| s.id == NO_SELECTION_ID)
-            && self.selected_authorization.as_ref().is_none_or(|s| s.id == NO_SELECTION_ID)
-            && self.selected_certificate.as_ref().is_none_or(|s| s.id == NO_SELECTION_ID)
-            && self.selected_proxy.as_ref().is_none_or(|s| s.id == NO_SELECTION_ID)
-            && self.selected_data.as_ref().is_none_or(|s| s.id == NO_SELECTION_ID))
+        !(self
+            .selected_scenario
+            .as_ref()
+            .is_none_or(|s| s.id == NO_SELECTION_ID)
+            && self
+                .selected_authorization
+                .as_ref()
+                .is_none_or(|s| s.id == NO_SELECTION_ID)
+            && self
+                .selected_certificate
+                .as_ref()
+                .is_none_or(|s| s.id == NO_SELECTION_ID)
+            && self
+                .selected_proxy
+                .as_ref()
+                .is_none_or(|s| s.id == NO_SELECTION_ID)
+            && self
+                .selected_data
+                .as_ref()
+                .is_none_or(|s| s.id == NO_SELECTION_ID))
     }
 }
 
-impl Warnings for WorkbookDefaultParameters {
-    fn get_warnings(&self) -> &Option<Vec<String>> {
-        &self.warnings
+impl Validated for WorkbookDefaultParameters {
+    fn get_validation_state(&self) -> &super::ValidationState {
+        &self.validation_state
     }
-}
 
-impl EditableWarnings for WorkbookDefaultParameters {
-    fn set_warnings(&mut self, warnings: Option<Vec<String>>) {
-        self.warnings = warnings;
+    fn get_validation_warnings(&self) -> &Option<Vec<String>> {
+        &self.validation_warnings
+    }
+
+    fn set_validation_warnings(&mut self, warnings: Option<Vec<String>>) {
+        self.validation_warnings = warnings;
+        self.validation_state =
+            ValidationState::from(&self.validation_warnings, &self.validation_errors);
+    }
+
+    fn get_validation_errors(&self) -> &Option<HashMap<String, String>> {
+        &self.validation_errors
+    }
+
+    fn set_validation_errors(&mut self, errors: Option<HashMap<String, String>>) {
+        self.validation_errors = errors;
+        self.validation_state =
+            ValidationState::from(&self.validation_warnings, &self.validation_errors);
     }
 }
 
@@ -89,3 +127,53 @@ impl SelectedParameters for WorkbookDefaultParameters {
     }
 }
 
+impl ValidatedSelectedParameters for WorkbookDefaultParameters {
+    fn validate_scenario(&mut self, valid_values: &HashMap<String, String>) {
+        if let Some(warning) = validate_selection(
+            "Default",
+            &mut self.selected_scenario,
+            "scenario",
+            valid_values,
+        ) {
+            self.set_validation_warnings(Some(vec![warning]));
+        }
+    }
+
+    fn validate_authorization(&mut self, valid_values: &HashMap<String, String>) {
+        if let Some(warning) = validate_selection(
+            "Default",
+            &mut self.selected_authorization,
+            "authorization",
+            valid_values,
+        ) {
+            self.set_validation_warnings(Some(vec![warning]));
+        }
+    }
+
+    fn validate_certificate(&mut self, valid_values: &HashMap<String, String>) {
+        if let Some(warning) = validate_selection(
+            "Default",
+            &mut self.selected_certificate,
+            "certificate",
+            valid_values,
+        ) {
+            self.set_validation_warnings(Some(vec![warning]));
+        }
+    }
+
+    fn validate_proxy(&mut self, valid_values: &HashMap<String, String>) {
+        if let Some(warning) =
+            validate_selection("Default", &mut self.selected_proxy, "proxy", valid_values)
+        {
+            self.set_validation_warnings(Some(vec![warning]));
+        }
+    }
+
+    fn validate_data(&mut self, valid_values: &HashMap<String, String>) {
+        if let Some(warning) =
+            validate_selection("Default", &mut self.selected_data, "data", valid_values)
+        {
+            self.set_validation_warnings(Some(vec![warning]));
+        }
+    }
+}
