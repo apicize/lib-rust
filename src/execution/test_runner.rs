@@ -1108,9 +1108,12 @@ async fn dispatch_request(
         reqwest_builder = reqwest_builder
             .connect_timeout(max)
             .read_timeout(max)
-            .pool_idle_timeout(max)
-            .tcp_user_timeout(max)
-            .http2_keep_alive_timeout(max);
+            .pool_idle_timeout(max);
+        #[cfg(target_os = "linux")]
+        {
+            reqwest_builder = reqwest_builder.tcp_user_timeout(max);
+        }
+        reqwest_builder = reqwest_builder.http2_keep_alive_timeout(max);
     }
 
     // Add certificate to builder if configured

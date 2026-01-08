@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.30.2
+
+* Limit setting tcp_user_timeout to Linux
+
 # 0.30.1
 
 * Fix certificate/proxy selection for authorizations
