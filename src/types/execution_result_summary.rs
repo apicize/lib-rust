@@ -67,6 +67,15 @@ pub struct ExecutionResultSummary {
     /// Indicates level of call success
     pub success: ExecutionResultSuccess,
 
+    /// Count of successful calls of this and any child requests
+    pub request_success_count: usize,
+
+    /// Count of failed calls of this and any child requests
+    pub request_failure_count: usize,
+
+    /// Count of calls with errors of this and any children requests
+    pub request_error_count: usize,
+
     // Indicates an error
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<ApicizeError>,

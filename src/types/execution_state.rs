@@ -3,7 +3,7 @@ use std::fmt;
 
 bitflags! {
     /// Information reflecting current execution and definition state of a request or group, should not be stored
-    #[derive(Clone, Default, PartialEq, Debug)]
+    #[derive(Clone, Copy, Default, PartialEq, Debug)]
     pub struct ExecutionState: u32 {
         const RUNNING = 0b00000001;
         const SUCCESS = 0b00000010;

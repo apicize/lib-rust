@@ -1,5 +1,11 @@
 # Change Log
 
+# 0.30.1
+
+* Fix certificate/proxy selection for authorizations
+* Improve max timeout handling
+* Index execution results by exec_ctr
+
 # 0.30.0
 
 * Standardize validation state storage (for later refinement)

@@ -11,6 +11,7 @@ use crate::{
 };
 
 use csv::WriterBuilder;
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, ser::PrettyFormatter};
 use std::{
@@ -739,8 +740,8 @@ impl Workspace {
 
     /// Append specified index, including children, to the results
     fn generate_json(
-        exec_ctr: usize,
-        summaries: &Vec<&ExecutionResultSummary>,
+        exec_ctr: &usize,
+        summaries: &IndexMap<usize, ExecutionResultSummary>,
         report: &mut Vec<ExecutionReportJson>,
     ) -> Result<(), ApicizeError> {
         match summaries.get(exec_ctr) {
@@ -770,7 +771,7 @@ impl Workspace {
                 } else if let Some(child_indexes) = &summary.child_exec_ctrs {
                     let mut children = Vec::<ExecutionReportJson>::new();
                     for child_index in child_indexes {
-                        Self::generate_json(*child_index, summaries, &mut children)?;
+                        Self::generate_json(child_index, summaries, &mut children)?;
                     }
                     report.push(ExecutionReportJson {
                         name: summary.name.clone(),
@@ -825,8 +826,8 @@ impl Workspace {
 
     // Append specified index, including children, to the results
     fn generate_csv(
-        exec_ctr: usize,
-        summaries: &Vec<&ExecutionResultSummary>,
+        exec_ctr: &usize,
+        summaries: &IndexMap<usize, ExecutionResultSummary>,
         parent_names: &[&str],
         report: &mut Vec<ExecutionReportCsv>,
     ) -> Result<(), ApicizeError> {
@@ -877,7 +878,7 @@ impl Workspace {
                 } else if let Some(child_indexes) = &summary.child_exec_ctrs {
                     // Deal with "parent" scenarois
                     for child_index in child_indexes {
-                        Self::generate_csv(*child_index, summaries, &name_parts, report)?;
+                        Self::generate_csv(child_index, summaries, &name_parts, report)?;
                     }
                 } else if let Some(test_results) = &summary.test_results {
                     // Deal with executed behavior results with tests
@@ -930,8 +931,8 @@ impl Workspace {
 
     /// Generate a report from summarized execution results
     pub fn geneate_report(
-        exec_ctr: usize,
-        summaries: &Vec<&ExecutionResultSummary>,
+        exec_ctr: &usize,
+        summaries: &IndexMap<usize, ExecutionResultSummary>,
         format: ExecutionReportFormat,
     ) -> Result<String, ApicizeError> {
         match format {
@@ -962,7 +963,7 @@ impl Workspace {
 
     /// Generate a report from summarized execution results
     pub fn generate_multirun_report(
-        run_summaries: &HashMap<usize, Vec<&ExecutionResultSummary>>,
+        run_summaries: &IndexMap<usize, IndexMap<usize, ExecutionResultSummary>>,
         format: &ExecutionReportFormat,
     ) -> Result<String, ApicizeError> {
         match format {
@@ -973,7 +974,7 @@ impl Workspace {
                     let mut data = Vec::<ExecutionReportJson>::new();
                     let root_indexes: Vec<usize> = summaries
                         .iter()
-                        .filter_map(|s| {
+                        .filter_map(|(_, s)| {
                             if s.parent_exec_ctr.is_none() {
                                 Some(s.exec_ctr)
                             } else {
@@ -982,7 +983,7 @@ impl Workspace {
                         })
                         .collect();
                     for index in root_indexes {
-                        Self::generate_json(index, summaries, &mut data)?;
+                        Self::generate_json(&index, summaries, &mut data)?;
                     }
 
                     if let Some(entry) = all_data.get_mut(run_number) {
@@ -1004,7 +1005,7 @@ impl Workspace {
                 for summaries in run_summaries.values() {
                     let root_indexes: Vec<usize> = summaries
                         .iter()
-                        .filter_map(|s| {
+                        .filter_map(|(_, s)| {
                             if s.parent_exec_ctr.is_none() {
                                 Some(s.exec_ctr)
                             } else {
@@ -1013,7 +1014,7 @@ impl Workspace {
                         })
                         .collect();
                     for index in root_indexes {
-                        Self::generate_csv(index, summaries, &[], &mut data)?;
+                        Self::generate_csv(&index, summaries, &[], &mut data)?;
                     }
                 }
 

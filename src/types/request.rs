@@ -5,8 +5,7 @@ use std::str::FromStr;
 use super::identifiable::CloneIdentifiable;
 use super::{NameValuePair, Selection};
 use crate::{
-    Identifiable, SelectedParameters, Validated, ValidatedSelectedParameters, ValidationState,
-    utility::*, validate_selection,
+    Identifiable, SelectedParameters, Validated, ValidatedSelectedParameters, ValidationState, utility::*, validate_selection
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

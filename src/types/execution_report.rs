@@ -2,9 +2,7 @@ use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{ApicizeError, ApicizeTestBehavior};
-
-use super::ExecutionResultSuccess;
+use crate::{ApicizeError, ApicizeTestBehavior, ExecutionResultSuccess};
 
 #[derive(Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "UPPERCASE")]

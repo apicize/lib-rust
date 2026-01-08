@@ -1079,15 +1079,15 @@ async fn dispatch_request(
     };
 
     let timeout = if context.single_run_no_timeout {
-        Duration::MAX
+        None
     } else if let Some(t) = request.timeout {
         if t == 0 {
-            Duration::MAX
+            None
         } else {
-            Duration::from_millis(t as u64)
+            Some(Duration::from_millis(t as u64))
         }
     } else {
-        Duration::from_secs(30)
+        Some(Duration::from_secs(30))
     };
 
     // Build the reqwest client and request
@@ -1099,8 +1099,19 @@ async fn dispatch_request(
         } else {
             Policy::limited(request.number_of_redirects)
         })
-        .timeout(timeout)
         .connection_verbose(context.enable_trace);
+
+    if let Some(t) = timeout {
+        reqwest_builder = reqwest_builder.timeout(t);
+    } else {
+        let max = Duration::from_mins(5);
+        reqwest_builder = reqwest_builder
+            .connect_timeout(max)
+            .read_timeout(max)
+            .pool_idle_timeout(max)
+            .tcp_user_timeout(max)
+            .http2_keep_alive_timeout(max);
+    }
 
     // Add certificate to builder if configured
     if let Some(certificate) = context
@@ -1205,6 +1216,8 @@ async fn dispatch_request(
             audience,
             scope,
             send_credentials_in_body,
+            selected_certificate,
+            selected_proxy,
             ..
         }) => {
             match get_oauth2_client_credentials(
@@ -1215,14 +1228,14 @@ async fn dispatch_request(
                 send_credentials_in_body.unwrap_or(false),
                 scope,
                 audience,
-                context
+    context
                     .workspace
                     .certificates
-                    .get_optional(&params.auth_certificate_id),
+                    .get_optional(&selected_certificate.as_ref().map(|c| c.id.clone())),
                 context
                     .workspace
                     .proxies
-                    .get_optional(&params.auth_proxy_id),
+                    .get_optional(&selected_proxy.as_ref().map(|p| p.id.clone())),
                 context.enable_trace,
             )
             .await
