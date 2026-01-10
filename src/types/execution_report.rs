@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{ApicizeError, ApicizeTestBehavior, ExecutionResultSuccess};
+use crate::{ApicizeError, ApicizeTestBehavior, ExecutionResultSuccess, ExecutionResultSummary};
 
 #[derive(Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "UPPERCASE")]
@@ -158,4 +158,29 @@ pub struct ExecutionReportCsv {
     /// Error generated during the test
     #[serde(rename = "Test Error")]
     pub test_error: Option<String>,
+}
+
+impl ExecutionReportJson {
+    /// Create ExecutionReportJson from ExecutionResultSummary reference with optional children
+    pub fn from_summary(summary: &ExecutionResultSummary, children: Option<Vec<ExecutionReportJson>>, test_results: Option<Vec<ApicizeTestBehavior>>) -> Self {
+        Self {
+            name: summary.name.clone(),
+            key: summary.key.clone(),
+            tag: summary.tag.clone(),
+            method: summary.method.clone(),
+            url: summary.url.clone(),
+            executed_at: summary.executed_at,
+            duration: summary.duration,
+            success: summary.success.clone(),
+            status: summary.status,
+            status_text: summary.status_text.clone(),
+            error: summary.error.clone(),
+            test_results,
+            run_number: summary.run_number,
+            run_count: summary.run_count,
+            row_number: summary.row_number,
+            row_count: summary.row_count,
+            children,
+        }
+    }
 }

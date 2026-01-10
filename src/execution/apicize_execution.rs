@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use serde_with::serde_as;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::ApicizeError;
 
@@ -29,7 +30,7 @@ pub struct ApicizeExecution {
 
     /// Variables returned at the end of the test for use in next request
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub output_variables: Option<Map<String, Value>>,
+    pub output_variables: Option<Arc<Map<String, Value>>>,
 
     /// Test results (if executed)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -54,19 +55,19 @@ pub struct ApicizeExecution {
 pub struct ApicizeExecutionTestContext {
     /// Merged variables and data
     #[serde(skip_serializing_if = "Option::is_none", rename = "$")]
-    pub merged: Option<Map<String, Value>>,
+    pub merged: Option<Arc<Map<String, Value>>>,
 
     /// Variables available from scenario
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub scenario: Option<Map<String, Value>>,
+    pub scenario: Option<Arc<Map<String, Value>>>,
 
     /// Variables output from previous test
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub output: Option<Map<String, Value>>,
+    pub output: Option<Arc<Map<String, Value>>>,
 
     /// Row data assigned to the groups' requests (if applicable)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Map<String, Value>>,
+    pub data: Option<Arc<Map<String, Value>>>,
 
     /// Request sent to server
     #[serde(skip_serializing_if = "Option::is_none")]

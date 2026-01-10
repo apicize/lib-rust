@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.30.3
+
+* Performance improvements
+
 # 0.30.2
 
 * Limit setting tcp_user_timeout to Linux

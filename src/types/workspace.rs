@@ -726,7 +726,7 @@ impl Workspace {
             variables: if variables.is_empty() {
                 None
             } else {
-                Some(variables)
+                Some(Arc::new(variables))
             },
             data_set,
             data_enabled,
@@ -748,72 +748,18 @@ impl Workspace {
             Some(summary) => {
                 if summary.error.is_some() {
                     // Deal with summaries with errors
-                    report.push(ExecutionReportJson {
-                        name: summary.name.clone(),
-                        key: summary.key.clone(),
-                        tag: summary.tag.clone(),
-                        method: summary.method.clone(),
-                        url: summary.url.clone(),
-                        executed_at: summary.executed_at,
-                        duration: summary.duration,
-                        success: summary.success.clone(),
-                        status: summary.status,
-                        status_text: summary.status_text.clone(),
-                        error: summary.error.clone(),
-                        test_results: None,
-                        run_number: summary.run_number,
-                        run_count: summary.run_count,
-                        row_number: summary.row_number,
-                        row_count: summary.row_count,
-                        children: None,
-                    });
+                    report.push(ExecutionReportJson::from_summary(summary, None, None));
                     Ok(())
                 } else if let Some(child_indexes) = &summary.child_exec_ctrs {
                     let mut children = Vec::<ExecutionReportJson>::new();
                     for child_index in child_indexes {
                         Self::generate_json(child_index, summaries, &mut children)?;
                     }
-                    report.push(ExecutionReportJson {
-                        name: summary.name.clone(),
-                        key: summary.key.clone(),
-                        tag: summary.tag.clone(),
-                        method: summary.method.clone(),
-                        url: summary.url.clone(),
-                        executed_at: summary.executed_at,
-                        duration: summary.duration,
-                        success: summary.success.clone(),
-                        status: summary.status,
-                        status_text: summary.status_text.clone(),
-                        error: summary.error.clone(),
-                        test_results: None,
-                        run_number: summary.run_number,
-                        run_count: summary.run_count,
-                        row_number: summary.row_number,
-                        row_count: summary.row_count,
-                        children: Some(children),
-                    });
+                    report.push(ExecutionReportJson::from_summary(summary, Some(children), None));
                     Ok(())
                 } else {
                     // Deal with executed behavior results
-                    report.push(ExecutionReportJson {
-                        name: summary.name.clone(),
-                        key: summary.key.clone(),
-                        tag: summary.tag.clone(),
-                        method: summary.method.clone(),
-                        url: summary.url.clone(),
-                        executed_at: summary.executed_at,
-                        duration: summary.duration,
-                        success: summary.success.clone(),
-                        status: summary.status,
-                        status_text: summary.status_text.clone(),
-                        error: summary.error.clone(),
-                        test_results: summary.test_results.clone(),
-                        run_number: summary.run_number,
-                        run_count: summary.run_count,
-                        row_number: summary.row_number,
-                        row_count: summary.row_count,
-                        children: None,
-                    });
+                    report.push(ExecutionReportJson::from_summary(summary, None, summary.test_results.clone()));
 
                     Ok(())
                 }
@@ -1038,7 +984,7 @@ impl Workspace {
 pub struct RequestExecutionParameters {
     pub data_set: Arc<Option<RequestDataSet>>,
     pub data_enabled: bool,
-    pub variables: Option<Map<String, Value>>,
+    pub variables: Option<Arc<Map<String, Value>>>,
     pub authorization_id: Option<String>,
     pub certificate_id: Option<String>,
     pub proxy_id: Option<String>,
@@ -1049,8 +995,8 @@ pub struct RequestExecutionParameters {
 /// Thse values may change during the execution of a request/group
 #[derive(Default, Clone)]
 pub struct RequestExecutionState {
-    pub row: Option<RequestDataRow>,
-    pub output_variables: Option<RequestDataRow>,
+    pub row: Option<Arc<RequestDataRow>>,
+    pub output_variables: Option<Arc<RequestDataRow>>,
 }
 
 pub type RequestDataRow = Map<String, Value>;

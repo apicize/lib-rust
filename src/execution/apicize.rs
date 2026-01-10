@@ -327,6 +327,7 @@ pub struct ApicizeTestScenario {
     pub success: bool,
 
     /// Child scenarios or behaviors
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub children: Option<Vec<ApicizeTestResult>>,
 
     pub test_count: usize,

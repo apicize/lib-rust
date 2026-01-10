@@ -180,6 +180,7 @@ pub struct RequestGroup {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
     /// Child items
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub children: Option<Vec<RequestEntry>>,
     /// Execution of children
     #[serde(default)]

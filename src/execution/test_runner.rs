@@ -167,10 +167,10 @@ impl TestRunnerContext {
         }
     }
 
-    pub fn get_group_children(&self, group_id: &str) -> Vec<String> {
+    pub fn get_group_children(&self, group_id: &str) -> &[String] {
         match self.workspace.requests.child_ids.get(group_id) {
-            Some(child_ids) => child_ids.clone(),
-            None => Vec::default(),
+            Some(child_ids) => child_ids.as_slice(),
+            None => &[],
         }
     }
 }
@@ -343,7 +343,7 @@ async fn run_request_rows(
                 let row_executed_at = context.ellapsed_in_ms();
 
                 let row_state = Arc::new(RequestExecutionState {
-                    row: Some(row.clone()),
+                    row: Some(Arc::new(row.clone())),
                     output_variables: state.output_variables.clone(),
                 });
 
@@ -609,7 +609,7 @@ async fn run_group(
 #[async_recursion]
 async fn run_group_children(
     context: Arc<TestRunnerContext>,
-    child_ids: Vec<String>,
+    child_ids: &[String],
     params: Arc<RequestExecutionParameters>,
     state: Arc<RequestExecutionState>,
     concurrency: &ExecutionConcurrency,
@@ -622,7 +622,7 @@ async fn run_group_children(
                 for child_id in child_ids {
                     let result = run_request_entry(
                         context.clone(),
-                        child_id,
+                        child_id.clone(),
                         params.clone(),
                         group_state.clone(),
                     )
@@ -645,7 +645,7 @@ async fn run_group_children(
                 let mut executing_children: JoinSet<Result<Option<ApicizeResult>, ApicizeError>> =
                     JoinSet::new();
 
-                for child_id in &child_ids {
+                for child_id in child_ids {
                     let context = context.clone();
                     let child_id = child_id.clone();
                     let params = params.clone();
@@ -731,12 +731,12 @@ async fn run_group_rows(
         for row in active_data {
             let row_executed_at = context.ellapsed_in_ms();
 
-            row_state.row = Some(row.clone());
+            row_state.row = Some(Arc::new(row.clone()));
 
             let (content, tallies, data_context) = if group.runs == 1 {
                 let entries = run_group_children(
                     context.clone(),
-                    child_ids.clone(),
+                    child_ids,
                     params.clone(),
                     Arc::new(row_state.clone()),
                     &group.execution,
@@ -813,7 +813,7 @@ async fn run_group_runs(
                 let run_executed_at = context.ellapsed_in_ms();
                 let results = run_group_children(
                     context.clone(),
-                    child_ids.clone(),
+                    child_ids,
                     params.clone(),
                     state.clone(),
                     &group.execution,
@@ -844,7 +844,7 @@ async fn run_group_runs(
 
             for run_number in 1..number_of_runs + 1 {
                 let context = context.clone();
-                let child_ids = child_ids.clone();
+                let child_ids = child_ids.to_vec();
                 let params = params.clone();
                 let state = state.clone();
                 let execution = group.execution.clone();
@@ -856,7 +856,7 @@ async fn run_group_runs(
                         _ = context.cancellation.cancelled() => Err(ApicizeError::Cancelled),
                         executed_results = run_group_children(
                             context.clone(),
-                            child_ids,
+                            &child_ids,
                             params,
                             state,
                             &execution,
@@ -908,7 +908,7 @@ async fn dispatch_request_and_test(
 ) -> Result<ApicizeExecution, ApicizeError> {
     let mut execution_request: Option<ApicizeHttpRequest> = None;
     let mut execution_response: Option<ApicizeHttpResponse> = None;
-    let mut output_variables: Option<Map<String, Value>> = None;
+    let mut output_variables: Option<Arc<Map<String, Value>>> = None;
     let mut tests: Option<Vec<ApicizeTestBehavior>> = None;
     let mut error: Option<ApicizeError> = None;
 
@@ -918,19 +918,19 @@ async fn dispatch_request_and_test(
     let request = context.get_request(&request_id)?;
 
     let mut merged_vars = match &params.variables {
-        Some(vars) => vars.clone(),
+        Some(vars) => (**vars).clone(),
         None => Map::new(),
     };
     if let Some(r) = state.output_variables.as_ref() {
-        merged_vars.extend(r.clone());
+        merged_vars.extend((**r).clone());
     }
     if let Some(r) = state.row.as_ref() {
-        merged_vars.extend(r.clone());
+        merged_vars.extend((**r).clone());
     }
 
     let merged = match merged_vars.is_empty() {
         true => None,
-        false => Some(merged_vars),
+        false => Some(Arc::new(merged_vars)),
     };
 
     let subs = match &merged {
@@ -980,7 +980,7 @@ async fn dispatch_request_and_test(
                                     let output = if response.output.is_empty() {
                                         None
                                     } else {
-                                        Some(response.output)
+                                        Some(Arc::new(response.output))
                                     };
 
                                     // Flatten test nested responses into behaviors
@@ -1499,9 +1499,9 @@ fn execute_request_test(
     test: &str,
     request: &Option<ApicizeHttpRequest>,
     response: &Option<ApicizeHttpResponse>,
-    variables: &Option<Map<String, Value>>,
-    data: &Option<Map<String, Value>>,
-    output: &Option<Map<String, Value>>,
+    variables: &Option<Arc<Map<String, Value>>>,
+    data: &Option<Arc<Map<String, Value>>>,
+    output: &Option<Arc<Map<String, Value>>>,
     tests_started: &Instant,
 ) -> Result<Option<ApicizeTestResponse>, ApicizeError> {
     // Ensure V8 is initialized

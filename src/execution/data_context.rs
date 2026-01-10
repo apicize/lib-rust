@@ -3,6 +3,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use std::sync::Arc;
 
 /// Active values for a set of results (grouped requests, runs, rows)
 #[derive(Serialize, Deserialize, PartialEq, Clone, Default)]
@@ -10,19 +11,19 @@ use serde_json::{Map, Value};
 pub struct DataContext {
     /// Variables available from scenario
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub scenario: Option<Map<String, Value>>,
+    pub scenario: Option<Arc<Map<String, Value>>>,
 
     /// Variables output from previous test
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub output: Option<Map<String, Value>>,
+    pub output: Option<Arc<Map<String, Value>>>,
 
     /// Row data assigned to the groups' requests (if applicable)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Map<String, Value>>,
+    pub data: Option<Arc<Map<String, Value>>>,
 
     /// Output variables resulting from operation to be sent to next request/group
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub output_result: Option<Map<String, Value>>,
+    pub output_result: Option<Arc<Map<String, Value>>>,
 }
 
 /// Trait to retrieve data contexts
