@@ -72,7 +72,7 @@ pub enum RequestBody {
     /// Binary body data serialized as Base64
     Raw {
         /// Base-64 encoded binary data
-        // #[serde_as(as = "Base64<Standard, Unpadded>")]
+        #[serde_as(as = "Base64<Standard, Unpadded>")]
         data: Vec<u8>,
     },
 }
@@ -960,12 +960,16 @@ impl StoredRequestEntry {
                 id: group.id,
                 name: group.name,
                 key: group.key,
-                children: group.children.map(|children| {
-                    children
-                        .into_iter()
-                        .map(StoredRequestEntry::from_workspace)
-                        .collect()
-                }),
+                children: if let Some(children) = group.children && ! children.is_empty() {
+                    Some(
+                        children
+                            .into_iter()
+                            .map(StoredRequestEntry::from_workspace)
+                            .collect()
+                    )
+                } else {
+                    None
+                },
                 execution: group.execution,
                 runs: group.runs,
                 multi_run_execution: group.multi_run_execution,
@@ -1042,12 +1046,16 @@ impl StoredRequestEntry {
                 key: group.key,
                 validation_state: Default::default(),
                 // execution_state: Default::default(),
-                children: group.children.map(|children| {
-                    children
-                        .into_iter()
-                        .map(StoredRequestEntry::to_workspace)
-                        .collect()
-                }),
+                children: if let Some(children) = group.children && ! children.is_empty() {
+                    Some(
+                        children
+                            .into_iter()
+                            .map(StoredRequestEntry::to_workspace)
+                            .collect()
+                    )
+                } else {
+                    None
+                },
                 execution: group.execution,
                 runs: group.runs,
                 multi_run_execution: group.multi_run_execution,

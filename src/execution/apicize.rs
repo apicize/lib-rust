@@ -4,11 +4,14 @@
 
 use std::collections::HashMap;
 
-use crate::{identifiable::CloneIdentifiable, Identifiable};
+use crate::{Identifiable, identifiable::CloneIdentifiable};
 
 use super::{ApicizeExecution, DataContext};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use serde_with::base64::{Base64, Standard};
+use serde_with::formats::Unpadded;
+use serde_with::serde_as;
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type")]
@@ -273,7 +276,7 @@ pub struct ApicizeList<T> {
 }
 
 /// Body information used when dispatching an Apicize Request
-// #[serde_as]
+#[serde_as]
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type")]
 pub enum ApicizeBody {
@@ -293,7 +296,7 @@ pub enum ApicizeBody {
         data: HashMap<String, String>,
     },
     Binary {
-        // #[serde_as(as = "Base64<Standard, Unpadded>")]
+        #[serde_as(as = "Base64<Standard, Unpadded>")]
         data: Vec<u8>,
     },
 }
@@ -336,7 +339,8 @@ pub struct ApicizeTestScenario {
 
     /// Console I/O generated during the test
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub logs: Option<Vec<String>>,}
+    pub logs: Option<Vec<String>>,
+}
 
 /// Test execution results
 #[derive(Serialize, Deserialize, PartialEq, Clone)]

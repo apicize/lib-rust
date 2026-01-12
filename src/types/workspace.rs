@@ -751,15 +751,24 @@ impl Workspace {
                     report.push(ExecutionReportJson::from_summary(summary, None, None));
                     Ok(())
                 } else if let Some(child_indexes) = &summary.child_exec_ctrs {
-                    let mut children = Vec::<ExecutionReportJson>::new();
-                    for child_index in child_indexes {
-                        Self::generate_json(child_index, summaries, &mut children)?;
-                    }
-                    report.push(ExecutionReportJson::from_summary(summary, Some(children), None));
+                    let children = if child_indexes.is_empty() {
+                        None
+                    } else {
+                        let mut children = Vec::<ExecutionReportJson>::new();
+                        for child_index in child_indexes {
+                            Self::generate_json(child_index, summaries, &mut children)?;
+                        }
+                        Some(children)
+                    };
+                    report.push(ExecutionReportJson::from_summary(summary, children, None));
                     Ok(())
                 } else {
                     // Deal with executed behavior results
-                    report.push(ExecutionReportJson::from_summary(summary, None, summary.test_results.clone()));
+                    report.push(ExecutionReportJson::from_summary(
+                        summary,
+                        None,
+                        summary.test_results.clone(),
+                    ));
 
                     Ok(())
                 }
@@ -821,7 +830,9 @@ impl Workspace {
                         test_error: None,
                         error: summary.error.clone(),
                     });
-                } else if let Some(child_indexes) = &summary.child_exec_ctrs {
+                } else if let Some(child_indexes) = &summary.child_exec_ctrs
+                    && !child_indexes.is_empty()
+                {
                     // Deal with "parent" scenarois
                     for child_index in child_indexes {
                         Self::generate_csv(child_index, summaries, &name_parts, report)?;

@@ -1,5 +1,10 @@
 # Change Log
 
+# 0.30.4
+
+* Set children to None when serializing/deserializing empty result children lists
+* Serialize raw body as Base64
+
 # 0.30.3
 
 * Performance improvements
