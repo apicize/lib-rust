@@ -1,9 +1,9 @@
-use std::collections::HashMap;
 use bitflags::bitflags;
+use std::collections::HashMap;
 
 bitflags! {
     /// Information reflecting current execution and definition state of a request or group, should not be stored
-    #[derive(Clone, Default, PartialEq, Debug)]
+    #[derive(Copy, Clone, Default, PartialEq, Debug)]
     pub struct ValidationState: u8 {
         const WARNING = 0b00000001;
         const ERROR   = 0b00000010;
@@ -19,7 +19,7 @@ impl serde::Serialize for ValidationState {
 
 impl<'de> serde::Deserialize<'de> for ValidationState {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        use serde::de::{self, Visitor, MapAccess};
+        use serde::de::{self, MapAccess, Visitor};
         use std::fmt;
 
         struct ValidationStateVisitor;
@@ -28,7 +28,9 @@ impl<'de> serde::Deserialize<'de> for ValidationState {
             type Value = ValidationState;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a ValidationState as either a number or an object with 'bits' field")
+                formatter.write_str(
+                    "a ValidationState as either a number or an object with 'bits' field",
+                )
             }
 
             // Handle plain number from TypeScript (e.g., 3)
@@ -46,7 +48,10 @@ impl<'de> serde::Deserialize<'de> for ValidationState {
                 E: de::Error,
             {
                 if value < 0 {
-                    return Err(E::custom(format!("ValidationState cannot be negative: {}", value)));
+                    return Err(E::custom(format!(
+                        "ValidationState cannot be negative: {}",
+                        value
+                    )));
                 }
                 self.visit_u64(value as u64)
             }
@@ -67,8 +72,9 @@ impl<'de> serde::Deserialize<'de> for ValidationState {
                 }
 
                 let bits = bits.ok_or_else(|| de::Error::missing_field("bits"))?;
-                ValidationState::from_bits(bits)
-                    .ok_or_else(|| de::Error::custom(format!("invalid ValidationState bits: {}", bits)))
+                ValidationState::from_bits(bits).ok_or_else(|| {
+                    de::Error::custom(format!("invalid ValidationState bits: {}", bits))
+                })
             }
         }
 
@@ -83,7 +89,7 @@ impl ValidationState {
             new_value |= ValidationState::WARNING;
         }
         if errors.as_ref().is_some_and(|w| !w.is_empty()) {
-            new_value |= ValidationState::WARNING;
+            new_value |= ValidationState::ERROR;
         }
         new_value
     }
@@ -92,7 +98,7 @@ impl ValidationState {
 /// Trait to describe and update validation status
 pub trait Validated {
     /// Return state
-    fn get_validation_state(&self) -> &ValidationState;
+    fn get_validation_state(&self) -> ValidationState;
 
     /// Retrieve validation warnings
     fn get_validation_warnings(&self) -> &Option<Vec<String>>;
@@ -107,3 +113,24 @@ pub trait Validated {
     fn set_validation_errors(&mut self, errors: Option<HashMap<String, String>>);
 }
 
+/// Add a named error to list of validation errors
+pub fn add_validation_error(errors: &mut Option<HashMap<String, String>>, name: &str, error: &str) {
+    match errors {
+        Some(errs) => {
+            errs.insert(name.to_string(), error.to_string());
+        }
+        None => {
+            *errors = Some(HashMap::from([(name.to_string(), error.to_string())]));
+        }
+    }
+}
+
+/// Remove a named error from a list of validation errors
+pub fn remove_validation_error(errors: &mut Option<HashMap<String, String>>, name: &str) {
+    if let Some(errs) = errors {
+        errs.remove(name);
+        if errs.is_empty() {
+            *errors = None;
+        }
+    }
+}

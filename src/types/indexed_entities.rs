@@ -6,7 +6,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 
 use super::{
-    Authorization, Certificate, ExternalData, Identifiable, Proxy, Scenario, Selection,
+    Authorization, Certificate, DataSet, Identifiable, Proxy, Scenario, Selection,
     workspace::SelectedOption,
 };
 
@@ -129,7 +129,7 @@ impl<T: Identifiable + Clone> IndexedEntities<T> {
 }
 
 impl IndexedEntities<RequestEntry> {
-    /// Build IndexRequests from a list of nexted Workbook requests
+    /// Build IndexRequests from a list of nested Workbook requests
     pub fn new(entities: &[RequestEntry]) -> IndexedEntities<RequestEntry> {
         let mut results = IndexedEntities::<RequestEntry> {
             top_level_ids: Vec::new(),
@@ -234,6 +234,24 @@ impl IndexedEntities<RequestEntry> {
     }
 }
 
+impl IndexedEntities<DataSet> {
+    /// Build IndexRequests from a list of Workbook data sets
+    pub fn new(entities: Option<Vec<DataSet>>) -> IndexedEntities<DataSet> {
+        match entities {
+            Some(entities) => {
+                let top_level_ids = entities.iter().map(|e| e.id.clone()).collect::<Vec<String>>();
+                let entities = entities.into_iter().map(|e| (e.id.clone(), e)).collect::<HashMap<String, DataSet>>();
+                IndexedEntities::<DataSet> {
+                    top_level_ids,
+                    child_ids: HashMap::new(),
+                    entities,
+                }
+            },
+            None => IndexedEntities::default(),
+        }
+    }
+}
+
 /// Convert indexed parameters to a persistable list
 fn to_persisted_list<T: Clone>(index: &IndexedEntities<T>, persistence: &str) -> Option<Vec<T>> {
     let mut result = Vec::<T>::new();
@@ -253,34 +271,46 @@ fn to_persisted_list<T: Clone>(index: &IndexedEntities<T>, persistence: &str) ->
 
 /// Generate indexed entries for parameters stored in workbook, private and/or vault files,
 /// note that we do not set top-level IDs, because we are categorizing into public, private
-/// and vault/globalls
+/// and vault/globals
 fn from_persisted_lists<T: Identifiable + Clone>(
-    workbook: Option<&[T]>,
-    private: Option<&[T]>,
-    vault: Option<&[T]>,
+    workbook: Option<Vec<T>>,
+    private: Option<Vec<T>>,
+    vault: Option<Vec<T>>,
 ) -> IndexedEntities<T> {
+    
+    let map_ids = |list: &Option<Vec<T>>| -> Vec<String> {
+        match list {
+            Some(entries) => entries.iter().map(|e| e.get_id().to_string()).collect(),
+            None => Vec::default()
+        }
+    };
+    
+    let workbook_ids = map_ids(&workbook);
+    let private_ids = map_ids(&private);
+    let vault_ids = map_ids(&vault);
+
     let mut entities: HashMap<String, T> = match workbook {
         Some(entries) => entries
-            .iter()
-            .map(|e| (e.get_id().to_string(), e.clone()))
+            .into_iter()
+            .map(|e| (e.get_id().to_string(), e))
             .collect::<HashMap<String, T>>(),
         None => HashMap::new(),
     };
     if let Some(entries) = private {
         entities.extend(
             entries
-                .iter()
+                .into_iter()
                 .filter(|e| !entities.contains_key(e.get_id()))
-                .map(|e| (e.get_id().to_string(), e.clone()))
+                .map(|e| (e.get_id().to_string(), e))
                 .collect::<HashMap<String, T>>(),
         );
     };
     if let Some(entries) = vault {
         entities.extend(
             entries
-                .iter()
+                .into_iter()
                 .filter(|e| !entities.contains_key(e.get_id()))
-                .map(|e| (e.get_id().to_string(), e.clone()))
+                .map(|e| (e.get_id().to_string(), e))
                 .collect::<HashMap<String, T>>(),
         );
     };
@@ -290,24 +320,15 @@ fn from_persisted_lists<T: Identifiable + Clone>(
         child_ids: HashMap::from([
             (
                 PERSIST_WORKBOOK.to_string(),
-                match workbook {
-                    Some(entries) => entries.iter().map(|e| e.get_id().to_string()).collect(),
-                    None => vec![],
-                },
+                workbook_ids,
             ),
             (
                 PERSIST_PRIVATE.to_string(),
-                match private {
-                    Some(entries) => entries.iter().map(|e| e.get_id().to_string()).collect(),
-                    None => vec![],
-                },
+                private_ids,
             ),
             (
                 PERSIST_VAULT.to_string(),
-                match vault {
-                    Some(entries) => entries.iter().map(|e| e.get_id().to_string()).collect(),
-                    None => vec![],
-                },
+                vault_ids,
             ),
         ]),
         entities,
@@ -328,9 +349,9 @@ impl PersistedIndex<Scenario> for IndexedEntities<Scenario> {
     }
 
     fn new(
-        workbook: Option<&[Scenario]>,
-        private: Option<&[Scenario]>,
-        vault: Option<&[Scenario]>,
+        workbook: Option<Vec<Scenario>>,
+        private: Option<Vec<Scenario>>,
+        vault: Option<Vec<Scenario>>,
     ) -> IndexedEntities<Scenario> {
         from_persisted_lists(workbook, private, vault)
     }
@@ -350,9 +371,9 @@ impl PersistedIndex<Authorization> for IndexedEntities<Authorization> {
     }
 
     fn new(
-        workbook: Option<&[Authorization]>,
-        private: Option<&[Authorization]>,
-        vault: Option<&[Authorization]>,
+        workbook: Option<Vec<Authorization>>,
+        private: Option<Vec<Authorization>>,
+        vault: Option<Vec<Authorization>>,
     ) -> IndexedEntities<Authorization> {
         from_persisted_lists(workbook, private, vault)
     }
@@ -372,9 +393,9 @@ impl PersistedIndex<Certificate> for IndexedEntities<Certificate> {
     }
 
     fn new(
-        workbook: Option<&[Certificate]>,
-        private: Option<&[Certificate]>,
-        vault: Option<&[Certificate]>,
+        workbook: Option<Vec<Certificate>>,
+        private: Option<Vec<Certificate>>,
+        vault: Option<Vec<Certificate>>,
     ) -> IndexedEntities<Certificate> {
         from_persisted_lists(workbook, private, vault)
     }
@@ -394,32 +415,11 @@ impl PersistedIndex<Proxy> for IndexedEntities<Proxy> {
     }
 
     fn new(
-        workbook: Option<&[Proxy]>,
-        private: Option<&[Proxy]>,
-        vault: Option<&[Proxy]>,
+        workbook: Option<Vec<Proxy>>,
+        private: Option<Vec<Proxy>>,
+        vault: Option<Vec<Proxy>>,
     ) -> IndexedEntities<Proxy> {
         from_persisted_lists(workbook, private, vault)
     }
 }
 
-impl PersistedIndex<ExternalData> for IndexedEntities<ExternalData> {
-    fn get_workbook(&self) -> Option<Vec<ExternalData>> {
-        to_persisted_list(self, PERSIST_WORKBOOK)
-    }
-
-    fn get_private(&self) -> Option<Vec<ExternalData>> {
-        to_persisted_list(self, PERSIST_PRIVATE)
-    }
-
-    fn get_vault(&self) -> Option<Vec<ExternalData>> {
-        to_persisted_list(self, PERSIST_VAULT)
-    }
-
-    fn new(
-        workbook: Option<&[ExternalData]>,
-        private: Option<&[ExternalData]>,
-        vault: Option<&[ExternalData]>,
-    ) -> IndexedEntities<ExternalData> {
-        from_persisted_lists(workbook, private, vault)
-    }
-}

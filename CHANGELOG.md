@@ -1,5 +1,11 @@
 # Change Log
 
+# 0.30.5
+
+* Re-implement validation (warnings and errors)
+* Refactor persistent parameter file access
+* Fix embedding of quotation marks for JSON bodies
+
 # 0.30.4
 
 * Set children to None when serializing/deserializing empty result children lists

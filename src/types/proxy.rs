@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
 use crate::{
-    Identifiable, Validated, ValidationState, identifiable::CloneIdentifiable, utility::*,
+    Identifiable, Validated, ValidationState, add_validation_error, identifiable::CloneIdentifiable, remove_validation_error, utility::*
 };
+use regex::Regex;
 use reqwest::{ClientBuilder, Error};
 use serde::{Deserialize, Serialize};
 
@@ -77,8 +78,8 @@ impl CloneIdentifiable for Proxy {
 }
 
 impl Validated for Proxy {
-    fn get_validation_state(&self) -> &super::ValidationState {
-        &self.validation_state
+    fn get_validation_state(&self) -> super::ValidationState {
+        self.validation_state
     }
 
     fn get_validation_warnings(&self) -> &Option<Vec<String>> {
@@ -99,5 +100,32 @@ impl Validated for Proxy {
         self.validation_errors = errors;
         self.validation_state =
             ValidationState::from(&self.validation_warnings, &self.validation_errors);
+    }
+}
+
+impl Proxy {
+    pub fn perform_validation(&mut self) {
+        self.validate_name();
+        self.validate_url();
+    }
+
+    pub fn validate_name(&mut self) {
+        let name_ok = ! self.name.trim().is_empty();
+        if name_ok {
+            remove_validation_error(&mut self.validation_errors, "name");
+        } else {
+            add_validation_error(&mut self.validation_errors, "name", "Name is required");
+        }
+        self.validation_state.set(ValidationState::ERROR, self.validation_errors.is_some());
+    }
+    
+    pub fn validate_url(&mut self) {
+        let regex_url = Regex::new(r"^(\{\{.+\}\}|https?:\/\/|socks5:\/\/)(\w+:?\w*)?(\S+)(:\d+)?(\/|\/([\w#!:.?+=&%!\-\/]))?$").unwrap();
+        if regex_url.is_match(&self.url) {
+            remove_validation_error(&mut self.validation_errors, "url");
+        } else {
+            add_validation_error(&mut self.validation_errors, "url", "URL must include http/https/socks5 protocol prefix and address");
+        }
+        self.validation_state.set(ValidationState::ERROR, self.validation_errors.is_some());
     }
 }

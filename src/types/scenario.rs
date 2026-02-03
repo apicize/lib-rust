@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{Identifiable, Validated, ValidationState, utility::*};
+use crate::{Identifiable, Validated, ValidationState, add_validation_error, remove_validation_error, utility::*};
 use serde::{Deserialize, Serialize};
 
 use super::Variable;
@@ -41,7 +41,7 @@ impl Identifiable for Scenario {
 
     fn get_title(&self) -> String {
         if self.name.is_empty() {
-            "(Unamed)".to_string()
+            "(Unnamed)".to_string()
         } else {
             self.name.to_string()
         }
@@ -70,9 +70,39 @@ impl CloneIdentifiable for Scenario {
     }
 }
 
+impl Scenario {
+    pub fn perform_validation(&mut self) {
+        self.validate_name();
+        self.validate_variables();
+    }
+
+    pub fn validate_name(&mut self) {
+        let name_ok = ! self.name.trim().is_empty();
+        if name_ok {
+            remove_validation_error(&mut self.validation_errors, "name");
+        } else {
+            add_validation_error(&mut self.validation_errors, "name", "Name is required");
+        }
+        self.validation_state.set(ValidationState::ERROR, self.validation_errors.is_some());
+    }
+
+    pub fn validate_variables(&mut self) {
+        let variables_ok = match &self.variables {
+            Some(vars) => ! vars.iter().any(|v| v.name.trim().is_empty()),
+            None => true
+        };
+        if variables_ok {
+            remove_validation_error(&mut self.validation_errors, "variables");
+        } else {
+            add_validation_error(&mut self.validation_errors, "variables", "Variables must be named");
+        }
+        self.validation_state.set(ValidationState::ERROR, self.validation_errors.is_some());
+    }    
+}
+
 impl Validated for Scenario {
-    fn get_validation_state(&self) -> &super::ValidationState {
-        &self.validation_state
+    fn get_validation_state(&self) -> super::ValidationState {
+        self.validation_state
     }
 
     fn get_validation_warnings(&self) -> &Option<Vec<String>> {

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use super::{identifiable::CloneIdentifiable, Selection, ValidationState};
-use crate::{utility::*, Identifiable, Validated};
+use super::{Selection, ValidationState, identifiable::CloneIdentifiable};
+use crate::{Identifiable, Validated, add_validation_error, remove_validation_error, utility::*};
 use serde::{Deserialize, Serialize};
 
 /// Authorization information used when dispatching an Apicize Request
@@ -152,8 +152,8 @@ impl Identifiable for Authorization {
     fn get_id(&self) -> &str {
         match self {
             Authorization::Basic { id, .. } => id,
-            Authorization::OAuth2Client { id,  .. } => id,
-            Authorization::OAuth2Pkce { id,  .. } => id,
+            Authorization::OAuth2Client { id, .. } => id,
+            Authorization::OAuth2Pkce { id, .. } => id,
             Authorization::ApiKey { id, .. } => id,
         }
     }
@@ -161,8 +161,8 @@ impl Identifiable for Authorization {
     fn get_name(&self) -> &str {
         match self {
             Authorization::Basic { name, .. } => name,
-            Authorization::OAuth2Client { name,  .. } => name,
-            Authorization::OAuth2Pkce { name,  .. } => name,
+            Authorization::OAuth2Client { name, .. } => name,
+            Authorization::OAuth2Pkce { name, .. } => name,
             Authorization::ApiKey { name, .. } => name,
         }
     }
@@ -170,7 +170,7 @@ impl Identifiable for Authorization {
     fn get_title(&self) -> String {
         let name = self.get_name();
         if name.is_empty() {
-            "(Unamed)".to_string()
+            "(Unnamed)".to_string()
         } else {
             name.to_string()
         }
@@ -181,16 +181,40 @@ impl CloneIdentifiable for Authorization {
     fn clone_as_new(&self, new_name: String) -> Self {
         let mut cloned = self.clone();
         let new_id = generate_uuid();
-        
+
         match cloned {
-            Authorization::Basic { ref mut id, ref mut name, ..} => 
-                { *id = new_id; *name = new_name; },
-            Authorization::OAuth2Client { ref mut id, ref mut name, ..} => 
-                { *id = new_id; *name = new_name; },
-            Authorization::OAuth2Pkce { ref mut id, ref mut name, ..} => 
-                { *id = new_id; *name = new_name; },
-            Authorization::ApiKey { ref mut id, ref mut name, ..} => 
-                { *id = new_id; *name = new_name; },
+            Authorization::Basic {
+                ref mut id,
+                ref mut name,
+                ..
+            } => {
+                *id = new_id;
+                *name = new_name;
+            }
+            Authorization::OAuth2Client {
+                ref mut id,
+                ref mut name,
+                ..
+            } => {
+                *id = new_id;
+                *name = new_name;
+            }
+            Authorization::OAuth2Pkce {
+                ref mut id,
+                ref mut name,
+                ..
+            } => {
+                *id = new_id;
+                *name = new_name;
+            }
+            Authorization::ApiKey {
+                ref mut id,
+                ref mut name,
+                ..
+            } => {
+                *id = new_id;
+                *name = new_name;
+            }
         }
 
         cloned
@@ -198,77 +222,162 @@ impl CloneIdentifiable for Authorization {
 }
 
 impl Validated for Authorization {
-    fn get_validation_state(&self) -> &ValidationState {
+    fn get_validation_state(&self) -> ValidationState {
         match self {
-            Authorization::Basic { validation_state, .. } => validation_state,
-            Authorization::OAuth2Client { validation_state, .. } => validation_state,
-            Authorization::OAuth2Pkce { validation_state, .. } => validation_state,
-            Authorization::ApiKey { validation_state, .. } => validation_state,
+            Authorization::Basic {
+                validation_state, ..
+            } => *validation_state,
+            Authorization::OAuth2Client {
+                validation_state, ..
+            } => *validation_state,
+            Authorization::OAuth2Pkce {
+                validation_state, ..
+            } => *validation_state,
+            Authorization::ApiKey {
+                validation_state, ..
+            } => *validation_state,
         }
     }
 
     fn get_validation_warnings(&self) -> &Option<Vec<String>> {
         match self {
-            Authorization::OAuth2Client { validation_warnings: warnings, .. } => warnings,
+            Authorization::OAuth2Client {
+                validation_warnings: warnings,
+                ..
+            } => warnings,
             _ => &None,
         }
     }
 
     fn set_validation_warnings(&mut self, warnings: Option<Vec<String>>) {
         match self {
-            Authorization::Basic {validation_warnings, validation_errors, validation_state, ..} => {
+            Authorization::Basic {
+                validation_warnings,
+                validation_errors,
+                validation_state,
+                ..
+            } => {
                 *validation_warnings = warnings;
                 *validation_state = ValidationState::from(validation_warnings, validation_errors);
-
-            },
-            Authorization::OAuth2Client {validation_warnings, validation_errors, validation_state, ..} => {
+            }
+            Authorization::OAuth2Client {
+                validation_warnings,
+                validation_errors,
+                validation_state,
+                ..
+            } => {
                 *validation_warnings = warnings;
                 *validation_state = ValidationState::from(validation_warnings, validation_errors);
-
-            },
-            Authorization::OAuth2Pkce {validation_warnings, validation_errors, validation_state, ..} => {
+            }
+            Authorization::OAuth2Pkce {
+                validation_warnings,
+                validation_errors,
+                validation_state,
+                ..
+            } => {
                 *validation_warnings = warnings;
                 *validation_state = ValidationState::from(validation_warnings, validation_errors);
-
-            },
-            Authorization::ApiKey {validation_warnings, validation_errors, validation_state, ..} => {
+            }
+            Authorization::ApiKey {
+                validation_warnings,
+                validation_errors,
+                validation_state,
+                ..
+            } => {
                 *validation_warnings = warnings;
                 *validation_state = ValidationState::from(validation_warnings, validation_errors);
-            },
+            }
         }
     }
 
     fn get_validation_errors(&self) -> &Option<HashMap<String, String>> {
         match self {
-            Authorization::Basic { validation_errors, .. } => validation_errors,
-            Authorization::OAuth2Client { validation_errors, .. } => validation_errors,
-            Authorization::OAuth2Pkce { validation_errors, .. } => validation_errors,
-            Authorization::ApiKey { validation_errors, .. } => validation_errors,
+            Authorization::Basic {
+                validation_errors, ..
+            } => validation_errors,
+            Authorization::OAuth2Client {
+                validation_errors, ..
+            } => validation_errors,
+            Authorization::OAuth2Pkce {
+                validation_errors, ..
+            } => validation_errors,
+            Authorization::ApiKey {
+                validation_errors, ..
+            } => validation_errors,
         }
     }
 
     fn set_validation_errors(&mut self, errors: Option<HashMap<String, String>>) {
         match self {
-            Authorization::Basic {validation_warnings, validation_errors, validation_state, ..} => {
+            Authorization::Basic {
+                validation_warnings,
+                validation_errors,
+                validation_state,
+                ..
+            } => {
                 *validation_errors = errors;
                 *validation_state = ValidationState::from(validation_warnings, validation_errors);
-
-            },
-            Authorization::OAuth2Client {validation_warnings, validation_errors, validation_state, ..} => {
+            }
+            Authorization::OAuth2Client {
+                validation_warnings,
+                validation_errors,
+                validation_state,
+                ..
+            } => {
                 *validation_errors = errors;
                 *validation_state = ValidationState::from(validation_warnings, validation_errors);
-
-            },
-            Authorization::OAuth2Pkce {validation_warnings, validation_errors, validation_state, ..} => {
+            }
+            Authorization::OAuth2Pkce {
+                validation_warnings,
+                validation_errors,
+                validation_state,
+                ..
+            } => {
                 *validation_errors = errors;
                 *validation_state = ValidationState::from(validation_warnings, validation_errors);
-
-            },
-            Authorization::ApiKey {validation_warnings, validation_errors, validation_state, ..} => {
+            }
+            Authorization::ApiKey {
+                validation_warnings,
+                validation_errors,
+                validation_state,
+                ..
+            } => {
                 *validation_errors = errors;
                 *validation_state = ValidationState::from(validation_warnings, validation_errors);
-            },
+            }
         }
     }
-    
+}
+
+impl Authorization {
+    pub fn perform_validation(&mut self) {
+        self.validate_name();
+    }    
+
+    pub fn validate_name(&mut self) {
+        let perform_validation = |name: &str, validation_errors: &mut Option<HashMap<String, String>>, validation_state: &mut ValidationState | {
+            let name_ok = ! name.trim().is_empty();
+            if name_ok {
+                remove_validation_error(validation_errors, "name");
+            } else {
+                add_validation_error(validation_errors, "name", "Name is required");
+            }
+            validation_state.set(ValidationState::ERROR, validation_errors.is_some());
+        };
+
+        match self {
+            Authorization::Basic { name, validation_errors, validation_state, .. } => {
+                perform_validation(name, validation_errors, validation_state);
+            },
+            Authorization::OAuth2Client { name, validation_errors, validation_state, .. } => {
+                perform_validation(name, validation_errors, validation_state);
+            },
+            Authorization::OAuth2Pkce { name, validation_errors, validation_state, .. } => {
+                perform_validation(name, validation_errors, validation_state);
+            },
+            Authorization::ApiKey { name, validation_errors, validation_state, .. } => {
+                perform_validation(name, validation_errors, validation_state);
+            }
+        }
+    }
 }

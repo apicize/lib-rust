@@ -5,7 +5,7 @@ use std::str::FromStr;
 use super::identifiable::CloneIdentifiable;
 use super::{NameValuePair, Selection};
 use crate::{
-    Identifiable, SelectedParameters, Validated, ValidatedSelectedParameters, ValidationState, utility::*, validate_selection
+    Identifiable, SelectedParameters, Validated, ValidationState, add_validation_error, remove_validation_error, utility::*
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -252,10 +252,10 @@ impl Identifiable for RequestEntry {
 }
 
 impl Validated for RequestEntry {
-    fn get_validation_state(&self) -> &ValidationState {
+    fn get_validation_state(&self) -> ValidationState {
         match self {
-            RequestEntry::Request(request) => &request.validation_state,
-            RequestEntry::Group(group) => &group.validation_state,
+            RequestEntry::Request(request) => request.validation_state,
+            RequestEntry::Group(group) => group.validation_state,
         }
     }
 
@@ -307,132 +307,133 @@ impl CloneIdentifiable for RequestEntry {
     }
 }
 
-impl ValidatedSelectedParameters for RequestEntry {
-    fn validate_scenario(&mut self, valid_values: &HashMap<String, String>) {
-        match self {
-            RequestEntry::Request(request) => {
-                if let Some(warning) = validate_selection(
-                    &request.get_title(),
-                    &mut request.selected_scenario,
-                    "scenario",
-                    valid_values,
-                ) {
-                    request.set_validation_warnings(Some(vec![warning]));
-                }
-            }
-            RequestEntry::Group(group) => {
-                if let Some(warning) = validate_selection(
-                    &group.get_title(),
-                    &mut group.selected_scenario,
-                    "scenario",
-                    valid_values,
-                ) {
-                    group.set_validation_warnings(Some(vec![warning]));
-                }
-            }
-        }
-    }
+// xxx
+// impl ValidatedSelectedParameters for RequestEntry {
+//     fn validate_scenario(&mut self, valid_values: &HashMap<String, String>) {
+//         match self {
+//             RequestEntry::Request(request) => {
+//                 if let Some(warning) = validate_selection(
+//                     &request.get_title(),
+//                     &mut request.selected_scenario,
+//                     "scenario",
+//                     valid_values,
+//                 ) {
+//                     request.set_validation_warnings(Some(vec![warning]));
+//                 }
+//             }
+//             RequestEntry::Group(group) => {
+//                 if let Some(warning) = validate_selection(
+//                     &group.get_title(),
+//                     &mut group.selected_scenario,
+//                     "scenario",
+//                     valid_values,
+//                 ) {
+//                     group.set_validation_warnings(Some(vec![warning]));
+//                 }
+//             }
+//         }
+//     }
 
-    fn validate_authorization(&mut self, valid_values: &HashMap<String, String>) {
-        match self {
-            RequestEntry::Request(request) => {
-                if let Some(warning) = validate_selection(
-                    &request.get_title(),
-                    &mut request.selected_authorization,
-                    "authorization",
-                    valid_values,
-                ) {
-                    request.set_validation_warnings(Some(vec![warning]));
-                }
-            }
-            RequestEntry::Group(group) => {
-                if let Some(warning) = validate_selection(
-                    &group.get_title(),
-                    &mut group.selected_authorization,
-                    "authorization",
-                    valid_values,
-                ) {
-                    group.set_validation_warnings(Some(vec![warning]));
-                }
-            }
-        }
-    }
+//     fn validate_authorization(&mut self, valid_values: &HashMap<String, String>) {
+//         match self {
+//             RequestEntry::Request(request) => {
+//                 if let Some(warning) = validate_selection(
+//                     &request.get_title(),
+//                     &mut request.selected_authorization,
+//                     "authorization",
+//                     valid_values,
+//                 ) {
+//                     request.set_validation_warnings(Some(vec![warning]));
+//                 }
+//             }
+//             RequestEntry::Group(group) => {
+//                 if let Some(warning) = validate_selection(
+//                     &group.get_title(),
+//                     &mut group.selected_authorization,
+//                     "authorization",
+//                     valid_values,
+//                 ) {
+//                     group.set_validation_warnings(Some(vec![warning]));
+//                 }
+//             }
+//         }
+//     }
 
-    fn validate_certificate(&mut self, valid_values: &HashMap<String, String>) {
-        match self {
-            RequestEntry::Request(request) => {
-                if let Some(warning) = validate_selection(
-                    &request.get_title(),
-                    &mut request.selected_certificate,
-                    "certificate",
-                    valid_values,
-                ) {
-                    request.set_validation_warnings(Some(vec![warning]));
-                }
-            }
-            RequestEntry::Group(group) => {
-                if let Some(warning) = validate_selection(
-                    &group.get_title(),
-                    &mut group.selected_certificate,
-                    "certificate",
-                    valid_values,
-                ) {
-                    group.set_validation_warnings(Some(vec![warning]));
-                }
-            }
-        }
-    }
+//     fn validate_certificate(&mut self, valid_values: &HashMap<String, String>) {
+//         match self {
+//             RequestEntry::Request(request) => {
+//                 if let Some(warning) = validate_selection(
+//                     &request.get_title(),
+//                     &mut request.selected_certificate,
+//                     "certificate",
+//                     valid_values,
+//                 ) {
+//                     request.set_validation_warnings(Some(vec![warning]));
+//                 }
+//             }
+//             RequestEntry::Group(group) => {
+//                 if let Some(warning) = validate_selection(
+//                     &group.get_title(),
+//                     &mut group.selected_certificate,
+//                     "certificate",
+//                     valid_values,
+//                 ) {
+//                     group.set_validation_warnings(Some(vec![warning]));
+//                 }
+//             }
+//         }
+//     }
 
-    fn validate_proxy(&mut self, valid_values: &HashMap<String, String>) {
-        match self {
-            RequestEntry::Request(request) => {
-                if let Some(warning) = validate_selection(
-                    &request.get_title(),
-                    &mut request.selected_proxy,
-                    "proxy",
-                    valid_values,
-                ) {
-                    request.set_validation_warnings(Some(vec![warning]));
-                }
-            }
-            RequestEntry::Group(group) => {
-                if let Some(warning) = validate_selection(
-                    &group.get_title(),
-                    &mut group.selected_proxy,
-                    "proxy",
-                    valid_values,
-                ) {
-                    group.set_validation_warnings(Some(vec![warning]));
-                }
-            }
-        }
-    }
+//     fn validate_proxy(&mut self, valid_values: &HashMap<String, String>) {
+//         match self {
+//             RequestEntry::Request(request) => {
+//                 if let Some(warning) = validate_selection(
+//                     &request.get_title(),
+//                     &mut request.selected_proxy,
+//                     "proxy",
+//                     valid_values,
+//                 ) {
+//                     request.set_validation_warnings(Some(vec![warning]));
+//                 }
+//             }
+//             RequestEntry::Group(group) => {
+//                 if let Some(warning) = validate_selection(
+//                     &group.get_title(),
+//                     &mut group.selected_proxy,
+//                     "proxy",
+//                     valid_values,
+//                 ) {
+//                     group.set_validation_warnings(Some(vec![warning]));
+//                 }
+//             }
+//         }
+//     }
 
-    fn validate_data(&mut self, valid_values: &HashMap<String, String>) {
-        match self {
-            RequestEntry::Request(request) => {
-                if let Some(warning) = validate_selection(
-                    &request.get_title(),
-                    &mut request.selected_data,
-                    "data",
-                    valid_values,
-                ) {
-                    request.set_validation_warnings(Some(vec![warning]));
-                }
-            }
-            RequestEntry::Group(group) => {
-                if let Some(warning) = validate_selection(
-                    &group.get_title(),
-                    &mut group.selected_data,
-                    "data",
-                    valid_values,
-                ) {
-                    group.set_validation_warnings(Some(vec![warning]));
-                }
-            }
-        }
-    }
-}
+//     fn validate_data(&mut self, valid_values: &HashMap<String, String>) {
+//         match self {
+//             RequestEntry::Request(request) => {
+//                 if let Some(warning) = validate_selection(
+//                     &request.get_title(),
+//                     &mut request.selected_data,
+//                     "data",
+//                     valid_values,
+//                 ) {
+//                     request.set_validation_warnings(Some(vec![warning]));
+//                 }
+//             }
+//             RequestEntry::Group(group) => {
+//                 if let Some(warning) = validate_selection(
+//                     &group.get_title(),
+//                     &mut group.selected_data,
+//                     "data",
+//                     valid_values,
+//                 ) {
+//                     group.set_validation_warnings(Some(vec![warning]));
+//                 }
+//             }
+//         }
+//     }
+// }
 
 /// HTTP methods for Apicize Requests
 impl RequestMethod {
@@ -529,8 +530,8 @@ impl CloneIdentifiable for Request {
 }
 
 impl Validated for Request {
-    fn get_validation_state(&self) -> &ValidationState {
-        &self.validation_state
+    fn get_validation_state(&self) -> ValidationState {
+        self.validation_state
     }
 
     fn get_validation_warnings(&self) -> &Option<Vec<String>> {
@@ -551,6 +552,33 @@ impl Validated for Request {
         self.validation_errors = errors;
         self.validation_state =
             ValidationState::from(&self.validation_warnings, &self.validation_errors);
+    }
+}
+
+impl Request {
+    pub fn perform_validation(&mut self) {
+        self.validate_name();
+        self.validate_url();
+    }
+
+    pub fn validate_name(&mut self) {
+        let name_ok = ! self.name.trim().is_empty();
+        if name_ok {
+            remove_validation_error(&mut self.validation_errors, "name");
+        } else {
+            add_validation_error(&mut self.validation_errors, "name", "Name is required");
+        }
+        self.validation_state.set(ValidationState::ERROR, self.validation_errors.is_some());
+    }
+
+    pub fn validate_url(&mut self) {
+        let url_ok = ! self.url.trim().is_empty();
+        if url_ok {
+            remove_validation_error(&mut self.validation_errors, "url");
+        } else {
+            add_validation_error(&mut self.validation_errors, "url", "URL is required");
+        }
+        self.validation_state.set(ValidationState::ERROR, self.validation_errors.is_some());
     }
 }
 
@@ -606,8 +634,8 @@ impl Default for RequestGroup {
 }
 
 impl Validated for RequestGroup {
-    fn get_validation_state(&self) -> &ValidationState {
-        &self.validation_state
+    fn get_validation_state(&self) -> ValidationState {
+        self.validation_state
     }
 
     fn get_validation_warnings(&self) -> &Option<Vec<String>> {
@@ -631,7 +659,30 @@ impl Validated for RequestGroup {
     }
 }
 
+impl RequestGroup {
+    pub fn perform_validation(&mut self) {
+        self.validate_name();
+    }
+
+    pub fn validate_name(&mut self) {
+        let name_ok = ! self.name.trim().is_empty();
+        if name_ok {
+            remove_validation_error(&mut self.validation_errors, "name");
+        } else {
+            add_validation_error(&mut self.validation_errors, "name", "Name is required");
+        }
+        self.validation_state.set(ValidationState::ERROR, self.validation_errors.is_some());
+    }
+}
+
 impl RequestEntry {
+    pub fn perform_validation(&mut self) {
+        match self {
+            RequestEntry::Request(request) => request.perform_validation(),
+            RequestEntry::Group(group) => group.perform_validation(),
+        }
+    }
+
     /// Utility function to perform string substitution based upon search/replace values in "subs"
     pub fn clone_and_sub(text: &str, subs: &HashMap<String, String>) -> String {
         if subs.is_empty() {
@@ -1070,3 +1121,4 @@ impl StoredRequestEntry {
         }
     }
 }
+

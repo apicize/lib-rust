@@ -1148,7 +1148,11 @@ async fn dispatch_request(
         .to_string();
 
     if url.is_empty() {
-        return Err(ApicizeError::Http { context: None, description: "Missing URL".to_string(), url: None });
+        return Err(ApicizeError::Http {
+            context: None,
+            description: "Missing URL".to_string(),
+            url: None,
+        });
     }
 
     if !(url.starts_with("https://") || url.starts_with("http://")) {
@@ -1231,7 +1235,7 @@ async fn dispatch_request(
                 send_credentials_in_body.unwrap_or(false),
                 scope,
                 audience,
-    context
+                context
                     .workspace
                     .certificates
                     .get_optional(&selected_certificate.as_ref().map(|c| c.id.clone())),
@@ -1283,7 +1287,7 @@ async fn dispatch_request(
         request_builder = request_builder.query(&query);
     }
 
-    // Add body, if applicable
+    // Add body, if applicable -xxxx
     let mut request_body: Option<ApicizeBody>;
     match &request.body {
         Some(RequestBody::Text { data }) => {
@@ -1294,7 +1298,12 @@ async fn dispatch_request(
             request_builder = request_builder.body(Body::from(s.clone()));
         }
         Some(RequestBody::JSON { data, .. }) => {
-            let s = RequestEntry::clone_and_sub(data, subs);
+            let escaped_subs = subs
+                .iter()
+                .map(|(n, v)| (n.to_string(), v.replace("\"", "\\\"")))
+                .collect::<HashMap<String, String>>();
+
+            let s = RequestEntry::clone_and_sub(data, &escaped_subs);
             request_body = match serde_json::from_str::<Value>(&s) {
                 Ok(data) => Some(ApicizeBody::JSON {
                     text: "".to_string(),
@@ -1472,7 +1481,12 @@ async fn dispatch_request(
                         url,
                         ApicizeHttpRequest {
                             url: request_url,
-                            method: request.method.as_ref().unwrap().as_str().to_string(),
+                            method: request
+                                .method
+                                .as_ref()
+                                .unwrap_or(&RequestMethod::Get)
+                                .as_str()
+                                .to_string(),
                             headers: request_headers,
                             body: request_body,
                         },
@@ -1559,8 +1573,6 @@ fn execute_request_test(
     let result = value.to_string(&scope);
     let s = result.unwrap().to_rust_string_lossy(&scope);
 
-    // println!("Test result: {}", &s);
-
     let test_response: ApicizeTestResponse = serde_json::from_str(&s).unwrap();
 
     Ok(Some(test_response))
@@ -1572,7 +1584,6 @@ fn flatten_test_results(
     parents: &[String],
 ) {
     if let Some(r) = results {
-        // println!("Results {}", serde_json::to_string(r).unwrap());
         for result in r {
             match &result {
                 ApicizeTestResult::Scenario(scenario) => {

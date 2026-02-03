@@ -5,7 +5,7 @@ use crate::VariableSourceType;
 use crate::{convert_json, extract_csv, extract_json, ApicizeError};
 use serde_json::{Map, Value};
 
-use super::{ExternalData, ExternalDataSourceType, Scenario, Variable};
+use super::{DataSet, DataSourceType, Scenario, Variable};
 
 /// Cached storage of variables that have been deserialized from files or data
 pub struct VariableCache {
@@ -55,15 +55,15 @@ impl VariableCache {
 
     pub fn get_external_data(
         &mut self,
-        data: &ExternalData,
+        data: &DataSet,
     ) -> &Result<Vec<Map<String, Value>>, ApicizeError> {
         self.data_cache.entry(data.name.clone()).or_insert_with(|| {
             let source = match data.source_type {
-                ExternalDataSourceType::JSON => convert_json(&data.name, &data.source),
-                ExternalDataSourceType::FileJSON => {
+                DataSourceType::JSON => convert_json(&data.name, &data.source),
+                DataSourceType::FileJSON => {
                     extract_json(&data.name, &data.source, &self.allowed_path)
                 }
-                ExternalDataSourceType::FileCSV => {
+                DataSourceType::FileCSV => {
                     extract_csv(&data.name, &data.source, &self.allowed_path)
                 }
             };

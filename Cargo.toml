@@ -1,6 +1,6 @@
 [package]
 name = "apicize_lib"
-version = "0.30.4"
+version = "0.30.5"
 edition = "2024"
 rust-version = "1.91"
 description = "Library supporting Apicize request dispatch, testing and serialization"
@@ -20,11 +20,11 @@ serde_json = { version = "^1.0.108", features = ["preserve_order"] }
 serde = { version = "^1.0.193", features = ["derive"] }
 mime = "^0.3.17"
 encoding_rs = "^0.8.33"
-serde_with = { version = "^3.4.0", features = ["base64"] }
+serde_with = { version = "^3.16.1", features = ["base64"] }
 async-recursion = "^1.0.5"
 uuid = { version = "^1.6.1", features = ["v4"] }
 async-trait = "^0.1.75"
-v8 = "^142"
+v8 = "^145"
 oauth2 = { version = "^5.0.0", features = ["reqwest"] }
 tokio-util = "^0.7.10"
 dirs = "^6"

@@ -4,7 +4,7 @@ use dirs::config_dir;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    delete_data_file, open_data_file, save_data_file, ApicizeError, Authorization, Certificate, Proxy, Scenario, SerializationSaveSuccess
+    ApicizeError, Authorization, Certificate, Proxy, Scenario, SerializationSaveSuccess, delete_data_file, open_data_file, save_data_file
 };
 
 /// Stored parameters, authorization, client certificates and proxies

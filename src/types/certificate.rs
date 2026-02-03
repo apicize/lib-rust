@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{ApicizeError, Identifiable, Validated, ValidationState, utility::*};
+use crate::{ApicizeError, Identifiable, Validated, ValidationState, add_validation_error, remove_validation_error, utility::*};
 use reqwest::{ClientBuilder, Identity};
 use serde::{Deserialize, Serialize};
 use serde_with::base64::{Base64, Standard};
@@ -134,7 +134,7 @@ impl Identifiable for Certificate {
     fn get_title(&self) -> String {
         let name = self.get_name();
         if name.is_empty() {
-            "(Unamed)".to_string()
+            "(Unnamed)".to_string()
         } else {
             name.to_string()
         }
@@ -178,17 +178,17 @@ impl CloneIdentifiable for Certificate {
 }
 
 impl Validated for Certificate {
-    fn get_validation_state(&self) -> &ValidationState {
+    fn get_validation_state(&self) -> ValidationState {
         match self {
             Certificate::PKCS12 {
                 validation_state, ..
-            } => validation_state,
+            } => *validation_state,
             Certificate::PKCS8PEM {
                 validation_state, ..
-            } => validation_state,
+            } => *validation_state,
             Certificate::PEM {
                 validation_state, ..
-            } => validation_state,
+            } => *validation_state,
         }
     }
 
@@ -266,4 +266,41 @@ impl Validated for Certificate {
             },
         }
     }
+}
+
+impl Certificate {
+    pub fn perform_validation(&mut self) {
+        if self.get_name().is_empty() {
+            self.set_validation_errors(Some(HashMap::from([(
+                "name".to_string(),
+                "Name is required".to_string(),
+            )])));
+        } else {
+            self.set_validation_errors(None);
+        }
+    }
+
+    pub fn validate_name(&mut self) {
+        let perform_validation = |name: &str, validation_errors: &mut Option<HashMap<String, String>>, validation_state: &mut ValidationState | {
+            let name_ok = ! name.trim().is_empty();
+            if name_ok {
+                remove_validation_error(validation_errors, "name");
+            } else {
+                add_validation_error(validation_errors, "name", "Name is required");
+            }
+            validation_state.set(ValidationState::ERROR, validation_errors.is_some());
+        };
+
+        match self {
+            Certificate::PKCS12 { name, validation_errors, validation_state, .. } => {
+                perform_validation(name, validation_errors, validation_state);
+            },
+            Certificate::PKCS8PEM { name, validation_errors, validation_state, .. } => {
+                perform_validation(name, validation_errors, validation_state);
+            },
+            Certificate::PEM { name, validation_errors, validation_state, .. } => {
+                perform_validation(name, validation_errors, validation_state);
+            },
+        }
+    }    
 }

@@ -1,6 +1,6 @@
 use crate::{Authorization, Certificate, Proxy, Scenario};
 use serde::{Deserialize, Serialize};
-use super::{ExternalData, StoredRequestEntry, WorkbookDefaultParameters};
+use super::{DataSet, StoredRequestEntry, WorkbookDefaultParameters};
 
 /// Persisted Apcizize requests and scenario definitions
 #[derive(Serialize, Deserialize, PartialEq)]
@@ -21,10 +21,10 @@ pub struct Workbook {
     /// Workbook proxy servers
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proxies: Option<Vec<Proxy>>,
-    /// External data
+    /// Workbook data sets
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Vec<ExternalData>>,
+    pub data: Option<Vec<DataSet>>,
     /// Workbook defaults
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub defaults: Option<WorkbookDefaultParameters>
+    pub defaults: Option<WorkbookDefaultParameters>    
 }

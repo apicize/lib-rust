@@ -89,7 +89,7 @@ pub fn get_absolute_file_name(
             }
         }
         None => Err(ApicizeError::Error {
-            description: "External scenario variable files are unavailable in an unsaved workbook"
+            description: "External data files are unavailable in an unsaved workbook"
                 .to_string(),
         }),
     }

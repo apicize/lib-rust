@@ -111,7 +111,7 @@ pub trait PersistedIndex<T> {
         Self: Sized;
 
     // Generate parameters from stored files
-    fn new(workbook: Option<&[T]>, private: Option<&[T]>, vault: Option<&[T]>) -> Self
+    fn new(workbook: Option<Vec<T>>, private: Option<Vec<T>>, vault: Option<Vec<T>>) -> Self
     where
         Self: Sized;
 }

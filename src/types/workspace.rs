@@ -3,11 +3,12 @@
 //! This submodule defines modules used to manage workspaces
 
 use crate::{
-    ApicizeError, Authorization, Certificate, ExecutionReportCsv, ExecutionReportFormat,
-    ExecutionReportJson, ExecutionResultSummary, ExternalDataSourceType, Identifiable,
+    ApicizeError, Authorization, Certificate, DataSourceType, ExecutionReportCsv,
+    ExecutionReportFormat, ExecutionReportJson, ExecutionResultSummary, Identifiable,
     PersistedIndex, Proxy, RequestEntry, Scenario, SelectedParameters, Selection,
     SerializationSaveSuccess, StoredRequestEntry, Workbook, WorkbookDefaultParameters,
-    open_data_file, open_data_stream, save_data_file,
+    indexed_entities::NO_SELECTION_ID, open_data_file, open_data_stream, save_data_file,
+    selected_parameters::SelectableParameters,
 };
 
 use csv::WriterBuilder;
@@ -22,10 +23,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use super::{
-    ExternalData, IndexedEntities, Parameters, VariableCache, indexed_entities::NO_SELECTION_ID,
-    validated_selected_parameters::ValidatedSelectedParameters,
-};
+use super::{DataSet, IndexedEntities, Parameters, VariableCache};
 
 /// Data type for entities used by Apicize during testing and editing.  This will be
 /// the combination of ,  credential and global settings values
@@ -47,8 +45,8 @@ pub struct Workspace {
     /// Proxies for the workspace
     pub proxies: IndexedEntities<Proxy>,
 
-    /// External data for the workspace
-    pub data: Vec<ExternalData>,
+    /// Data sets for the workspace
+    pub data: IndexedEntities<DataSet>,
 
     /// Default values for requests and groups
     pub defaults: WorkbookDefaultParameters,
@@ -62,27 +60,19 @@ impl Workspace {
 
         Ok(Workspace {
             requests: IndexedEntities::<RequestEntry>::default(),
-            scenarios: IndexedEntities::<Scenario>::new(
-                None,
-                None,
-                global_parameters.scenarios.as_deref(),
-            ),
+            scenarios: IndexedEntities::<Scenario>::new(None, None, global_parameters.scenarios),
             authorizations: IndexedEntities::<Authorization>::new(
                 None,
                 None,
-                global_parameters.authorizations.as_deref(),
+                global_parameters.authorizations,
             ),
             certificates: IndexedEntities::<Certificate>::new(
                 None,
                 None,
-                global_parameters.certificates.as_deref(),
+                global_parameters.certificates,
             ),
-            proxies: IndexedEntities::<Proxy>::new(
-                None,
-                None,
-                global_parameters.proxies.as_deref(),
-            ),
-            data: Vec::new(),
+            proxies: IndexedEntities::<Proxy>::new(None, None, global_parameters.proxies),
+            data: IndexedEntities::default(),
             defaults: WorkbookDefaultParameters::default(),
         })
     }
@@ -103,6 +93,7 @@ impl Workspace {
             None => open_data_stream("STDIN".to_string(), &mut stdin()),
         }?
         .data;
+
         // Load private parameters if file exists
         let private_parameters = match workbook_file_name {
             Some(input_file_name) => Parameters::open(
@@ -167,7 +158,7 @@ impl Workspace {
             workbook.defaults.as_mut().unwrap().selected_proxy = Some(s);
         }
 
-        // If seed is specified, then match by ID or name
+        // Commnad line seed may be an ID, a name or a file name
         if let Some(seed) = override_data_seed {
             let mut found_data = false;
 
@@ -205,8 +196,8 @@ impl Workspace {
                         .to_string_lossy()
                         .to_ascii_lowercase();
                     let source_type = match ext.as_str() {
-                        "json" => ExternalDataSourceType::FileJSON,
-                        "csv" => ExternalDataSourceType::FileCSV,
+                        "json" => DataSourceType::FileJSON,
+                        "csv" => DataSourceType::FileCSV,
                         _ => {
                             return Err(ApicizeError::Error {
                                 description: format!(
@@ -216,7 +207,7 @@ impl Workspace {
                         }
                     };
 
-                    let default_data = ExternalData {
+                    let default_data = DataSet {
                         source_type,
                         source: seed,
                         ..Default::default()
@@ -290,7 +281,7 @@ impl Workspace {
     }
 
     /// Build a workspace based upon the workbook file, private params file and global params
-    pub fn build_workspace(
+    fn build_workspace(
         workbook: Workbook,
         private_parameters: Parameters,
         global_parameters: Parameters,
@@ -302,80 +293,142 @@ impl Workspace {
             .collect::<Vec<RequestEntry>>();
 
         let mut workspace = Workspace {
-            requests: IndexedEntities::new(&workspace_requests),
+            requests: IndexedEntities::<RequestEntry>::new(&workspace_requests),
             scenarios: IndexedEntities::<Scenario>::new(
-                workbook.scenarios.as_deref(),
-                private_parameters.scenarios.as_deref(),
-                global_parameters.scenarios.as_deref(),
+                workbook.scenarios,
+                private_parameters.scenarios,
+                global_parameters.scenarios,
             ),
             authorizations: IndexedEntities::<Authorization>::new(
-                workbook.authorizations.as_deref(),
-                private_parameters.authorizations.as_deref(),
-                global_parameters.authorizations.as_deref(),
+                workbook.authorizations,
+                private_parameters.authorizations,
+                global_parameters.authorizations,
             ),
             certificates: IndexedEntities::<Certificate>::new(
-                workbook.certificates.as_deref(),
-                private_parameters.certificates.as_deref(),
-                global_parameters.certificates.as_deref(),
+                workbook.certificates,
+                private_parameters.certificates,
+                global_parameters.certificates,
             ),
             proxies: IndexedEntities::<Proxy>::new(
-                workbook.proxies.as_deref(),
-                private_parameters.proxies.as_deref(),
-                global_parameters.proxies.as_deref(),
+                workbook.proxies,
+                private_parameters.proxies,
+                global_parameters.proxies,
             ),
-            data: workbook.data.unwrap_or_default(),
+            data: IndexedEntities::<DataSet>::new(workbook.data),
             defaults: workbook.defaults.unwrap_or_default(),
         };
 
-        workspace.validate_selections();
+        workspace.perform_all_validations();
 
         Ok(workspace)
     }
 
-    /// Validate the default scenarios, etc. selected for testing
-    pub fn validate_selections(&mut self) {
-        let scenarios = self
-            .scenarios
+    pub fn perform_all_validations(&mut self) {
+        self.requests
             .entities
-            .iter()
-            .map(|(id, e)| (id.clone(), e.get_name().to_string()))
-            .collect::<HashMap<String, String>>();
-        let authorizations = self
+            .values_mut()
+            .for_each(|entity| entity.perform_validation());
+
+        self.scenarios
+            .entities
+            .values_mut()
+            .for_each(|entity| entity.perform_validation());
+
+        self.authorizations
+            .entities
+            .values_mut()
+            .for_each(|entity| entity.perform_validation());
+
+        self.certificates
+            .entities
+            .values_mut()
+            .for_each(|entity| entity.perform_validation());
+
+        self.proxies
+            .entities
+            .values_mut()
+            .for_each(|entity| entity.perform_validation());
+
+        self.data
+            .entities
+            .values_mut()
+            .for_each(|entity| entity.perform_validation());
+
+        self.validate_selections();
+    }
+
+    pub fn validate_selections(&mut self) -> Option<InvalidSelections> {
+        let selectables = self.get_selectables();
+        let invalid_request_ids = self
+            .requests
+            .entities
+            .values_mut()
+            .filter_map(|e| {
+                if selectables.validate_request_or_group(e) {
+                    None
+                } else {
+                    Some(e.get_id().to_string())
+                }
+            })
+            .collect::<Vec<String>>();
+        let invalid_auth_ids = self
             .authorizations
             .entities
-            .iter()
-            .map(|(id, e)| (id.clone(), e.get_name().to_string()))
-            .collect::<HashMap<String, String>>();
-        let certificates = self
-            .certificates
-            .entities
-            .iter()
-            .map(|(id, e)| (id.clone(), e.get_name().to_string()))
-            .collect::<HashMap<String, String>>();
-        let proxies = self
-            .proxies
-            .entities
-            .iter()
-            .map(|(id, e)| (id.clone(), e.get_name().to_string()))
-            .collect::<HashMap<String, String>>();
-        let data = self
-            .data
-            .iter()
-            .map(|d| (d.id.clone(), d.name.clone()))
-            .collect::<HashMap<String, String>>();
+            .values_mut()
+            .filter_map(|e| {
+                if selectables.validate_authorization(e) {
+                    None
+                } else {
+                    Some(e.get_id().to_string())
+                }
+            })
+            .collect::<Vec<String>>();
 
-        self.defaults.validate_scenario(&scenarios);
-        self.defaults.validate_authorization(&authorizations);
-        self.defaults.validate_certificate(&certificates);
-        self.defaults.validate_proxy(&proxies);
-        self.defaults.validate_data(&data);
+        let defaults_valid = !selectables.validate_request_or_group(&mut self.defaults);
 
-        for entity in self.requests.entities.values_mut() {
-            entity.validate_scenario(&scenarios);
-            entity.validate_authorization(&authorizations);
-            entity.validate_certificate(&certificates);
-            entity.validate_proxy(&proxies);
-            entity.validate_data(&data);
+        if !invalid_request_ids.is_empty() || !invalid_auth_ids.is_empty() || !defaults_valid {
+            Some(InvalidSelections {
+                request_or_group_ids: invalid_request_ids,
+                authorization_ids: invalid_auth_ids,
+                defaults: defaults_valid,
+            })
+        } else {
+            None
+        }
+    }
+
+    fn get_selectables(&self) -> SelectableParameters {
+        SelectableParameters {
+            scenarios: self
+                .scenarios
+                .entities
+                .values()
+                .map(|e| (e.id.clone(), e.name.clone()))
+                .collect::<HashMap<String, String>>(),
+            authorizations: self
+                .authorizations
+                .entities
+                .values()
+                .map(|e| (e.get_id().to_string(), e.get_name().to_string()))
+                .collect::<HashMap<String, String>>(),
+            certificates: self
+                .certificates
+                .entities
+                .values()
+                .map(|e| (e.get_id().to_string(), e.get_name().to_string()))
+                .collect::<HashMap<String, String>>(),
+            proxies: self
+                .proxies
+                .entities
+                .values()
+                .map(|e| (e.id.clone(), e.name.clone()))
+                .collect::<HashMap<String, String>>(),
+            data: self
+                .data
+                .entities
+                .values()
+                .map(|e| (e.id.clone(), e.name.clone()))
+                .collect::<HashMap<String, String>>(),
         }
     }
 
@@ -402,7 +455,32 @@ impl Workspace {
                 if entities.is_empty() {
                     None
                 } else {
-                    Some(entities.to_vec())
+                    // Don't save selected certificates or proxies set to None
+                    let mut clone = entities.clone();
+                    clone.iter_mut().for_each(|auth| {
+                        if let Authorization::OAuth2Client {
+                            selected_certificate,
+                            selected_proxy,
+                            ..
+                        } = auth
+                        {
+                            if selected_certificate
+                                .as_ref()
+                                .map(|s| s.id == NO_SELECTION_ID)
+                                .unwrap_or(false)
+                            {
+                                *selected_certificate = None;
+                            }
+                            if selected_proxy
+                                .as_ref()
+                                .map(|s| s.id == NO_SELECTION_ID)
+                                .unwrap_or(false)
+                            {
+                                *selected_proxy = None;
+                            }
+                        }
+                    });
+                    Some(clone)
                 }
             }
             None => None,
@@ -430,13 +508,52 @@ impl Workspace {
             None => None,
         };
 
-        let save_data = match self.data.is_empty() {
-            true => None,
-            false => Some(self.data.to_vec()),
-        };
-
         let save_defaults = match self.defaults.any_values_set() {
-            true => Some(self.defaults.clone()),
+            true => {
+                // Do not save default selections explicitly set to None
+                let mut clone = self.defaults.clone();
+                if clone
+                    .selected_scenario
+                    .as_ref()
+                    .map(|s| s.id == NO_SELECTION_ID)
+                    .unwrap_or(false)
+                {
+                    clone.selected_scenario = None;
+                }
+                if clone
+                    .selected_authorization
+                    .as_ref()
+                    .map(|s| s.id == NO_SELECTION_ID)
+                    .unwrap_or(false)
+                {
+                    clone.selected_authorization = None;
+                }
+                if clone
+                    .selected_certificate
+                    .as_ref()
+                    .map(|s| s.id == NO_SELECTION_ID)
+                    .unwrap_or(false)
+                {
+                    clone.selected_certificate = None;
+                }
+                if clone
+                    .selected_proxy
+                    .as_ref()
+                    .map(|s| s.id == NO_SELECTION_ID)
+                    .unwrap_or(false)
+                {
+                    clone.selected_proxy = None;
+                }
+                if clone
+                    .selected_data
+                    .as_ref()
+                    .map(|s| s.id == NO_SELECTION_ID)
+                    .unwrap_or(false)
+                {
+                    clone.selected_data = None;
+                }
+                Some(clone)
+            }
             false => None,
         };
 
@@ -447,6 +564,29 @@ impl Workspace {
             .map(StoredRequestEntry::from_workspace)
             .collect();
 
+        let mut stored_data = self
+            .data
+            .entities
+            .values()
+            .cloned()
+            .collect::<Vec<DataSet>>();
+
+        stored_data.sort_by(|a, b| {
+            let idx_a = self
+                .data
+                .top_level_ids
+                .iter()
+                .position(|i| i == &a.id)
+                .unwrap_or(0);
+            let idx_b = self
+                .data
+                .top_level_ids
+                .iter()
+                .position(|i| i == &b.id)
+                .unwrap_or(0);
+            idx_a.cmp(&idx_b)
+        });
+
         let workbook = Workbook {
             version: 1.0,
             requests: stored_requests,
@@ -454,7 +594,11 @@ impl Workspace {
             authorizations: save_authorizations,
             certificates: save_certiificates,
             proxies: save_proxies,
-            data: save_data,
+            data: if stored_data.is_empty() {
+                None
+            } else {
+                Some(stored_data)
+            },
             defaults: save_defaults,
         };
 
@@ -506,7 +650,7 @@ impl Workspace {
         let mut authorization: Option<&Authorization> = None;
         let mut certificate: Option<&Certificate> = None;
         let mut proxy: Option<&Proxy> = None;
-        let mut data: Option<&ExternalData> = None;
+        let mut data: Option<&DataSet> = None;
 
         let mut auth_certificate_id: Option<String> = None;
         let mut auth_proxy_id: Option<String> = None;
@@ -565,17 +709,16 @@ impl Workspace {
                     }
                 }
             }
-            if allow_data
-                && data.is_none()
-                && let Some(sd) = current.selected_data()
-            {
-                if sd.id == NO_SELECTION_ID {
-                    allow_data = false;
-                } else if let Some(matching_data) = self.data.iter().find(|d| d.id == sd.id) {
-                    data = Some(matching_data);
-                } else {
-                    allow_data = false;
-                };
+            if allow_data && data.is_none() {
+                match self.data.find(current.selected_data()) {
+                    SelectedOption::UseDefault => {}
+                    SelectedOption::Off => {
+                        allow_data = false;
+                    }
+                    SelectedOption::Some(p) => {
+                        data = Some(p);
+                    }
+                }
             }
 
             done = (scenario.is_some() || !allow_scenario)
@@ -642,21 +785,12 @@ impl Workspace {
         {
             proxy = Some(p);
         }
+
         if data.is_none()
             && allow_data
-            && let Some(selected_data) = &self.defaults.selected_data
+            && let SelectedOption::Some(p) = self.data.find(&self.defaults.selected_data)
         {
-            if selected_data.id == NO_SELECTION_ID {
-                allow_data = false;
-            } else if let Some(selected_data) = self
-                .data
-                .iter()
-                .find(|data| data.id == selected_data.id || data.name == selected_data.name)
-            {
-                data = Some(selected_data);
-            } else {
-                allow_data = false;
-            }
+            data = Some(p);
         }
 
         // Set up OAuth2 cert/proxy if specified
@@ -791,20 +925,12 @@ impl Workspace {
                 let mut name_parts = Vec::from(parent_names);
                 let is_first = parent_names.is_empty();
                 let name_part = if !is_first
-                    && summary.row_number.is_some()
-                    && summary.row_count.is_some()
+                    && let Some(row_number) = summary.row_number
+                    && let Some(row_count) = summary.row_count
                 {
-                    &format!(
-                        "Row {} of {}",
-                        &summary.row_number.unwrap(),
-                        &summary.row_count.unwrap()
-                    )
-                } else if !is_first && summary.run_number.is_some() && summary.run_count.is_some() {
-                    &format!(
-                        "Run {} of {}",
-                        &summary.run_number.unwrap(),
-                        &summary.run_count.unwrap()
-                    )
+                    &format!("Row {row_number} of {row_count}")
+                } else if !is_first && let Some(run_number) = summary.run_number && let Some(run_count) = summary.run_count {
+                    &format!("Run {run_number} of {run_count}")
                 } else {
                     &summary.name
                 };
@@ -1024,4 +1150,12 @@ pub enum SelectedOption<T> {
     Off,
     /// Use this value
     Some(T),
+}
+
+/// List of all invalid selections (requests, groups or auths with
+/// selections that are no longer valid)
+pub struct InvalidSelections {
+    pub request_or_group_ids: Vec<String>,
+    pub authorization_ids: Vec<String>,
+    pub defaults: bool,
 }
