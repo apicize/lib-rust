@@ -27,6 +27,9 @@ pub struct DataSet {
     pub source_type: DataSourceType,
     /// Source of the data set
     pub source: String,
+    /// Any error associated with the source (missing, formatting, etc.)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_error: Option<String>,
     /// Validation state
     #[serde(default, skip_serializing_if = "ValidationState::is_empty")]
     pub validation_state: ValidationState,
@@ -71,6 +74,7 @@ impl Default for DataSet {
             name: String::default(),
             source_type: DataSourceType::JSON,
             source: String::default(),
+            source_error: None,
             validation_state: ValidationState::default(),
             validation_warnings: None,
             validation_errors: None,
@@ -122,13 +126,14 @@ impl DataSet {
     }
 
     pub fn validate_source(&mut self) {
-        let source_ok = self.source_type == DataSourceType::JSON || ! self.source.trim().is_empty();
-        if source_ok {
-            remove_validation_error(&mut self.validation_errors, "source");
-        } else {
-            add_validation_error(&mut self.validation_errors, "source", "Source file name is required");
+        match &mut self.source_error {
+            Some(source_error) => {
+                add_validation_error(&mut self.validation_errors, "source", source_error);
+            },
+            None => {
+                remove_validation_error(&mut self.validation_errors, "source");    
+            }
         }
         self.validation_state.set(ValidationState::ERROR, self.validation_errors.is_some());
     }
-
 }

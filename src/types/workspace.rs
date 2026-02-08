@@ -3,12 +3,7 @@
 //! This submodule defines modules used to manage workspaces
 
 use crate::{
-    ApicizeError, Authorization, Certificate, DataSourceType, ExecutionReportCsv,
-    ExecutionReportFormat, ExecutionReportJson, ExecutionResultSummary, Identifiable,
-    PersistedIndex, Proxy, RequestEntry, Scenario, SelectedParameters, Selection,
-    SerializationSaveSuccess, StoredRequestEntry, Workbook, WorkbookDefaultParameters,
-    indexed_entities::NO_SELECTION_ID, open_data_file, open_data_stream, save_data_file,
-    selected_parameters::SelectableParameters,
+    ApicizeError, Authorization, Certificate, DataSourceType, ExecutionReportCsv, ExecutionReportFormat, ExecutionReportJson, ExecutionResultSummary, Identifiable, PersistedIndex, Proxy, RequestEntry, Scenario, SelectedParameters, Selection, SerializationSaveSuccess, StoredRequestEntry, Validated, Workbook, WorkbookDefaultParameters, indexed_entities::NO_SELECTION_ID, open_data_file, open_data_stream, save_data_file, selected_parameters::SelectableParameters
 };
 
 use csv::WriterBuilder;
@@ -437,30 +432,37 @@ impl Workspace {
         &self,
         workbook_path: &PathBuf,
     ) -> Result<Vec<SerializationSaveSuccess>, ApicizeError> {
+        fn clone_to_storage<T: Validated + Clone>(parameter: &T) -> T {
+            let mut cloned = parameter.clone();
+            cloned.set_validation_errors(None);
+            cloned.set_validation_warnings(None);
+            cloned
+        }
+
         let mut successes: Vec<SerializationSaveSuccess> = vec![];
 
-        let save_scenarios = match self.scenarios.get_workbook() {
+        let stored_scenarios = match self.scenarios.get_workbook() {
             Some(entities) => {
                 if entities.is_empty() {
                     None
                 } else {
-                    Some(entities.to_vec())
+                    Some(entities.iter().map(clone_to_storage).collect())
                 }
             }
             None => None,
         };
 
-        let save_authorizations = match self.authorizations.get_workbook() {
+        let stored_authorizations: Option<Vec<Authorization>> = match self.authorizations.get_workbook() {
             Some(entities) => {
                 if entities.is_empty() {
                     None
                 } else {
                     // Don't save selected certificates or proxies set to None
-                    let mut clone = entities.clone();
-                    clone.iter_mut().for_each(|auth| {
+                    Some(entities.iter().map(|auth| {
+                        let mut auth = clone_to_storage(auth);
                         if let Authorization::OAuth2Client {
-                            selected_certificate,
-                            selected_proxy,
+                            ref mut selected_certificate,
+                            ref mut selected_proxy,
                             ..
                         } = auth
                         {
@@ -479,81 +481,81 @@ impl Workspace {
                                 *selected_proxy = None;
                             }
                         }
-                    });
-                    Some(clone)
+                        auth
+                    }).collect())
                 }
             }
             None => None,
         };
 
-        let save_certiificates = match self.certificates.get_workbook() {
+        let stored_certiificates = match self.certificates.get_workbook() {
             Some(entities) => {
                 if entities.is_empty() {
                     None
                 } else {
-                    Some(entities.to_vec())
+                    Some(entities.iter().map(clone_to_storage).collect())
                 }
             }
             None => None,
         };
 
-        let save_proxies = match self.proxies.get_workbook() {
+        let stored_proxies = match self.proxies.get_workbook() {
             Some(entities) => {
                 if entities.is_empty() {
                     None
                 } else {
-                    Some(entities.to_vec())
+                    Some(entities.iter().map(clone_to_storage).collect())
                 }
             }
             None => None,
         };
 
-        let save_defaults = match self.defaults.any_values_set() {
+        let stored_defaults = match self.defaults.any_values_set() {
             true => {
                 // Do not save default selections explicitly set to None
-                let mut clone = self.defaults.clone();
-                if clone
+                let mut defaults = clone_to_storage(&self.defaults);
+                if defaults
                     .selected_scenario
                     .as_ref()
                     .map(|s| s.id == NO_SELECTION_ID)
                     .unwrap_or(false)
                 {
-                    clone.selected_scenario = None;
+                    defaults.selected_scenario = None;
                 }
-                if clone
+                if defaults
                     .selected_authorization
                     .as_ref()
                     .map(|s| s.id == NO_SELECTION_ID)
                     .unwrap_or(false)
                 {
-                    clone.selected_authorization = None;
+                    defaults.selected_authorization = None;
                 }
-                if clone
+                if defaults
                     .selected_certificate
                     .as_ref()
                     .map(|s| s.id == NO_SELECTION_ID)
                     .unwrap_or(false)
                 {
-                    clone.selected_certificate = None;
+                    defaults.selected_certificate = None;
                 }
-                if clone
+                if defaults
                     .selected_proxy
                     .as_ref()
                     .map(|s| s.id == NO_SELECTION_ID)
                     .unwrap_or(false)
                 {
-                    clone.selected_proxy = None;
+                    defaults.selected_proxy = None;
                 }
-                if clone
+                if defaults
                     .selected_data
                     .as_ref()
                     .map(|s| s.id == NO_SELECTION_ID)
                     .unwrap_or(false)
                 {
-                    clone.selected_data = None;
+                    defaults.selected_data = None;
                 }
-                Some(clone)
-            }
+                Some(defaults)
+            },
             false => None,
         };
 
@@ -568,7 +570,13 @@ impl Workspace {
             .data
             .entities
             .values()
-            .cloned()
+            .map(|ds| {
+                let mut ds = ds.clone();
+                ds.source_error = None;
+                ds.validation_warnings = None;
+                ds.validation_errors = None;
+                ds
+            })
             .collect::<Vec<DataSet>>();
 
         stored_data.sort_by(|a, b| {
@@ -590,16 +598,16 @@ impl Workspace {
         let workbook = Workbook {
             version: 1.0,
             requests: stored_requests,
-            scenarios: save_scenarios,
-            authorizations: save_authorizations,
-            certificates: save_certiificates,
-            proxies: save_proxies,
+            scenarios: stored_scenarios,
+            authorizations: stored_authorizations,
+            certificates: stored_certiificates,
+            proxies: stored_proxies,
             data: if stored_data.is_empty() {
                 None
             } else {
                 Some(stored_data)
             },
-            defaults: save_defaults,
+            defaults: stored_defaults,
         };
 
         match save_data_file(workbook_path, &workbook) {

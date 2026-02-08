@@ -897,9 +897,6 @@ pub struct StoredRequest {
     /// Selected external data, if any
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selected_data: Option<Selection>,
-    /// Populated with any warnings regarding how the request is set up
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub warnings: Option<Vec<String>>,
 }
 
 /// A group of Apicize Requests
@@ -940,9 +937,6 @@ pub struct StoredRequestGroup {
     /// Selected external data, if any
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selected_data: Option<Selection>,
-    /// Populated with any warnings regarding how the group is set up
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub warnings: Option<Vec<String>>,
 }
 
 /// Apcize Request that is either a specific request to run (Info)
@@ -1005,7 +999,6 @@ impl StoredRequestEntry {
                 selected_certificate: request.selected_certificate,
                 selected_proxy: request.selected_proxy,
                 selected_data: request.selected_data,
-                warnings: request.validation_warnings,
             }),
             RequestEntry::Group(group) => StoredRequestEntry::Group(StoredRequestGroup {
                 id: group.id,
@@ -1029,7 +1022,6 @@ impl StoredRequestEntry {
                 selected_certificate: group.selected_certificate,
                 selected_proxy: group.selected_proxy,
                 selected_data: group.selected_data,
-                warnings: group.validation_warnings,
             }),
         }
     }
@@ -1088,7 +1080,7 @@ impl StoredRequestEntry {
                 selected_certificate: stored_request.selected_certificate,
                 selected_proxy: stored_request.selected_proxy,
                 selected_data: stored_request.selected_data,
-                validation_warnings: stored_request.warnings,
+                validation_warnings: None,
                 validation_errors: None,
             }),
             StoredRequestEntry::Group(group) => RequestEntry::Group(RequestGroup {
@@ -1115,7 +1107,7 @@ impl StoredRequestEntry {
                 selected_certificate: group.selected_certificate,
                 selected_proxy: group.selected_proxy,
                 selected_data: group.selected_data,
-                validation_warnings: group.warnings,
+                validation_warnings: None,
                 validation_errors: None,
             }),
         }

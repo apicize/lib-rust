@@ -1,5 +1,11 @@
 # Change Log
 
+# 0.30.6
+
+* Fix PATCH calls
+* Standardize data set source error handling
+* Remove warnings from stored requests
+
 # 0.30.5
 
 * Re-implement validation (warnings and errors)

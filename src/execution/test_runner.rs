@@ -1067,15 +1067,16 @@ async fn dispatch_request(
     ApicizeError,
 > {
     let request = context.get_request(request_id)?;
-    let method = match request.method {
+
+    let method = match &request.method {
         Some(RequestMethod::Get) => reqwest::Method::GET,
         Some(RequestMethod::Post) => reqwest::Method::POST,
+        Some(RequestMethod::Patch) => reqwest::Method::PATCH,
         Some(RequestMethod::Put) => reqwest::Method::PUT,
         Some(RequestMethod::Delete) => reqwest::Method::DELETE,
         Some(RequestMethod::Head) => reqwest::Method::HEAD,
         Some(RequestMethod::Options) => reqwest::Method::OPTIONS,
         None => reqwest::Method::GET,
-        _ => panic!("Invalid method"),
     };
 
     let timeout = if context.single_run_no_timeout {
