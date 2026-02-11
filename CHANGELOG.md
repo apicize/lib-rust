@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.30.7
+
+* Move ExecutionResultBuilder back to lib
+
 # 0.30.6
 
 * Fix PATCH calls

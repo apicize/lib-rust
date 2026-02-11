@@ -90,16 +90,11 @@ pub struct ExecutionReportJson {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ExecutionReportCsv {
-    // /// Set to run number if a multi-run execution from CLI tool
-    // #[serde(rename = "Run #")]
-    // pub run_number: Option<usize>,
+    /// This is the executing application run number, not that assigned to requests/groups
+    #[serde(rename = "Run Number")]
+    pub run_number: usize,
 
-    // /// Set to run number if a multi-run execution from CLI tool
-    // #[serde(rename = "Row #")]
-    // pub row_number: Option<usize>,
-    /// Fully qualified request name
     #[serde(rename = "Name")]
     pub name: String,
 
@@ -160,9 +155,97 @@ pub struct ExecutionReportCsv {
     pub test_error: Option<String>,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ExecutionReportCsvSingleRun {
+    #[serde(rename = "Name")]
+    pub name: String,
+
+    /// Optional referential key
+    #[serde(rename = "Key")]
+    pub key: Option<String>,
+
+    /// Execution start (millisecond offset from start)
+    #[serde(rename = "Executed At")]
+    pub executed_at: u128,
+
+    /// Duration of execution (milliseconds)
+    #[serde(rename = "Duration")]
+    pub duration: u128,
+
+    /// Method for request
+    #[serde(rename = "Method")]
+    pub method: Option<String>,
+
+    /// URL for request
+    #[serde(rename = "URL")]
+    pub url: Option<String>,
+
+    /// Whether the request executed and tests succeeded
+    #[serde(rename = "Success")]
+    pub success: ExecutionResultSuccess,
+
+    /// HTTP status code
+    #[serde(rename = "Status")]
+    pub status: Option<u16>,
+
+    /// HTTP status text
+    #[serde(rename = "Status Text")]
+    pub status_text: Option<String>,
+
+    /// Human readable name of the test
+    #[serde(rename = "Test Name")]
+    pub test_name: Option<String>,
+
+    /// Associative tag name
+    #[serde(rename = "Test Tag")]
+    pub test_tag: Option<String>,
+
+    /// Whether or not the test executed and passed successful
+    #[serde(rename = "Test Success")]
+    pub test_success: Option<bool>,
+
+    /// Console I/O generated during the test
+    #[serde(rename = "Test Logs")]
+    pub test_logs: Option<String>,
+
+    /// Error on dispatch or error execution
+    #[serde(rename = "Error")]
+    pub error: Option<ApicizeError>,
+
+    /// Error generated during the test
+    #[serde(rename = "Test Error")]
+    pub test_error: Option<String>,
+}
+
+impl ExecutionReportCsvSingleRun {
+    pub fn from(csv: ExecutionReportCsv) -> Self {
+        ExecutionReportCsvSingleRun {
+            name: csv.name,
+            duration: csv.duration,
+            key: csv.key,
+            executed_at: csv.executed_at,
+            method: csv.method,
+            url: csv.url,
+            success: csv.success,
+            status: csv.status,
+            status_text: csv.status_text,
+            test_name: csv.test_name,
+            test_tag: csv.test_tag,
+            test_success: csv.test_success,
+            test_logs: csv.test_logs,
+            error: csv.error,
+            test_error: csv.test_error,
+        }
+    }
+}
+
 impl ExecutionReportJson {
     /// Create ExecutionReportJson from ExecutionResultSummary reference with optional children
-    pub fn from_summary(summary: &ExecutionResultSummary, children: Option<Vec<ExecutionReportJson>>, test_results: Option<Vec<ApicizeTestBehavior>>) -> Self {
+    pub fn from_summary(
+        summary: &ExecutionResultSummary,
+        children: Option<Vec<ExecutionReportJson>>,
+        test_results: Option<Vec<ApicizeTestBehavior>>,
+    ) -> Self {
         Self {
             name: summary.name.clone(),
             key: summary.key.clone(),

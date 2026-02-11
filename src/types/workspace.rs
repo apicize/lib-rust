@@ -3,7 +3,12 @@
 //! This submodule defines modules used to manage workspaces
 
 use crate::{
-    ApicizeError, Authorization, Certificate, DataSourceType, ExecutionReportCsv, ExecutionReportFormat, ExecutionReportJson, ExecutionResultSummary, Identifiable, PersistedIndex, Proxy, RequestEntry, Scenario, SelectedParameters, Selection, SerializationSaveSuccess, StoredRequestEntry, Validated, Workbook, WorkbookDefaultParameters, indexed_entities::NO_SELECTION_ID, open_data_file, open_data_stream, save_data_file, selected_parameters::SelectableParameters
+    ApicizeError, Authorization, Certificate, DataSourceType, ExecutionReportCsv,
+    ExecutionReportCsvSingleRun, ExecutionReportFormat, ExecutionReportJson,
+    ExecutionResultSummary, Identifiable, PersistedIndex, Proxy, RequestEntry, Scenario,
+    SelectedParameters, Selection, SerializationSaveSuccess, StoredRequestEntry, Validated,
+    Workbook, WorkbookDefaultParameters, indexed_entities::NO_SELECTION_ID, open_data_file,
+    open_data_stream, save_data_file, selected_parameters::SelectableParameters,
 };
 
 use csv::WriterBuilder;
@@ -452,41 +457,47 @@ impl Workspace {
             None => None,
         };
 
-        let stored_authorizations: Option<Vec<Authorization>> = match self.authorizations.get_workbook() {
-            Some(entities) => {
-                if entities.is_empty() {
-                    None
-                } else {
-                    // Don't save selected certificates or proxies set to None
-                    Some(entities.iter().map(|auth| {
-                        let mut auth = clone_to_storage(auth);
-                        if let Authorization::OAuth2Client {
-                            ref mut selected_certificate,
-                            ref mut selected_proxy,
-                            ..
-                        } = auth
-                        {
-                            if selected_certificate
-                                .as_ref()
-                                .map(|s| s.id == NO_SELECTION_ID)
-                                .unwrap_or(false)
-                            {
-                                *selected_certificate = None;
-                            }
-                            if selected_proxy
-                                .as_ref()
-                                .map(|s| s.id == NO_SELECTION_ID)
-                                .unwrap_or(false)
-                            {
-                                *selected_proxy = None;
-                            }
-                        }
-                        auth
-                    }).collect())
+        let stored_authorizations: Option<Vec<Authorization>> =
+            match self.authorizations.get_workbook() {
+                Some(entities) => {
+                    if entities.is_empty() {
+                        None
+                    } else {
+                        // Don't save selected certificates or proxies set to None
+                        Some(
+                            entities
+                                .iter()
+                                .map(|auth| {
+                                    let mut auth = clone_to_storage(auth);
+                                    if let Authorization::OAuth2Client {
+                                        ref mut selected_certificate,
+                                        ref mut selected_proxy,
+                                        ..
+                                    } = auth
+                                    {
+                                        if selected_certificate
+                                            .as_ref()
+                                            .map(|s| s.id == NO_SELECTION_ID)
+                                            .unwrap_or(false)
+                                        {
+                                            *selected_certificate = None;
+                                        }
+                                        if selected_proxy
+                                            .as_ref()
+                                            .map(|s| s.id == NO_SELECTION_ID)
+                                            .unwrap_or(false)
+                                        {
+                                            *selected_proxy = None;
+                                        }
+                                    }
+                                    auth
+                                })
+                                .collect(),
+                        )
+                    }
                 }
-            }
-            None => None,
-        };
+                None => None,
+            };
 
         let stored_certiificates = match self.certificates.get_workbook() {
             Some(entities) => {
@@ -555,7 +566,7 @@ impl Workspace {
                     defaults.selected_data = None;
                 }
                 Some(defaults)
-            },
+            }
             false => None,
         };
 
@@ -927,6 +938,7 @@ impl Workspace {
         summaries: &IndexMap<usize, ExecutionResultSummary>,
         parent_names: &[&str],
         report: &mut Vec<ExecutionReportCsv>,
+        run_number: usize,
     ) -> Result<(), ApicizeError> {
         match summaries.get(exec_ctr) {
             Some(summary) => {
@@ -937,7 +949,10 @@ impl Workspace {
                     && let Some(row_count) = summary.row_count
                 {
                     &format!("Row {row_number} of {row_count}")
-                } else if !is_first && let Some(run_number) = summary.run_number && let Some(run_count) = summary.run_count {
+                } else if !is_first
+                    && let Some(run_number) = summary.run_number
+                    && let Some(run_count) = summary.run_count
+                {
                     &format!("Run {run_number} of {run_count}")
                 } else {
                     &summary.name
@@ -948,6 +963,7 @@ impl Workspace {
                 if summary.error.is_some() {
                     // Deal with summaries with errors
                     report.push(ExecutionReportCsv {
+                        run_number,
                         name: name_parts.join(", "),
                         key: summary.key.clone(),
                         executed_at: summary.executed_at,
@@ -969,12 +985,19 @@ impl Workspace {
                 {
                     // Deal with "parent" scenarois
                     for child_index in child_indexes {
-                        Self::generate_csv(child_index, summaries, &name_parts, report)?;
+                        Self::generate_csv(
+                            child_index,
+                            summaries,
+                            &name_parts,
+                            report,
+                            run_number,
+                        )?;
                     }
                 } else if let Some(test_results) = &summary.test_results {
                     // Deal with executed behavior results with tests
                     for test_result in test_results {
                         report.push(ExecutionReportCsv {
+                            run_number,
                             name: name_parts.join(", "),
                             key: summary.key.clone(),
                             executed_at: summary.executed_at,
@@ -995,6 +1018,7 @@ impl Workspace {
                 } else {
                     // Deal with executed behavior results without tests
                     report.push(ExecutionReportCsv {
+                        run_number,
                         name: name_parts.join(", "),
                         key: summary.key.clone(),
                         executed_at: summary.executed_at,
@@ -1038,45 +1062,24 @@ impl Workspace {
             }
             ExecutionReportFormat::CSV => {
                 let mut data = Vec::<ExecutionReportCsv>::new();
-                Self::generate_csv(exec_ctr, summaries, &[], &mut data)?;
-                let mut writer = WriterBuilder::new().from_writer(Vec::new());
-                for d in data {
-                    if let Err(err) = writer.serialize(d) {
-                        return Err(ApicizeError::Error {
-                            description: format!("{}", &err),
-                        });
-                    }
-                }
-                Ok(String::from_utf8(writer.into_inner().unwrap()).unwrap())
+                Self::generate_csv(exec_ctr, summaries, &[], &mut data, 1)?;
+                Self::generate_csv_text(data, false)
             }
         }
     }
 
     /// Generate a report from summarized execution results
     pub fn generate_multirun_report(
-        run_summaries: &IndexMap<usize, IndexMap<usize, ExecutionResultSummary>>,
+        all_run_summaries: &IndexMap<usize, IndexMap<usize, ExecutionResultSummary>>,
         format: &ExecutionReportFormat,
     ) -> Result<String, ApicizeError> {
         match format {
             ExecutionReportFormat::JSON => {
                 let mut all_data = HashMap::<usize, Vec<ExecutionReportJson>>::new();
 
-                for (run_number, summaries) in run_summaries {
+                for (run_number, run_summaries) in all_run_summaries {
                     let mut data = Vec::<ExecutionReportJson>::new();
-                    let root_indexes: Vec<usize> = summaries
-                        .iter()
-                        .filter_map(|(_, s)| {
-                            if s.parent_exec_ctr.is_none() {
-                                Some(s.exec_ctr)
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-                    for index in root_indexes {
-                        Self::generate_json(&index, summaries, &mut data)?;
-                    }
-
+                    Self::generate_json(run_number, run_summaries, &mut data)?;
                     if let Some(entry) = all_data.get_mut(run_number) {
                         entry.extend(data);
                     } else {
@@ -1091,35 +1094,49 @@ impl Workspace {
                 Ok(String::from_utf8(buf).unwrap())
             }
             ExecutionReportFormat::CSV => {
-                let mut data = Vec::<ExecutionReportCsv>::new();
+                let entry_count: usize = all_run_summaries
+                    .values()
+                    .fold(0, |total, summaries| total + summaries.len());
+                let mut run_data = Vec::<ExecutionReportCsv>::with_capacity(entry_count);
 
-                for summaries in run_summaries.values() {
-                    let root_indexes: Vec<usize> = summaries
-                        .iter()
-                        .filter_map(|(_, s)| {
-                            if s.parent_exec_ctr.is_none() {
-                                Some(s.exec_ctr)
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-                    for index in root_indexes {
-                        Self::generate_csv(&index, summaries, &[], &mut data)?;
+                for (run_number, run_summaries) in all_run_summaries {
+                    for index in run_summaries.keys() {
+                        Self::generate_csv(index, run_summaries, &[], &mut run_data, *run_number)?;
                     }
                 }
 
-                let mut writer = WriterBuilder::new().from_writer(Vec::new());
-                for d in data {
-                    if let Err(err) = writer.serialize(d) {
-                        return Err(ApicizeError::Error {
-                            description: format!("{}", &err),
-                        });
-                    }
-                }
-                Ok(String::from_utf8(writer.into_inner().unwrap()).unwrap())
+                Self::generate_csv_text(run_data, all_run_summaries.len() > 1)
             }
         }
+    }
+
+    fn generate_csv_text(
+        run_data: Vec<ExecutionReportCsv>,
+        multi_run: bool,
+    ) -> Result<String, ApicizeError> {
+        let mut writer = WriterBuilder::new().from_writer(Vec::new());
+        if multi_run {
+            for d in run_data {
+                if let Err(err) = writer.serialize(d) {
+                    return Err(ApicizeError::Error {
+                        description: format!("{}", &err),
+                    });
+                }
+            }
+        } else {
+            for d in run_data
+                .into_iter()
+                .map(|d| ExecutionReportCsvSingleRun::from(d))
+            {
+                if let Err(err) = writer.serialize(d) {
+                    return Err(ApicizeError::Error {
+                        description: format!("{}", &err),
+                    });
+                }
+            }
+        }
+
+        Ok(String::from_utf8(writer.into_inner().unwrap()).unwrap())
     }
 }
 
