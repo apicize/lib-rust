@@ -1,7 +1,14 @@
 use indexmap::{IndexMap, IndexSet};
 use std::collections::HashMap;
 
-use crate::{ApicizeBody, ApicizeError, ApicizeExecution, ApicizeGroupResult, ApicizeGroupResultContent, ApicizeGroupResultRow, ApicizeGroupResultRowContent, ApicizeGroupResultRun, ApicizeRequestResult, ApicizeRequestResultContent, ApicizeRequestResultRow, ApicizeRequestResultRowContent, ApicizeRequestResultRun, ApicizeResult, ExecutionResultDetail, ExecutionResultDetailGroup, ExecutionResultDetailRequest, ExecutionResultSuccess, ExecutionResultSummary, Identifiable, Tally, TestRunnerContext};
+use crate::{
+    ApicizeBody, ApicizeError, ApicizeExecution, ApicizeGroupResult, ApicizeGroupResultContent,
+    ApicizeGroupResultRow, ApicizeGroupResultRowContent, ApicizeGroupResultRun,
+    ApicizeRequestResult, ApicizeRequestResultContent, ApicizeRequestResultRow,
+    ApicizeRequestResultRowContent, ApicizeRequestResultRun, ApicizeResult, ExecutionResultDetail,
+    ExecutionResultDetailGroup, ExecutionResultDetailRequest, ExecutionResultSuccess,
+    ExecutionResultSummary, Identifiable, Tally, TestRunnerContext,
+};
 
 pub type ExecutionResult = (ExecutionResultSummary, ExecutionResultDetail);
 
@@ -261,7 +268,10 @@ impl ExecutionResultBuilder {
                     executed_at: result.executed_at,
                     duration: result.duration,
                     test_context: execution.test_context,
-                    output_variables: execution.output_variables.as_ref().map(|arc| (**arc).clone()),
+                    output_variables: execution
+                        .output_variables
+                        .as_ref()
+                        .map(|arc| (**arc).clone()),
                     tests: execution.tests,
                     error: execution.error,
                     success,
@@ -418,7 +428,7 @@ impl ExecutionResultBuilder {
 
         for row in rows {
             let success = success_from_tallies(&row);
-            let index = self.next_counter();
+            // let index = self.next_counter();
             let name = format!(
                 "{} (Row {} of {})",
                 identifiers.title, row_number, row_count,
@@ -427,6 +437,7 @@ impl ExecutionResultBuilder {
             match row.results {
                 ApicizeRequestResultRowContent::Runs(runs) => {
                     let exec_ctr = self.next_counter();
+                    indexes.push(exec_ctr);
 
                     for active_request_id in &active_request_ids {
                         self.add_index_entries(
@@ -498,12 +509,12 @@ impl ExecutionResultBuilder {
                         request_or_group_id,
                         context,
                         runs,
-                        Some(index),
+                        Some(exec_ctr),
                         &mut nested_context,
                     );
 
                     if !child_indexes.is_empty() {
-                        self.results.get_mut(&index).unwrap().0.child_exec_ctrs =
+                        self.results.get_mut(&exec_ctr).unwrap().0.child_exec_ctrs =
                             Some(child_indexes);
                     }
                 }
@@ -564,7 +575,10 @@ impl ExecutionResultBuilder {
                                     executed_at: row.executed_at,
                                     duration: row.duration,
                                     test_context: execution.test_context,
-                                    output_variables: execution.output_variables.as_ref().map(|arc| (**arc).clone()),
+                                    output_variables: execution
+                                        .output_variables
+                                        .as_ref()
+                                        .map(|arc| (**arc).clone()),
                                     tests: execution.tests,
                                     error: execution.error,
                                     success,
@@ -580,7 +594,7 @@ impl ExecutionResultBuilder {
                 }
             }
 
-            indexes.push(index);
+            // indexes.push(exec_ctr);
 
             row_number += 1;
         }
@@ -712,7 +726,9 @@ impl ExecutionResultBuilder {
                 executing_request.push(exec_ctr);
             } else {
                 let insert_at = if let Some((first, _)) = existing_request.first() {
-                    if first == request_or_group_id && request_or_group_id != executing_request_or_group_id {
+                    if first == request_or_group_id
+                        && request_or_group_id != executing_request_or_group_id
+                    {
                         1
                     } else {
                         0
@@ -817,7 +833,11 @@ impl ExecutionResultBuilder {
                         executed_at: run.executed_at,
                         duration: run.duration,
                         test_context: run.execution.test_context,
-                        output_variables: run.execution.output_variables.as_ref().map(|arc| (**arc).clone()),
+                        output_variables: run
+                            .execution
+                            .output_variables
+                            .as_ref()
+                            .map(|arc| (**arc).clone()),
                         tests: run.execution.tests,
                         error: run.execution.error,
                         success,

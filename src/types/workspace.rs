@@ -355,6 +355,8 @@ impl Workspace {
             .for_each(|entity| entity.perform_validation());
 
         self.validate_selections();
+
+        self.defaults.perform_validation();
     }
 
     pub fn validate_selections(&mut self) -> Option<InvalidSelections> {

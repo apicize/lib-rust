@@ -1,5 +1,10 @@
 # Change Log
 
+# 0.30.8
+
+* Fix assignment of run exec ctr
+* Validate default parameters upon load and set warnings
+
 # 0.30.7
 
 * Move ExecutionResultBuilder back to lib

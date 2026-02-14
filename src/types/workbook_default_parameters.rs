@@ -1,4 +1,4 @@
-use std::{collections::HashMap};
+use std::collections::HashMap;
 
 use super::{SelectedParameters, Selection, indexed_entities::NO_SELECTION_ID};
 use crate::{Identifiable, Validated, ValidationState};
@@ -143,10 +143,17 @@ impl SelectedParameters for WorkbookDefaultParameters {
 
 impl WorkbookDefaultParameters {
     pub fn perform_validation(&mut self) {
-        // TODO:  validate defaults
         self.set_validation_errors(None);
-    }    
-
+        self.validation_state =
+            ValidationState::from(&self.validation_warnings, &self.validation_errors);
+        println!(
+            "Defaults validation warning count: {}, state: {:?}",
+            self.validation_warnings
+                .as_ref()
+                .is_some_and(|w| !w.is_empty()),
+            self.validation_state
+        );
+    }
 }
 
 // impl ValidatedSelectedParameters for WorkbookDefaultParameters {
