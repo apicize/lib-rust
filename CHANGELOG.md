@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.30.9
+
+* Performance optimizations in timeout handling and workspace generation
+
 # 0.30.8
 
 * Fix assignment of run exec ctr

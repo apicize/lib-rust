@@ -6,6 +6,11 @@ use crate::{
 use regex::Regex;
 use reqwest::{ClientBuilder, Error};
 use serde::{Deserialize, Serialize};
+use std::sync::LazyLock;
+
+static PROXY_URL_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^(\{\{.+\}\}|https?:\/\/|socks5:\/\/)(\w+:?\w*)?(\S+)(:\d+)?(\/|\/([\w#!:.?+=&%!\-\/]))?$").unwrap()
+});
 
 /// An HTTP or SOCKS5 proxy that can be used to tunnel requests
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
@@ -120,8 +125,7 @@ impl Proxy {
     }
     
     pub fn validate_url(&mut self) {
-        let regex_url = Regex::new(r"^(\{\{.+\}\}|https?:\/\/|socks5:\/\/)(\w+:?\w*)?(\S+)(:\d+)?(\/|\/([\w#!:.?+=&%!\-\/]))?$").unwrap();
-        if regex_url.is_match(&self.url) {
+        if PROXY_URL_REGEX.is_match(&self.url) {
             remove_validation_error(&mut self.validation_errors, "url");
         } else {
             add_validation_error(&mut self.validation_errors, "url", "URL must include http/https/socks5 protocol prefix and address");

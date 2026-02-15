@@ -144,50 +144,30 @@ impl IndexedEntities<RequestEntry> {
     fn populate_requests(
         entities: &[RequestEntry],
         indexed_requests: &mut IndexedEntities<RequestEntry>,
-        parent_id: Option<String>,
+        parent_id: Option<&str>,
     ) {
-        let active_parent_id = parent_id.unwrap_or(String::from(""));
         for e in entities.iter() {
+            let id = e.get_id();
+            match parent_id {
+                Some(pid) => {
+                    indexed_requests
+                        .child_ids
+                        .entry(pid.to_string())
+                        .or_default()
+                        .push(id.to_string());
+                }
+                None => {
+                    indexed_requests.top_level_ids.push(id.to_string());
+                }
+            }
+
             match e {
                 RequestEntry::Request(info) => {
-                    if active_parent_id.is_empty() {
-                        indexed_requests.top_level_ids.push(info.id.clone());
-                    } else {
-                        let updated_child_ids =
-                            match indexed_requests.child_ids.get(&active_parent_id) {
-                                Some(matching_group) => {
-                                    let mut updated = matching_group.to_vec();
-                                    updated.push(info.id.clone());
-                                    updated
-                                }
-                                None => Vec::from([info.id.clone()]),
-                            };
-                        indexed_requests
-                            .child_ids
-                            .insert(active_parent_id.clone(), updated_child_ids);
-                    }
                     indexed_requests
                         .entities
                         .insert(info.id.clone(), RequestEntry::Request(info.to_owned()));
                 }
                 RequestEntry::Group(group) => {
-                    if active_parent_id.is_empty() {
-                        indexed_requests.top_level_ids.push(group.id.clone());
-                    } else {
-                        let updated_child_ids =
-                            match indexed_requests.child_ids.get(&active_parent_id) {
-                                Some(matching_group) => {
-                                    let mut updated = matching_group.to_vec();
-                                    updated.push(group.id.clone());
-                                    updated
-                                }
-                                None => Vec::from([group.id.clone()]),
-                            };
-                        indexed_requests
-                            .child_ids
-                            .insert(active_parent_id.clone(), updated_child_ids);
-                    }
-
                     let mut owned_group = group.to_owned();
                     owned_group.children = None;
                     indexed_requests
@@ -195,7 +175,7 @@ impl IndexedEntities<RequestEntry> {
                         .insert(group.id.clone(), RequestEntry::Group(owned_group));
 
                     if let Some(children) = group.children.as_ref() {
-                        Self::populate_requests(children, indexed_requests, Some(group.id.clone()));
+                        Self::populate_requests(children, indexed_requests, Some(&group.id));
                     }
                 }
             };

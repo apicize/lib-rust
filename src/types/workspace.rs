@@ -1128,7 +1128,7 @@ impl Workspace {
         } else {
             for d in run_data
                 .into_iter()
-                .map(|d| ExecutionReportCsvSingleRun::from(d))
+                .map(ExecutionReportCsvSingleRun::from)
             {
                 if let Err(err) = writer.serialize(d) {
                     return Err(ApicizeError::Error {

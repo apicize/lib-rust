@@ -4,9 +4,8 @@
 use regex::Regex;
 use reqwest::redirect::Policy;
 use std::collections::HashMap;
-use std::net::{TcpStream, ToSocketAddrs};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, Once};
+use std::sync::{Arc, LazyLock, Mutex, Once};
 use std::time::{Duration, Instant};
 use xmltojson::to_json;
 
@@ -40,6 +39,9 @@ use crate::{
 // use crate::oauth2_client_tokens::tests::MockOAuth2ClientTokens as oauth2;
 
 static V8_INIT: Once = Once::new();
+
+static PORT_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r".+:(\d{1,5})(?:\?.*)?$").unwrap());
 
 pub trait ApicizeRunner {
     fn run(
@@ -1159,8 +1161,7 @@ async fn dispatch_request(
     if !(url.starts_with("https://") || url.starts_with("http://")) {
         // If no prefix, check port 443.  If that's responding then assume https
         let mut https = false;
-        let regex = Regex::new(r".+:(\d{1,5})(?:\?.*)?$").unwrap();
-        if let Some(result) = regex.captures(&url)
+        if let Some(result) = PORT_REGEX.captures(&url)
             && let Some(m) = result.get(1)
             && let Ok(port) = m.as_str().parse::<u32>()
         {
@@ -1168,10 +1169,13 @@ async fn dispatch_request(
         }
 
         if !https
-            && let Ok(addrs) = &mut format!("{url}:443").to_socket_addrs()
-            && let Some(addr) = addrs.next()
+            && let Ok(Ok(_)) = tokio::time::timeout(
+                Duration::from_secs(2),
+                tokio::net::TcpStream::connect(format!("{url}:443")),
+            )
+            .await
         {
-            https = TcpStream::connect_timeout(&addr, Duration::from_secs(2)).is_ok();
+            https = true;
         }
         url = format!("{}://{}", if https { "https" } else { "http" }, url);
     }
