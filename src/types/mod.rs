@@ -1,6 +1,7 @@
 pub mod authorization;
 pub mod certificate;
 pub mod data_set;
+pub mod disabled;
 pub mod execution_report;
 pub mod execution_result_success;
 pub mod execution_result_summary;
@@ -27,6 +28,7 @@ pub mod editing;
 pub use authorization::Authorization;
 pub use certificate::Certificate;
 pub use data_set::*;
+pub use disabled::*;
 pub use execution_report::*;
 pub use execution_result_success::*;
 pub use execution_result_summary::*;

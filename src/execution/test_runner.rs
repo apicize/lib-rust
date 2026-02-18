@@ -190,6 +190,7 @@ impl ApicizeRunner for Arc<TestRunnerContext> {
                 request_entry_id,
                 Arc::new(RequestExecutionParameters::default()),
                 Arc::new(RequestExecutionState::default()),
+                true,
             ))
             .await;
             match result {
@@ -209,6 +210,7 @@ async fn run_request_entry(
     request_or_group_id: String,
     params: Arc<RequestExecutionParameters>,
     state: Arc<RequestExecutionState>,
+    force_run: bool,
 ) -> Result<Option<ApicizeResult>, ApicizeError> {
     let entry = context.get_request_entry(&request_or_group_id)?;
 
@@ -230,28 +232,40 @@ async fn run_request_entry(
     };
 
     match entry {
-        RequestEntry::Request(..) => match run_request(
-            context.clone(),
-            &request_or_group_id,
-            Arc::new(new_params),
-            new_state,
-        )
-        .await?
-        {
-            Some(result) => Ok(Some(ApicizeResult::Request(result))),
-            None => Ok(None),
-        },
-        RequestEntry::Group(..) => match run_group(
-            context.clone(),
-            &request_or_group_id,
-            Arc::new(new_params),
-            new_state,
-        )
-        .await?
-        {
-            Some(result) => Ok(Some(ApicizeResult::Group(result))),
-            None => Ok(None),
-        },
+        RequestEntry::Request(request) => {
+            if request.disabled && !force_run {
+                Ok(None)
+            } else {
+                match run_request(
+                    context.clone(),
+                    &request_or_group_id,
+                    Arc::new(new_params),
+                    new_state,
+                )
+                .await?
+                {
+                    Some(result) => Ok(Some(ApicizeResult::Request(result))),
+                    None => Ok(None),
+                }
+            }
+        }
+        RequestEntry::Group(group) => {
+            if group.disabled && ! force_run {
+                Ok(None)
+            } else {
+                match run_group(
+                    context.clone(),
+                    &request_or_group_id,
+                    Arc::new(new_params),
+                    new_state,
+                )
+                .await?
+                {
+                    Some(result) => Ok(Some(ApicizeResult::Group(result))),
+                    None => Ok(None),
+                }
+            }
+        }
     }
 }
 
@@ -627,6 +641,7 @@ async fn run_group_children(
                         child_id.clone(),
                         params.clone(),
                         group_state.clone(),
+                        false,
                     )
                     .await?;
 
@@ -661,6 +676,7 @@ async fn run_group_children(
                                 child_id,
                                 params,
                                 state,
+                                false,
                             ) => {
                                 result
                             }

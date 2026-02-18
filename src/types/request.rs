@@ -5,7 +5,7 @@ use std::str::FromStr;
 use super::identifiable::CloneIdentifiable;
 use super::{NameValuePair, Selection};
 use crate::{
-    Identifiable, SelectedParameters, Validated, ValidationState, add_validation_error, remove_validation_error, utility::*
+    Disabled, Identifiable, SelectedParameters, Validated, ValidationState, add_validation_error, remove_validation_error, utility::*
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -97,6 +97,9 @@ pub struct Request {
     pub id: String,
     /// Human-readable name describing the Apicize Request
     pub name: String,
+    /// If set to True, group will not be executed unless executed directly
+    #[serde(skip_serializing_if = "std::ops::Not::not", default="bool::default")]
+    pub disabled: bool,
     // /// Current execution state of request
     // #[serde(default, skip_serializing_if = "ExecutionState::is_empty")]
     // pub execution_state: ExecutionState,
@@ -173,6 +176,9 @@ pub struct RequestGroup {
     pub id: String,
     /// Human-readable name of the Apicize Group
     pub name: String,
+    /// If set to True, group will not be executed unless executed directly
+    #[serde(skip_serializing_if = "std::ops::Not::not", default="bool::default")]
+    pub disabled: bool,
     // /// Current execution state of request
     // #[serde(default, skip_serializing_if = "ExecutionState::is_empty")]
     // pub execution_state: ExecutionState,
@@ -247,6 +253,15 @@ impl Identifiable for RequestEntry {
         match self {
             RequestEntry::Request(request) => request.get_title(),
             RequestEntry::Group(group) => group.get_title(),
+        }
+    }
+}
+
+impl Disabled for RequestEntry {
+    fn get_disabled(&self) -> bool {
+        match self {
+            RequestEntry::Request(request) => request.get_disabled(),
+            RequestEntry::Group(group) => group.get_disabled(),
         }
     }
 }
@@ -468,6 +483,7 @@ impl Default for Request {
         Self {
             id: generate_uuid(),
             name: Default::default(),
+            disabled: false,
             key: Default::default(),
             validation_state: Default::default(),
             // execution_state: Default::default(),
@@ -526,6 +542,12 @@ impl CloneIdentifiable for Request {
         cloned.id = generate_uuid();
         cloned.name = new_name;
         cloned
+    }
+}
+
+impl Disabled for Request {
+    fn get_disabled(&self) -> bool {
+        self.disabled
     }
 }
 
@@ -610,11 +632,18 @@ impl CloneIdentifiable for RequestGroup {
     }
 }
 
+impl Disabled for RequestGroup {
+    fn get_disabled(&self) -> bool {
+        self.disabled
+    }
+}
+
 impl Default for RequestGroup {
     fn default() -> Self {
         Self {
             id: generate_uuid(),
             name: Default::default(),
+            disabled: false,
             key: Default::default(),
             // execution_state: Default::default(),
             children: Default::default(),
@@ -860,6 +889,9 @@ pub struct StoredRequest {
     pub id: String,
     /// Human-readable name describing the Apicize Request
     pub name: String,
+    /// If set to True, group will not be executed unless executed directly
+    #[serde(skip_serializing_if = "std::ops::Not::not", default="bool::default")]
+    pub disabled: bool,
     /// Optional identifier for the Apicize Request
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
@@ -924,6 +956,9 @@ pub struct StoredRequestGroup {
     pub id: String,
     /// Human-readable name of the Apicize Group
     pub name: String,
+    /// If set to True, group will not be executed unless executed directly
+    #[serde(skip_serializing_if = "std::ops::Not::not", default="bool::default")]
+    pub disabled: bool,
     /// Optional identifier for the Apicize Group
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
@@ -972,6 +1007,7 @@ impl StoredRequestEntry {
             RequestEntry::Request(request) => StoredRequestEntry::Request(StoredRequest {
                 id: request.id,
                 name: request.name,
+                disabled: request.disabled,
                 key: request.key,
                 test: request.test,
                 url: request.url,
@@ -1019,6 +1055,7 @@ impl StoredRequestEntry {
             RequestEntry::Group(group) => StoredRequestEntry::Group(StoredRequestGroup {
                 id: group.id,
                 name: group.name,
+                disabled: group.disabled,
                 key: group.key,
                 children: if let Some(children) = group.children && ! children.is_empty() {
                     Some(
@@ -1047,6 +1084,7 @@ impl StoredRequestEntry {
             StoredRequestEntry::Request(stored_request) => RequestEntry::Request(Request {
                 id: stored_request.id,
                 name: stored_request.name,
+                disabled: stored_request.disabled,
                 key: stored_request.key,
                 validation_state: Default::default(),
                 // execution_state: Default::default(),
@@ -1099,13 +1137,14 @@ impl StoredRequestEntry {
                 validation_warnings: None,
                 validation_errors: None,
             }),
-            StoredRequestEntry::Group(group) => RequestEntry::Group(RequestGroup {
-                id: group.id,
-                name: group.name,
-                key: group.key,
+            StoredRequestEntry::Group(stored_group) => RequestEntry::Group(RequestGroup {
+                id: stored_group.id,
+                name: stored_group.name,
+                disabled: stored_group.disabled,
+                key: stored_group.key,
                 validation_state: Default::default(),
                 // execution_state: Default::default(),
-                children: if let Some(children) = group.children && ! children.is_empty() {
+                children: if let Some(children) = stored_group.children && ! children.is_empty() {
                     Some(
                         children
                             .into_iter()
@@ -1115,14 +1154,14 @@ impl StoredRequestEntry {
                 } else {
                     None
                 },
-                execution: group.execution,
-                runs: group.runs,
-                multi_run_execution: group.multi_run_execution,
-                selected_scenario: group.selected_scenario,
-                selected_authorization: group.selected_authorization,
-                selected_certificate: group.selected_certificate,
-                selected_proxy: group.selected_proxy,
-                selected_data: group.selected_data,
+                execution: stored_group.execution,
+                runs: stored_group.runs,
+                multi_run_execution: stored_group.multi_run_execution,
+                selected_scenario: stored_group.selected_scenario,
+                selected_authorization: stored_group.selected_authorization,
+                selected_certificate: stored_group.selected_certificate,
+                selected_proxy: stored_group.selected_proxy,
+                selected_data: stored_group.selected_data,
                 validation_warnings: None,
                 validation_errors: None,
             }),

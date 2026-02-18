@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.31.0
+
+* Add disabled flag to requests/groups
+
 # 0.30.9
 
 * Performance optimizations in timeout handling and workspace generation
