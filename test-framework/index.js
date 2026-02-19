@@ -8,7 +8,6 @@ const jpp = require('jsonpath-plus');
 // const xmldom = require('@xmldom/xmldom');
 
 let testOffset = 0;
-let logs = []
 
 function fmtMinSec(value, subZero = null) {
     if (value === 0 && subZero) {
@@ -21,11 +20,6 @@ function fmtMinSec(value, subZero = null) {
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}${(0.1).toString()[1]}${value.toString().padEnd(3, '0')}`
 }
 
-
-function appendLog(type, message, ...optionalParams) {
-    const timestamp = fmtMinSec(Date.now() - testOffset)
-    logs.push(`${timestamp} [${type}] ${format(message, ...optionalParams)}`)
-}
 
 /******************************************************************
  * Global variables exposed to test runner
@@ -64,12 +58,12 @@ String.prototype.jp = jpath
 Number.prototype.jp = jpath
 
 console = {
-    log: (msg, ...args) => appendLog('log', msg, ...args),
-    info: (msg, ...args) => appendLog('info', msg, ...args),
-    warn: (msg, ...args) => appendLog('warn', msg, ...args),
-    error: (msg, ...args) => appendLog('error', msg, ...args),
-    trace: (msg, ...args) => appendLog('trace', msg, ...args),
-    debug: (msg, ...args) => appendLog('debug', msg, ...args),
+    log: (msg, ...args) => context.appendLog('log', msg, ...args),
+    info: (msg, ...args) => context.appendLog('info', msg, ...args),
+    warn: (msg, ...args) => context.appendLog('warn', msg, ...args),
+    error: (msg, ...args) => context.appendLog('error', msg, ...args),
+    trace: (msg, ...args) => context.appendLog('trace', msg, ...args),
+    debug: (msg, ...args) => context.appendLog('debug', msg, ...args),
 };
 
 BodyType = {
@@ -151,9 +145,27 @@ class Behavior {
 class Context {
     constructor() {
         this.results = []
+        this.logs = []
         this.currentResult = null
         this.inScenario = false
         this.inBehavior = false
+    }
+
+    appendLog(type, message, ...optionalParams) {
+        const timestamp = fmtMinSec(Date.now() - testOffset)
+        let appendToLogs
+        if (this.currentResult) {
+            if (! this.currentResult.logs) {
+                this.currentResult.logs = []
+            }
+            appendToLogs = this.currentResult.logs
+        } else {
+            if (! this.logs) {
+                this.logs = []
+            }
+            appendToLogs = this.logs
+        }
+        appendToLogs.push(`${timestamp} [${type}] ${format(message, ...optionalParams)}`)
     }
 
     push(scenarioOrbehavior) {
@@ -175,10 +187,6 @@ class Context {
         const current = this.currentResult
         if (!current) {
             return
-        }
-        if (logs && logs.length > 0) {
-            current.logs = logs
-            logs = []
         }
         if (current.parent) {
             if (current.parent.tag) {
@@ -275,7 +283,8 @@ runTestSuite = (request1, response1, variables1, data1, output1, testOffset1, te
 
     return JSON.stringify({
         results: context.results,
-        output: outputVars
+        output: outputVars,
+        logs: context.logs
     })
 };
 
