@@ -43,6 +43,35 @@ static V8_INIT: Once = Once::new();
 static PORT_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r".+:(\d{1,5})(?:\?.*)?$").unwrap());
 
+/// V8 startup snapshot with framework.min.js pre-compiled, stored as raw bytes.
+/// Each Isolate created from this snapshot gets its own independent heap,
+/// but skips parsing and compiling the framework JS.
+static FRAMEWORK_SNAPSHOT: LazyLock<Vec<u8>> = LazyLock::new(|| {
+    V8_INIT.call_once(|| {
+        let platform = v8::new_unprotected_default_platform(0, false).make_shared();
+        v8::V8::initialize_platform(platform);
+        v8::V8::initialize();
+    });
+
+    let mut isolate = v8::Isolate::snapshot_creator(None, None);
+    {
+        v8::scope!(let scope, &mut isolate);
+        let context = v8::Context::new(scope, Default::default());
+        let scope = &mut v8::ContextScope::new(scope, context);
+
+        let framework_code = include_str!(concat!(env!("OUT_DIR"), "/framework.min.js"));
+        let v8_code = v8::String::new(scope, framework_code).unwrap();
+        let script = v8::Script::compile(scope, v8_code, None).unwrap();
+        script.run(scope).unwrap();
+
+        scope.set_default_context(context);
+    }
+    let startup_data = isolate
+        .create_blob(v8::FunctionCodeHandling::Keep)
+        .expect("Failed to create V8 snapshot for test framework");
+    startup_data.to_vec()
+});
+
 pub trait ApicizeRunner {
     fn run(
         &self,
@@ -250,7 +279,7 @@ async fn run_request_entry(
             }
         }
         RequestEntry::Group(group) => {
-            if group.disabled && ! force_run {
+            if group.disabled && !force_run {
                 Ok(None)
             } else {
                 match run_group(
@@ -284,7 +313,7 @@ async fn run_request(
         return Ok(None);
     }
 
-    let (content, data_context, tallies) = if params.data_set.is_some() && state.row.is_none() {
+    let (content, data_context, tallies, logs,) = if params.data_set.is_some() && state.row.is_none() {
         let rows =
             run_request_rows(context.clone(), request_id, params.clone(), state.clone()).await?;
         let data_context = rows.generate_data_context();
@@ -293,6 +322,7 @@ async fn run_request(
             ApicizeRequestResultContent::Rows { rows },
             data_context,
             tallies,
+            None,
         )
     } else if multi_run {
         let runs =
@@ -303,6 +333,7 @@ async fn run_request(
             ApicizeRequestResultContent::Runs { runs },
             data_context,
             tallies,
+            None,
         )
     } else {
         let execution =
@@ -310,12 +341,14 @@ async fn run_request(
                 .await?;
         let data_context = execution.generate_data_context();
         let tallies = execution.get_tallies();
+        let logs = execution.logs.clone();
         (
             ApicizeRequestResultContent::Execution {
                 execution: Box::new(execution),
             },
             data_context,
             tallies,
+            logs,
         )
     };
 
@@ -329,6 +362,7 @@ async fn run_request(
         duration: context.ellapsed_in_ms() - executed_at,
         data_context,
         content,
+        logs,
         success: tallies.success,
         request_success_count: tallies.request_success_count,
         request_failure_count: tallies.request_failure_count,
@@ -567,9 +601,30 @@ async fn run_group(
 
     let child_ids = context.get_group_children(group_id);
 
+    let (use_state, logs) = if let Some(setup) = &group.setup
+        && let Some(setup_response) = execute_request_test(
+            setup,
+            &None,
+            &None,
+            &params.variables,
+            &state.row,
+            &state.output_variables,
+            &context.tests_started,
+        )? {
+        (
+            Arc::new(RequestExecutionState {
+                row: state.row.clone(),
+                output_variables: Some(Arc::new(setup_response.output.clone())),
+            }),
+            setup_response.logs
+        )
+    } else {
+        (state, None)
+    };
+
     let (content, data_context, tallies) = if params.data_set.is_some() && !child_ids.is_empty() {
         // Apply all data rows to each child of a group
-        let rows = run_group_rows(context.clone(), group_id, params.clone(), state.clone()).await?;
+        let rows = run_group_rows(context.clone(), group_id, params.clone(), use_state.clone()).await?;
         let data_context = rows.generate_data_context();
         let tallies = rows.get_tallies();
         (
@@ -578,7 +633,7 @@ async fn run_group(
             tallies,
         )
     } else if multi_run {
-        let runs = run_group_runs(context.clone(), group_id, params.clone(), state.clone()).await?;
+        let runs = run_group_runs(context.clone(), group_id, params.clone(), use_state.clone()).await?;
         let data_context = runs.generate_data_context();
         let tallies = runs.get_tallies();
         (
@@ -591,7 +646,7 @@ async fn run_group(
             context.clone(),
             child_ids,
             params.clone(),
-            state.clone(),
+            use_state.clone(),
             &group.execution,
         )
         .await?;
@@ -613,6 +668,7 @@ async fn run_group(
         duration: context.ellapsed_in_ms() - executed_at,
         data_context,
         content,
+        logs,
         success: tallies.success,
         request_success_count: tallies.request_success_count,
         request_failure_count: tallies.request_failure_count,
@@ -630,7 +686,9 @@ async fn run_group_children(
     state: Arc<RequestExecutionState>,
     concurrency: &ExecutionConcurrency,
 ) -> Result<Vec<ApicizeResult>, ApicizeError> {
-    if !child_ids.is_empty() {
+    if child_ids.is_empty() {
+        Ok(vec![])
+    } else {
         match concurrency {
             ExecutionConcurrency::Sequential => {
                 let mut results = Vec::<ApicizeResult>::with_capacity(child_ids.len());
@@ -717,8 +775,6 @@ async fn run_group_children(
                 Ok(results)
             }
         }
-    } else {
-        Ok(vec![])
     }
 }
 
@@ -928,6 +984,7 @@ async fn dispatch_request_and_test(
     let mut execution_response: Option<ApicizeHttpResponse> = None;
     let mut output_variables: Option<Arc<Map<String, Value>>> = None;
     let mut tests: Option<Vec<ApicizeTestBehavior>> = None;
+    let mut logs: Option<Vec<String>> = None;
     let mut error: Option<ApicizeError> = None;
 
     let name: String;
@@ -993,7 +1050,7 @@ async fn dispatch_request_and_test(
                         &context.tests_started,
                     ) {
                         Ok(test_response) => {
-                            (tests, output_variables) = match test_response {
+                            (tests, output_variables, logs) = match test_response {
                                 Some(response) => {
                                     let output = if response.output.is_empty() {
                                         None
@@ -1016,9 +1073,9 @@ async fn dispatch_request_and_test(
                                         Some(behaviors)
                                     };
 
-                                    (test_results, output)
+                                    (test_results, output, response.logs)
                                 }
-                                None => (None, None),
+                                None => (None, None, None),
                             };
                         }
                         Err(err) => {
@@ -1061,6 +1118,7 @@ async fn dispatch_request_and_test(
         },
         output_variables,
         tests,
+        logs,
         error,
         success,
         test_pass_count: test_count - test_fail_count,
@@ -1308,7 +1366,7 @@ async fn dispatch_request(
         request_builder = request_builder.query(&query);
     }
 
-    // Add body, if applicable -xxxx
+    // Add body, if applicable
     let mut request_body: Option<ApicizeBody>;
     match &request.body {
         Some(RequestBody::Text { data }) => {
@@ -1529,6 +1587,14 @@ async fn dispatch_request(
     }
 }
 
+/// Set a JSON string as a named global variable on a V8 context
+fn set_v8_global(scope: &mut v8::ContextScope<v8::HandleScope>, name: &str, json: &str) {
+    let global = scope.get_current_context().global(scope);
+    let key = v8::String::new(scope, name).unwrap();
+    let val = v8::String::new(scope, json).unwrap();
+    global.set(scope, key.into(), val.into());
+}
+
 /// Execute the specified request's tests
 fn execute_request_test(
     test: &str,
@@ -1539,43 +1605,45 @@ fn execute_request_test(
     output: &Option<Arc<Map<String, Value>>>,
     tests_started: &Instant,
 ) -> Result<Option<ApicizeTestResponse>, ApicizeError> {
-    // Ensure V8 is initialized
-    V8_INIT.call_once(|| {
-        let platform = v8::new_unprotected_default_platform(0, false).make_shared();
-        v8::V8::initialize_platform(platform);
-        v8::V8::initialize();
-    });
+    // Force snapshot creation (which also initializes V8)
+    let snapshot_bytes = &*FRAMEWORK_SNAPSHOT;
 
-    // Create a new Isolate and make it the current one.
-    let isolate = &mut v8::Isolate::new(Default::default());
-    // let scope = &mut v8::HandleScope::new(isolate);
+    // Create a new Isolate from the snapshot — gets its own isolated heap
+    // with the framework already compiled and loaded
+    let startup_data: v8::StartupData = snapshot_bytes.clone().into();
+    let params = v8::CreateParams::default().snapshot_blob(startup_data);
+    let isolate = &mut v8::Isolate::new(params);
     v8::scope!(let scope, isolate);
     let context = v8::Context::new(scope, Default::default());
     let scope = &mut v8::ContextScope::new(scope, context);
 
-    // Use the included framework directly without extra allocation
-    let framework_code = include_str!(concat!(env!("OUT_DIR"), "/framework.min.js"));
-    let v8_code = v8::String::new(scope, framework_code).unwrap();
-    let script = v8::Script::compile(scope, v8_code, None).unwrap();
-    script.run(scope).unwrap();
+    // Set test data as globals to avoid building one massive JS string
+    set_v8_global(scope, "__request", &serde_json::to_string(request).unwrap());
+    set_v8_global(
+        scope,
+        "__response",
+        &serde_json::to_string(response).unwrap(),
+    );
+    set_v8_global(
+        scope,
+        "__variables",
+        &serde_json::to_string(&variables).unwrap(),
+    );
+    set_v8_global(scope, "__data", &serde_json::to_string(&data).unwrap());
+    set_v8_global(scope, "__output", &serde_json::to_string(&output).unwrap());
+
+    let test_offset = std::time::UNIX_EPOCH.elapsed().unwrap().as_millis()
+        - tests_started.elapsed().as_millis()
+        + 1;
+
+    // Small init script that parses the globals and invokes runTestSuite
+    let init_code = format!(
+        "runTestSuite(JSON.parse(__request), JSON.parse(__response), JSON.parse(__variables), JSON.parse(__data), JSON.parse(__output), {}, () => {{{}}})",
+        test_offset, test,
+    );
 
     let scope = std::pin::pin!(v8::TryCatch::new(scope));
     let scope = scope.init();
-
-    let cloned_tests_started = tests_started;
-
-    let init_code = format!(
-        "runTestSuite({}, {}, {}, {}, {}, {}, () => {{{}}})",
-        serde_json::to_string(request).unwrap(),
-        serde_json::to_string(response).unwrap(),
-        serde_json::to_string(&variables).unwrap(),
-        serde_json::to_string(&data).unwrap(),
-        serde_json::to_string(&output).unwrap(),
-        std::time::UNIX_EPOCH.elapsed().unwrap().as_millis()
-            - cloned_tests_started.elapsed().as_millis()
-            + 1,
-        test,
-    );
 
     let v8_code = v8::String::new(&scope, &init_code).unwrap();
 

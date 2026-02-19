@@ -197,6 +197,9 @@ pub struct RequestGroup {
     /// Execution of multiple runs
     #[serde(default)]
     pub multi_run_execution: ExecutionConcurrency,
+    /// Setup script to execute before running child requests
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub setup: Option<String>,
     /// Selected scenario, if applicable
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selected_scenario: Option<Selection>,
@@ -304,15 +307,6 @@ impl Validated for RequestEntry {
     }
 }
 
-// impl Executable for RequestEntry {
-//     fn get_execution_state(&self) -> &ExecutionState {
-//         match self {
-//             RequestEntry::Request(request) => &request.execution_state,
-//             RequestEntry::Group(group) => &group.execution_state,
-//         }
-//     }
-// }
-
 impl CloneIdentifiable for RequestEntry {
     fn clone_as_new(&self, new_name: String) -> Self {
         match self {
@@ -321,134 +315,6 @@ impl CloneIdentifiable for RequestEntry {
         }
     }
 }
-
-// xxx
-// impl ValidatedSelectedParameters for RequestEntry {
-//     fn validate_scenario(&mut self, valid_values: &HashMap<String, String>) {
-//         match self {
-//             RequestEntry::Request(request) => {
-//                 if let Some(warning) = validate_selection(
-//                     &request.get_title(),
-//                     &mut request.selected_scenario,
-//                     "scenario",
-//                     valid_values,
-//                 ) {
-//                     request.set_validation_warnings(Some(vec![warning]));
-//                 }
-//             }
-//             RequestEntry::Group(group) => {
-//                 if let Some(warning) = validate_selection(
-//                     &group.get_title(),
-//                     &mut group.selected_scenario,
-//                     "scenario",
-//                     valid_values,
-//                 ) {
-//                     group.set_validation_warnings(Some(vec![warning]));
-//                 }
-//             }
-//         }
-//     }
-
-//     fn validate_authorization(&mut self, valid_values: &HashMap<String, String>) {
-//         match self {
-//             RequestEntry::Request(request) => {
-//                 if let Some(warning) = validate_selection(
-//                     &request.get_title(),
-//                     &mut request.selected_authorization,
-//                     "authorization",
-//                     valid_values,
-//                 ) {
-//                     request.set_validation_warnings(Some(vec![warning]));
-//                 }
-//             }
-//             RequestEntry::Group(group) => {
-//                 if let Some(warning) = validate_selection(
-//                     &group.get_title(),
-//                     &mut group.selected_authorization,
-//                     "authorization",
-//                     valid_values,
-//                 ) {
-//                     group.set_validation_warnings(Some(vec![warning]));
-//                 }
-//             }
-//         }
-//     }
-
-//     fn validate_certificate(&mut self, valid_values: &HashMap<String, String>) {
-//         match self {
-//             RequestEntry::Request(request) => {
-//                 if let Some(warning) = validate_selection(
-//                     &request.get_title(),
-//                     &mut request.selected_certificate,
-//                     "certificate",
-//                     valid_values,
-//                 ) {
-//                     request.set_validation_warnings(Some(vec![warning]));
-//                 }
-//             }
-//             RequestEntry::Group(group) => {
-//                 if let Some(warning) = validate_selection(
-//                     &group.get_title(),
-//                     &mut group.selected_certificate,
-//                     "certificate",
-//                     valid_values,
-//                 ) {
-//                     group.set_validation_warnings(Some(vec![warning]));
-//                 }
-//             }
-//         }
-//     }
-
-//     fn validate_proxy(&mut self, valid_values: &HashMap<String, String>) {
-//         match self {
-//             RequestEntry::Request(request) => {
-//                 if let Some(warning) = validate_selection(
-//                     &request.get_title(),
-//                     &mut request.selected_proxy,
-//                     "proxy",
-//                     valid_values,
-//                 ) {
-//                     request.set_validation_warnings(Some(vec![warning]));
-//                 }
-//             }
-//             RequestEntry::Group(group) => {
-//                 if let Some(warning) = validate_selection(
-//                     &group.get_title(),
-//                     &mut group.selected_proxy,
-//                     "proxy",
-//                     valid_values,
-//                 ) {
-//                     group.set_validation_warnings(Some(vec![warning]));
-//                 }
-//             }
-//         }
-//     }
-
-//     fn validate_data(&mut self, valid_values: &HashMap<String, String>) {
-//         match self {
-//             RequestEntry::Request(request) => {
-//                 if let Some(warning) = validate_selection(
-//                     &request.get_title(),
-//                     &mut request.selected_data,
-//                     "data",
-//                     valid_values,
-//                 ) {
-//                     request.set_validation_warnings(Some(vec![warning]));
-//                 }
-//             }
-//             RequestEntry::Group(group) => {
-//                 if let Some(warning) = validate_selection(
-//                     &group.get_title(),
-//                     &mut group.selected_data,
-//                     "data",
-//                     valid_values,
-//                 ) {
-//                     group.set_validation_warnings(Some(vec![warning]));
-//                 }
-//             }
-//         }
-//     }
-// }
 
 /// HTTP methods for Apicize Requests
 impl RequestMethod {
@@ -650,6 +516,7 @@ impl Default for RequestGroup {
             execution: ExecutionConcurrency::Sequential,
             runs: 1,
             multi_run_execution: ExecutionConcurrency::Sequential,
+            setup: None,
             selected_scenario: Default::default(),
             selected_authorization: Default::default(),
             selected_certificate: Default::default(),
@@ -973,6 +840,9 @@ pub struct StoredRequestGroup {
     /// Execution of multiple runs
     #[serde(default)]
     pub multi_run_execution: ExecutionConcurrency,
+    /// Setup script to execute before running child requests
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub setup: Option<String>,
     /// Selected scenario, if applicable
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selected_scenario: Option<Selection>,
@@ -1070,6 +940,7 @@ impl StoredRequestEntry {
                 execution: group.execution,
                 runs: group.runs,
                 multi_run_execution: group.multi_run_execution,
+                setup: group.setup,
                 selected_scenario: group.selected_scenario,
                 selected_authorization: group.selected_authorization,
                 selected_certificate: group.selected_certificate,
@@ -1157,6 +1028,7 @@ impl StoredRequestEntry {
                 execution: stored_group.execution,
                 runs: stored_group.runs,
                 multi_run_execution: stored_group.multi_run_execution,
+                setup: stored_group.setup,
                 selected_scenario: stored_group.selected_scenario,
                 selected_authorization: stored_group.selected_authorization,
                 selected_certificate: stored_group.selected_certificate,

@@ -64,6 +64,9 @@ pub struct ExecutionResultSummary {
     /// Used to indicate the length of a response body, if any
     pub response_body_length: Option<usize>,
 
+    /// Global logs not part of a behavioral test block
+    pub logs: Option<Vec<String>>,
+
     /// Indicates level of call success
     pub success: ExecutionResultSuccess,
 

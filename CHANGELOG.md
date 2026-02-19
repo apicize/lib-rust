@@ -1,5 +1,10 @@
 # Change Log
 
+# 0.32.0
+
+* Add group setup scripts
+* Optimize V8 setup
+
 # 0.31.0
 
 * Add disabled flag to requests/groups

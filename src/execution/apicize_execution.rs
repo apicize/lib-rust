@@ -32,6 +32,9 @@ pub struct ApicizeExecution {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_variables: Option<Arc<Map<String, Value>>>,
 
+    /// Global logs not part of a behavioral test block
+    pub logs: Option<Vec<String>>,
+    
     /// Test results (if executed)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tests: Option<Vec<ApicizeTestBehavior>>,

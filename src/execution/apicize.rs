@@ -69,6 +69,9 @@ pub struct ApicizeRequestResult {
     /// Request content (rows, runs or an execution)
     pub content: ApicizeRequestResultContent,
 
+    /// Global logs not part of a behavioral test block
+    pub logs: Option<Vec<String>>,
+
     /// Success is true if all runs are successful
     pub success: bool,
     /// Number of child requests/groups with successful requests and all tests passed
@@ -184,6 +187,9 @@ pub struct ApicizeGroupResult {
 
     /// Request group rows, runs or executions
     pub content: ApicizeGroupResultContent,
+
+    /// Global logs not part of a behavioral test block
+    pub logs: Option<Vec<String>>,
 
     /// Success is true if all runs are successful
     pub success: bool,
@@ -309,6 +315,8 @@ pub struct ApicizeTestResponse {
     pub results: Option<Vec<ApicizeTestResult>>,
     /// Output values to send to next test
     pub output: Map<String, Value>,
+    /// Global logs not part of a behavioral test block
+    pub logs: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
