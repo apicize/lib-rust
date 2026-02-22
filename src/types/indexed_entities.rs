@@ -24,6 +24,10 @@ pub struct IndexedEntities<T> {
 
     /// Entities indexed by ID
     pub entities: HashMap<String, T>,
+
+    /// Reverse index: child entity ID -> parent entity ID (not serialized, rebuilt at load)
+    #[serde(skip)]
+    pub parent_ids: HashMap<String, String>,
 }
 
 impl<T: Identifiable + Clone> Default for IndexedEntities<T> {
@@ -32,6 +36,7 @@ impl<T: Identifiable + Clone> Default for IndexedEntities<T> {
             top_level_ids: Default::default(),
             child_ids: Default::default(),
             entities: Default::default(),
+            parent_ids: Default::default(),
         }
     }
 }
@@ -135,6 +140,7 @@ impl IndexedEntities<RequestEntry> {
             top_level_ids: Vec::new(),
             child_ids: HashMap::new(),
             entities: HashMap::new(),
+            parent_ids: HashMap::new(),
         };
         Self::populate_requests(entities, &mut results, None);
         results
@@ -155,6 +161,9 @@ impl IndexedEntities<RequestEntry> {
                         .entry(pid.to_string())
                         .or_default()
                         .push(id.to_string());
+                    indexed_requests
+                        .parent_ids
+                        .insert(id.to_string(), pid.to_string());
                 }
                 None => {
                     indexed_requests.top_level_ids.push(id.to_string());
@@ -225,6 +234,7 @@ impl IndexedEntities<DataSet> {
                     top_level_ids,
                     child_ids: HashMap::new(),
                     entities,
+                    parent_ids: HashMap::new(),
                 }
             },
             None => IndexedEntities::default(),
@@ -295,6 +305,17 @@ fn from_persisted_lists<T: Identifiable + Clone>(
         );
     };
 
+    let mut parent_ids = HashMap::new();
+    for id in &workbook_ids {
+        parent_ids.insert(id.clone(), PERSIST_WORKBOOK.to_string());
+    }
+    for id in &private_ids {
+        parent_ids.insert(id.clone(), PERSIST_PRIVATE.to_string());
+    }
+    for id in &vault_ids {
+        parent_ids.insert(id.clone(), PERSIST_VAULT.to_string());
+    }
+
     IndexedEntities::<T> {
         top_level_ids: vec![],
         child_ids: HashMap::from([
@@ -312,6 +333,7 @@ fn from_persisted_lists<T: Identifiable + Clone>(
             ),
         ]),
         entities,
+        parent_ids,
     }
 }
 

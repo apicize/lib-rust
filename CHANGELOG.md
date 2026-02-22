@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.32.1
+
+* Performance optimization (parent index for indexed_entities)
+
 # 0.32.0
 
 * Add group setup scripts

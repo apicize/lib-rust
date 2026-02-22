@@ -87,18 +87,38 @@ impl<T: Identifiable> IndexedEntities<T> {
                     self.child_ids
                         .insert(relative_to_id.to_string(), vec![entity_id.to_string()]);
                 }
+                self.parent_ids.insert(entity_id.to_string(), relative_to_id.to_string());
                 is_inserted = true;
             } else {
                 // Try inserting at top level
                 is_inserted = insert_in_list(&mut self.top_level_ids);
                 if !is_inserted {
-                    // If relative ID is not at top level, look for it in children
-                    for child_ids in self.child_ids.values_mut() {
-                        if insert_in_list(child_ids) {
-                            is_inserted = true;
-                            break;
+                    // Use the parent reverse index to find which parent owns relative_to_id
+                    if let Some(parent_id) = self.parent_ids.get(relative_to_id).cloned() {
+                        if let Some(child_ids) = self.child_ids.get_mut(&parent_id) {
+                            is_inserted = insert_in_list(child_ids);
+                            if is_inserted {
+                                self.parent_ids.insert(entity_id.to_string(), parent_id);
+                            }
                         }
                     }
+                    if !is_inserted {
+                        // Fallback: search all child lists (handles deserialized data without parent_ids)
+                        let mut found_parent: Option<String> = None;
+                        for (parent_key, child_ids) in self.child_ids.iter_mut() {
+                            if insert_in_list(child_ids) {
+                                found_parent = Some(parent_key.clone());
+                                is_inserted = true;
+                                break;
+                            }
+                        }
+                        if let Some(parent_key) = found_parent {
+                            self.parent_ids.insert(entity_id.to_string(), parent_key);
+                        }
+                    }
+                } else {
+                    // Inserted at top level — remove any stale parent mapping
+                    self.parent_ids.remove(entity_id);
                 }
             }
         }
@@ -106,6 +126,7 @@ impl<T: Identifiable> IndexedEntities<T> {
         if !is_inserted {
             // If not relative to anything, just append to the top level
             self.top_level_ids.push(entity_id.to_string());
+            self.parent_ids.remove(entity_id);
         }
 
         Ok(())
@@ -113,19 +134,21 @@ impl<T: Identifiable> IndexedEntities<T> {
 
     /// Clear indexed position information for the specified entity ID
     fn clear_position(&mut self, entity_id: &str, remove_children: bool) -> Result<(), ApicizeError> {
-        // Remove entry if top-level ID
-        if let Some(idx) = self.top_level_ids.iter().position(|c| c == entity_id) {
-            self.top_level_ids.remove(idx);
-        }
-
-        // Remove any entry in child lists
-        for children in self.child_ids.values_mut() {
-            if let Some(idx) = children.iter().position(|c| c == entity_id) {
-                children.remove(idx);
+        // Use parent reverse index for O(1) lookup when available
+        if let Some(parent_id) = self.parent_ids.remove(entity_id) {
+            if let Some(children) = self.child_ids.get_mut(&parent_id) {
+                if let Some(idx) = children.iter().position(|c| c == entity_id) {
+                    children.remove(idx);
+                }
+            }
+        } else {
+            // No parent mapping — check top-level IDs
+            if let Some(idx) = self.top_level_ids.iter().position(|c| c == entity_id) {
+                self.top_level_ids.remove(idx);
             }
         }
 
-        // Remove parent entry
+        // Remove child entries if requested
         if remove_children {
             self.child_ids.remove_entry(entity_id);
         }
