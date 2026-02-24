@@ -162,24 +162,18 @@ impl TestRunnerContext {
             Some(RequestEntry::Request(request)) => {
                 if let Some(key) = &request.key {
                     Ok(Some(key.clone()))
+                } else if let Some(parent_id) = self.workspace.requests.parent_ids.get(request_or_group_id) {
+                    self.get_request_key(parent_id)
                 } else {
-                    for (parent_id, child_ids) in &self.workspace.requests.child_ids {
-                        if child_ids.contains(&request_or_group_id.to_string()) {
-                            return self.get_request_key(parent_id);
-                        }
-                    }
                     Ok(None)
                 }
             }
             Some(RequestEntry::Group(group)) => {
                 if let Some(key) = &group.key {
                     Ok(Some(key.clone()))
+                } else if let Some(parent_id) = self.workspace.requests.parent_ids.get(request_or_group_id) {
+                    self.get_request_key(parent_id)
                 } else {
-                    for (parent_id, child_ids) in &self.workspace.requests.child_ids {
-                        if child_ids.contains(&request_or_group_id.to_string()) {
-                            return self.get_request_key(parent_id);
-                        }
-                    }
                     Ok(None)
                 }
             }
@@ -234,6 +228,7 @@ impl ApicizeRunner for Arc<TestRunnerContext> {
     }
 }
 
+/// Execute a request or group
 async fn run_request_entry(
     context: Arc<TestRunnerContext>,
     request_or_group_id: String,
@@ -298,6 +293,7 @@ async fn run_request_entry(
     }
 }
 
+// Execute a request
 async fn run_request(
     context: Arc<TestRunnerContext>,
     request_id: &str,
@@ -372,6 +368,7 @@ async fn run_request(
     })))
 }
 
+/// Execute a request with multiple rows
 async fn run_request_rows(
     context: Arc<TestRunnerContext>,
     request_id: &str,
@@ -462,6 +459,7 @@ async fn run_request_rows(
     }
 }
 
+/// Execute a request with multiple runs
 async fn run_request_runs(
     context: Arc<TestRunnerContext>,
     request_id: &str,
@@ -583,6 +581,7 @@ async fn run_request_runs(
     Ok(runs)
 }
 
+/// Execute a group
 async fn run_group(
     context: Arc<TestRunnerContext>,
     group_id: &str,
@@ -678,6 +677,7 @@ async fn run_group(
     })))
 }
 
+/// Execute a group's children
 #[async_recursion]
 async fn run_group_children(
     context: Arc<TestRunnerContext>,
@@ -778,6 +778,7 @@ async fn run_group_children(
     }
 }
 
+/// Execute a group with multiple rows
 async fn run_group_rows(
     context: Arc<TestRunnerContext>,
     group_id: &str,
@@ -786,9 +787,10 @@ async fn run_group_rows(
 ) -> Result<Vec<ApicizeGroupResultRow>, ApicizeError> {
     let group = context.get_group(group_id)?;
     let child_ids = context.get_group_children(group_id);
+    let empty_data = vec![];
     let active_data = match &params.data_set.as_ref() {
         Some(d) => &d.data,
-        None => &vec![],
+        None => &empty_data,
     };
 
     if child_ids.is_empty() || active_data.is_empty() {
@@ -865,6 +867,7 @@ async fn run_group_rows(
     }
 }
 
+/// Execute a group that has multiple runs
 async fn run_group_runs(
     context: Arc<TestRunnerContext>,
     group_id: &str,
@@ -1535,7 +1538,7 @@ async fn dispatch_request(
                         if malformed {
                             Some(ApicizeBody::Binary { data })
                         } else {
-                            let text = decoded.to_string();
+                            let text = decoded.into_owned();
                             if may_have_json {
                                 if let Ok(parsed) = serde_json::from_str::<Value>(&text) {
                                     if let Some(obj) = parsed.as_object() {
@@ -1543,7 +1546,7 @@ async fn dispatch_request(
                                     }
 
                                     Some(ApicizeBody::JSON {
-                                        text: decoded.to_string(),
+                                        text,
                                         data: parsed,
                                     })
                                 } else {
@@ -1606,11 +1609,12 @@ fn execute_request_test(
     tests_started: &Instant,
 ) -> Result<Option<ApicizeTestResponse>, ApicizeError> {
     // Force snapshot creation (which also initializes V8)
-    let snapshot_bytes = &*FRAMEWORK_SNAPSHOT;
+    // Borrow as &'static [u8] to avoid cloning the snapshot Vec on every call
+    let snapshot_ref: &'static [u8] = &FRAMEWORK_SNAPSHOT;
 
     // Create a new Isolate from the snapshot — gets its own isolated heap
     // with the framework already compiled and loaded
-    let startup_data: v8::StartupData = snapshot_bytes.clone().into();
+    let startup_data: v8::StartupData = snapshot_ref.into();
     let params = v8::CreateParams::default().snapshot_blob(startup_data);
     let isolate = &mut v8::Isolate::new(params);
     v8::scope!(let scope, isolate);

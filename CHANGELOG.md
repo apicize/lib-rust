@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.33.0
+
+* Performance optimization
+
 # 0.32.1
 
 * Performance optimization (parent index for indexed_entities)

@@ -1,0 +1,756 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://apicize.com/schemas/workbook.json",
+  "title": "Apicize Workbook",
+  "description": "Schema for Apicize workbook files (.apicize)",
+  "type": "object",
+  "required": ["version", "requests"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "number",
+      "description": "Version of workbook format (should not be changed manually)"
+    },
+    "requests": {
+      "type": "array",
+      "description": "List of requests and request groups",
+      "items": {
+        "$ref": "#/$defs/RequestEntry"
+      }
+    },
+    "scenarios": {
+      "type": "array",
+      "description": "Workbook scenarios",
+      "items": {
+        "$ref": "#/$defs/Scenario"
+      }
+    },
+    "authorizations": {
+      "type": "array",
+      "description": "Workbook authorizations",
+      "items": {
+        "$ref": "#/$defs/Authorization"
+      }
+    },
+    "certificates": {
+      "type": "array",
+      "description": "Workbook certificates",
+      "items": {
+        "$ref": "#/$defs/Certificate"
+      }
+    },
+    "proxies": {
+      "type": "array",
+      "description": "Workbook proxy servers",
+      "items": {
+        "$ref": "#/$defs/Proxy"
+      }
+    },
+    "data": {
+      "type": "array",
+      "description": "Workbook data sets",
+      "items": {
+        "$ref": "#/$defs/DataSet"
+      }
+    },
+    "defaults": {
+      "$ref": "#/$defs/WorkbookDefaults",
+      "description": "Workbook default parameter selections"
+    }
+  },
+  "$defs": {
+    "RequestEntry": {
+      "description": "Either a request or a request group",
+      "oneOf": [
+        { "$ref": "#/$defs/Request" },
+        { "$ref": "#/$defs/RequestGroup" }
+      ]
+    },
+    "Request": {
+      "type": "object",
+      "description": "An HTTP request definition",
+      "required": ["id", "name", "url"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier (UUID)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name of the request"
+        },
+        "disabled": {
+          "type": "boolean",
+          "description": "Whether the request is disabled",
+          "default": false
+        },
+        "key": {
+          "type": "string",
+          "description": "Optional key identifier"
+        },
+        "test": {
+          "type": "string",
+          "description": "JavaScript test code to run against the response"
+        },
+        "url": {
+          "type": "string",
+          "description": "Request URL (supports {{variable}} substitution)"
+        },
+        "method": {
+          "$ref": "#/$defs/RequestMethod"
+        },
+        "timeout": {
+          "type": "integer",
+          "description": "Request timeout in milliseconds",
+          "minimum": 0
+        },
+        "headers": {
+          "type": "array",
+          "description": "HTTP request headers",
+          "items": {
+            "$ref": "#/$defs/NameValuePair"
+          }
+        },
+        "queryStringParams": {
+          "type": "array",
+          "description": "URL query string parameters",
+          "items": {
+            "$ref": "#/$defs/NameValuePair"
+          }
+        },
+        "body": {
+          "$ref": "#/$defs/RequestBody"
+        },
+        "keepAlive": {
+          "type": "boolean",
+          "description": "Whether to use HTTP keep-alive",
+          "default": false
+        },
+        "acceptInvalidCerts": {
+          "type": "boolean",
+          "description": "Whether to accept invalid SSL certificates",
+          "default": false
+        },
+        "numberOfRedirects": {
+          "type": "integer",
+          "description": "Maximum number of HTTP redirects to follow",
+          "default": 10,
+          "minimum": 0
+        },
+        "runs": {
+          "type": "integer",
+          "description": "Number of times to execute the request",
+          "default": 1,
+          "minimum": 1
+        },
+        "multiRunExecution": {
+          "$ref": "#/$defs/ExecutionConcurrency",
+          "description": "How multiple runs are executed",
+          "default": "SEQUENTIAL"
+        },
+        "selectedScenario": {
+          "$ref": "#/$defs/Selection",
+          "description": "Selected scenario for this request"
+        },
+        "selectedAuthorization": {
+          "$ref": "#/$defs/Selection",
+          "description": "Selected authorization for this request"
+        },
+        "selectedCertificate": {
+          "$ref": "#/$defs/Selection",
+          "description": "Selected certificate for this request"
+        },
+        "selectedProxy": {
+          "$ref": "#/$defs/Selection",
+          "description": "Selected proxy for this request"
+        },
+        "selectedData": {
+          "$ref": "#/$defs/Selection",
+          "description": "Selected data set for this request"
+        }
+      }
+    },
+    "RequestGroup": {
+      "type": "object",
+      "description": "A group of requests executed together",
+      "required": ["id", "name", "children"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier (UUID)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name of the group"
+        },
+        "disabled": {
+          "type": "boolean",
+          "description": "Whether the group is disabled",
+          "default": false
+        },
+        "key": {
+          "type": "string",
+          "description": "Optional key identifier"
+        },
+        "children": {
+          "type": "array",
+          "description": "Child requests and groups",
+          "items": {
+            "$ref": "#/$defs/RequestEntry"
+          }
+        },
+        "execution": {
+          "$ref": "#/$defs/ExecutionConcurrency",
+          "description": "How child requests are executed",
+          "default": "SEQUENTIAL"
+        },
+        "runs": {
+          "type": "integer",
+          "description": "Number of times to execute the group",
+          "default": 1,
+          "minimum": 1
+        },
+        "multiRunExecution": {
+          "$ref": "#/$defs/ExecutionConcurrency",
+          "description": "How multiple runs are executed",
+          "default": "SEQUENTIAL"
+        },
+        "setup": {
+          "type": "string",
+          "description": "JavaScript setup code to run before group execution"
+        },
+        "selectedScenario": {
+          "$ref": "#/$defs/Selection",
+          "description": "Selected scenario for this group"
+        },
+        "selectedAuthorization": {
+          "$ref": "#/$defs/Selection",
+          "description": "Selected authorization for this group"
+        },
+        "selectedCertificate": {
+          "$ref": "#/$defs/Selection",
+          "description": "Selected certificate for this group"
+        },
+        "selectedProxy": {
+          "$ref": "#/$defs/Selection",
+          "description": "Selected proxy for this group"
+        },
+        "selectedData": {
+          "$ref": "#/$defs/Selection",
+          "description": "Selected data set for this group"
+        }
+      }
+    },
+    "RequestMethod": {
+      "type": "string",
+      "description": "HTTP request method",
+      "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+    },
+    "ExecutionConcurrency": {
+      "type": "string",
+      "description": "Execution concurrency mode",
+      "enum": ["SEQUENTIAL", "CONCURRENT"]
+    },
+    "RequestBody": {
+      "description": "Request body content",
+      "oneOf": [
+        { "$ref": "#/$defs/TextBody" },
+        { "$ref": "#/$defs/JSONBody" },
+        { "$ref": "#/$defs/XMLBody" },
+        { "$ref": "#/$defs/FormBody" },
+        { "$ref": "#/$defs/RawBody" }
+      ],
+      "discriminator": {
+        "propertyName": "type"
+      }
+    },
+    "TextBody": {
+      "type": "object",
+      "description": "Plain text request body",
+      "required": ["type", "data"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "Text"
+        },
+        "data": {
+          "type": "string",
+          "description": "Text content"
+        }
+      }
+    },
+    "JSONBody": {
+      "type": "object",
+      "description": "JSON request body",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "JSON"
+        },
+        "data": {
+          "description": "Parsed JSON data (any valid JSON value)"
+        },
+        "formatted": {
+          "type": "string",
+          "description": "Formatted/pretty-printed JSON string representation"
+        }
+      }
+    },
+    "XMLBody": {
+      "type": "object",
+      "description": "XML request body",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "XML"
+        },
+        "formatted": {
+          "type": "string",
+          "description": "Formatted XML string"
+        }
+      }
+    },
+    "FormBody": {
+      "type": "object",
+      "description": "Form-encoded request body",
+      "required": ["type", "data"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "Form"
+        },
+        "data": {
+          "type": "array",
+          "description": "Form field name-value pairs",
+          "items": {
+            "$ref": "#/$defs/NameValuePair"
+          }
+        }
+      }
+    },
+    "RawBody": {
+      "type": "object",
+      "description": "Raw binary request body (base64 encoded)",
+      "required": ["type", "data"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "Raw"
+        },
+        "data": {
+          "type": "string",
+          "description": "Base64-encoded binary data (standard alphabet, unpadded)",
+          "contentEncoding": "base64"
+        }
+      }
+    },
+    "NameValuePair": {
+      "type": "object",
+      "description": "A name-value pair (used for headers, query params, form fields)",
+      "required": ["name", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        },
+        "disabled": {
+          "type": "boolean",
+          "description": "Whether this pair is disabled"
+        }
+      }
+    },
+    "Selection": {
+      "type": "object",
+      "description": "A reference to a selected entity by ID and name",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "ID of the selected entity"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name of the selected entity",
+          "default": ""
+        }
+      }
+    },
+    "Scenario": {
+      "type": "object",
+      "description": "A scenario with variable definitions for parameterized testing",
+      "required": ["id", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier (UUID)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name of the scenario"
+        },
+        "variables": {
+          "type": "array",
+          "description": "Variables defined in this scenario",
+          "items": {
+            "$ref": "#/$defs/Variable"
+          }
+        }
+      }
+    },
+    "Variable": {
+      "type": "object",
+      "description": "A variable with a name, type, and value",
+      "required": ["name", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Variable name"
+        },
+        "type": {
+          "type": "string",
+          "description": "Variable source type",
+          "enum": ["TEXT", "JSON", "FILE-JSON", "FILE-CSV"],
+          "default": "TEXT"
+        },
+        "value": {
+          "type": "string",
+          "description": "Variable value (or file path for FILE-* types)"
+        },
+        "disabled": {
+          "type": "boolean",
+          "description": "Whether this variable is disabled"
+        }
+      }
+    },
+    "Authorization": {
+      "description": "Authentication configuration",
+      "oneOf": [
+        { "$ref": "#/$defs/BasicAuth" },
+        { "$ref": "#/$defs/OAuth2ClientAuth" },
+        { "$ref": "#/$defs/OAuth2PkceAuth" },
+        { "$ref": "#/$defs/ApiKeyAuth" }
+      ],
+      "discriminator": {
+        "propertyName": "type"
+      }
+    },
+    "BasicAuth": {
+      "type": "object",
+      "description": "HTTP Basic authentication",
+      "required": ["type", "id", "name", "username", "password"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "Basic"
+        },
+        "id": {
+          "type": "string",
+          "description": "Unique identifier (UUID)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name"
+        },
+        "username": {
+          "type": "string",
+          "description": "Basic auth username"
+        },
+        "password": {
+          "type": "string",
+          "description": "Basic auth password"
+        }
+      }
+    },
+    "OAuth2ClientAuth": {
+      "type": "object",
+      "description": "OAuth2 Client Credentials authentication",
+      "required": ["type", "id", "name", "accessTokenUrl", "clientId", "clientSecret"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "OAuth2Client"
+        },
+        "id": {
+          "type": "string",
+          "description": "Unique identifier (UUID)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name"
+        },
+        "accessTokenUrl": {
+          "type": "string",
+          "description": "URL to obtain access token"
+        },
+        "clientId": {
+          "type": "string",
+          "description": "OAuth2 client ID"
+        },
+        "clientSecret": {
+          "type": "string",
+          "description": "OAuth2 client secret"
+        },
+        "audience": {
+          "type": "string",
+          "description": "OAuth2 audience"
+        },
+        "scope": {
+          "type": "string",
+          "description": "OAuth2 scope"
+        },
+        "selectedCertificate": {
+          "$ref": "#/$defs/Selection",
+          "description": "Certificate to use for token request"
+        },
+        "selectedProxy": {
+          "$ref": "#/$defs/Selection",
+          "description": "Proxy to use for token request"
+        },
+        "sendCredentialsInBody": {
+          "type": "boolean",
+          "description": "Whether to send credentials in request body instead of header"
+        }
+      }
+    },
+    "OAuth2PkceAuth": {
+      "type": "object",
+      "description": "OAuth2 PKCE (Authorization Code with PKCE) authentication",
+      "required": ["type", "id", "name", "authorizeUrl", "accessTokenUrl", "clientId"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "OAuth2Pkce"
+        },
+        "id": {
+          "type": "string",
+          "description": "Unique identifier (UUID)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name"
+        },
+        "authorizeUrl": {
+          "type": "string",
+          "description": "Authorization endpoint URL"
+        },
+        "accessTokenUrl": {
+          "type": "string",
+          "description": "Token endpoint URL"
+        },
+        "clientId": {
+          "type": "string",
+          "description": "OAuth2 client ID"
+        },
+        "scope": {
+          "type": "string",
+          "description": "OAuth2 scope"
+        },
+        "sendCredentialsInBody": {
+          "type": "boolean",
+          "description": "Whether to send credentials in request body instead of header"
+        }
+      }
+    },
+    "ApiKeyAuth": {
+      "type": "object",
+      "description": "API Key authentication via header",
+      "required": ["type", "id", "name", "header", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "ApiKey"
+        },
+        "id": {
+          "type": "string",
+          "description": "Unique identifier (UUID)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name"
+        },
+        "header": {
+          "type": "string",
+          "description": "Header name to send the API key in"
+        },
+        "value": {
+          "type": "string",
+          "description": "API key value"
+        }
+      }
+    },
+    "Certificate": {
+      "description": "TLS client certificate configuration",
+      "oneOf": [
+        { "$ref": "#/$defs/PKCS12Certificate" },
+        { "$ref": "#/$defs/PKCS8PEMCertificate" },
+        { "$ref": "#/$defs/PEMCertificate" }
+      ],
+      "discriminator": {
+        "propertyName": "type"
+      }
+    },
+    "PKCS12Certificate": {
+      "type": "object",
+      "description": "PKCS#12 (.pfx/.p12) certificate",
+      "required": ["type", "id", "name", "pfx"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "PKCS12"
+        },
+        "id": {
+          "type": "string",
+          "description": "Unique identifier (UUID)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name"
+        },
+        "pfx": {
+          "type": "string",
+          "description": "Base64-encoded PKCS#12 data (standard alphabet, unpadded)",
+          "contentEncoding": "base64"
+        },
+        "password": {
+          "type": "string",
+          "description": "Password for the PKCS#12 file"
+        }
+      }
+    },
+    "PKCS8PEMCertificate": {
+      "type": "object",
+      "description": "PKCS#8 PEM certificate with separate key",
+      "required": ["type", "id", "name", "pem", "key"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "PKCS8_PEM"
+        },
+        "id": {
+          "type": "string",
+          "description": "Unique identifier (UUID)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name"
+        },
+        "pem": {
+          "type": "string",
+          "description": "Base64-encoded PEM certificate data (standard alphabet, unpadded)",
+          "contentEncoding": "base64"
+        },
+        "key": {
+          "type": "string",
+          "description": "Base64-encoded PKCS#8 private key data (standard alphabet, unpadded)",
+          "contentEncoding": "base64"
+        }
+      }
+    },
+    "PEMCertificate": {
+      "type": "object",
+      "description": "PEM certificate (no separate key)",
+      "required": ["type", "id", "name", "pem"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "PEM"
+        },
+        "id": {
+          "type": "string",
+          "description": "Unique identifier (UUID)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name"
+        },
+        "pem": {
+          "type": "string",
+          "description": "Base64-encoded PEM certificate data (standard alphabet, unpadded)",
+          "contentEncoding": "base64"
+        }
+      }
+    },
+    "Proxy": {
+      "type": "object",
+      "description": "Proxy server configuration",
+      "required": ["id", "name", "url"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier (UUID)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name"
+        },
+        "url": {
+          "type": "string",
+          "description": "Proxy server URL"
+        }
+      }
+    },
+    "DataSet": {
+      "type": "object",
+      "description": "External data set for parameterized testing",
+      "required": ["id", "name", "type", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier (UUID)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name"
+        },
+        "type": {
+          "type": "string",
+          "description": "Data source type",
+          "enum": ["JSON", "FILE-JSON", "FILE-CSV"]
+        },
+        "source": {
+          "type": "string",
+          "description": "Data source content (for JSON type) or file path (for FILE-* types)"
+        }
+      }
+    },
+    "WorkbookDefaults": {
+      "type": "object",
+      "description": "Default parameter selections for the workbook",
+      "additionalProperties": false,
+      "properties": {
+        "selectedScenario": {
+          "$ref": "#/$defs/Selection",
+          "description": "Default scenario selection"
+        },
+        "selectedAuthorization": {
+          "$ref": "#/$defs/Selection",
+          "description": "Default authorization selection"
+        },
+        "selectedCertificate": {
+          "$ref": "#/$defs/Selection",
+          "description": "Default certificate selection"
+        },
+        "selectedProxy": {
+          "$ref": "#/$defs/Selection",
+          "description": "Default proxy selection"
+        },
+        "selectedData": {
+          "$ref": "#/$defs/Selection",
+          "description": "Default data set selection"
+        }
+      }
+    }
+  }
+}

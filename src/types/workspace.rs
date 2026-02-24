@@ -749,16 +749,11 @@ impl Workspace {
                 && (data.is_some() || !allow_data);
 
             if !done {
-                // Get the parent
+                // Get the parent via reverse index
                 let id = current.get_id().to_string();
 
-                let mut parent: Option<&RequestEntry> = None;
-                for (parent_id, children) in self.requests.child_ids.iter() {
-                    if children.contains(&id) {
-                        parent = self.requests.entities.get(&parent_id.clone());
-                        break;
-                    }
-                }
+                let parent = self.requests.parent_ids.get(&id)
+                    .and_then(|parent_id| self.requests.entities.get(parent_id));
 
                 if let Some(found_parent) = parent {
                     let parent_id = found_parent.get_id();

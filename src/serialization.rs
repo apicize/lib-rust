@@ -7,7 +7,6 @@ use std::{
 };
 use crate::ApicizeError;
 
-/// Information on save success
 /// Information on open success, including data
 pub struct SerializationOpenSuccess<T> {
     /// Name of file that was opened or saved
@@ -16,6 +15,7 @@ pub struct SerializationOpenSuccess<T> {
     pub data: T,
 }
 
+/// Information on save success
 pub struct SerializationSaveSuccess {
     /// Name of file that was opened or saved
     pub file_name: String,
