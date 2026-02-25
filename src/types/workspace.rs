@@ -752,7 +752,10 @@ impl Workspace {
                 // Get the parent via reverse index
                 let id = current.get_id().to_string();
 
-                let parent = self.requests.parent_ids.get(&id)
+                let parent = self
+                    .requests
+                    .parent_ids
+                    .get(&id)
                     .and_then(|parent_id| self.requests.entities.get(parent_id));
 
                 if let Some(found_parent) = parent {
@@ -894,151 +897,157 @@ impl Workspace {
         summaries: &IndexMap<usize, ExecutionResultSummary>,
         report: &mut Vec<ExecutionReportJson>,
     ) -> Result<(), ApicizeError> {
-        match summaries.get(exec_ctr) {
-            Some(summary) => {
-                if summary.error.is_some() {
-                    // Deal with summaries with errors
-                    report.push(ExecutionReportJson::from_summary(summary, None, None));
-                    Ok(())
-                } else if let Some(child_indexes) = &summary.child_exec_ctrs {
-                    let children = if child_indexes.is_empty() {
-                        None
-                    } else {
-                        let mut children = Vec::<ExecutionReportJson>::new();
-                        for child_index in child_indexes {
-                            Self::generate_json(child_index, summaries, &mut children)?;
-                        }
-                        Some(children)
-                    };
-                    report.push(ExecutionReportJson::from_summary(summary, children, None));
-                    Ok(())
-                } else {
-                    // Deal with executed behavior results
-                    report.push(ExecutionReportJson::from_summary(
-                        summary,
-                        None,
-                        summary.test_results.clone(),
-                    ));
-
-                    Ok(())
-                }
-            }
-            None => Err(ApicizeError::Error {
+        let Some(summary) = summaries.get(exec_ctr) else {
+            return Err(ApicizeError::Error {
                 description: format!("Invalid execution counter ({exec_ctr})").to_string(),
-            }),
+            });
+        };
+
+        if summary.error.is_some() {
+            // Deal with summaries with errors
+            report.push(ExecutionReportJson::from_summary(summary, None, None));
+        } else if let Some(child_exec_ctrs) = &summary.child_exec_ctrs {
+            let children = if child_exec_ctrs.is_empty() {
+                None
+            } else {
+                let mut children = Vec::<ExecutionReportJson>::new();
+                for child_exec_ctr in child_exec_ctrs {
+                    Self::generate_json(child_exec_ctr, summaries, &mut children)?;
+                }
+                Some(children)
+            };
+            report.push(ExecutionReportJson::from_summary(summary, children, None));
+        } else {
+            // Deal with executed behavior results
+            report.push(ExecutionReportJson::from_summary(
+                summary,
+                None,
+                summary.test_results.clone(),
+            ));
         }
+
+        Ok(())
     }
 
-    // Append specified index, including children, to the results
+    /// Append specified index, including children, to the results
     fn generate_csv(
+        run_number: usize,
         exec_ctr: &usize,
         summaries: &IndexMap<usize, ExecutionResultSummary>,
         parent_names: &[&str],
         report: &mut Vec<ExecutionReportCsv>,
-        run_number: usize,
+        processed_exec_ctrs: &mut HashSet<usize>,
     ) -> Result<(), ApicizeError> {
-        match summaries.get(exec_ctr) {
-            Some(summary) => {
-                let mut name_parts = Vec::from(parent_names);
-                let is_first = parent_names.is_empty();
-                let name_part = if !is_first
-                    && let Some(row_number) = summary.row_number
-                    && let Some(row_count) = summary.row_count
-                {
-                    &format!("Row {row_number} of {row_count}")
-                } else if !is_first
-                    && let Some(run_number) = summary.run_number
-                    && let Some(run_count) = summary.run_count
-                {
-                    &format!("Run {run_number} of {run_count}")
-                } else {
-                    &summary.name
-                };
-
-                name_parts.push(name_part);
-
-                if summary.error.is_some() {
-                    // Deal with summaries with errors
-                    report.push(ExecutionReportCsv {
-                        run_number,
-                        name: name_parts.join(", "),
-                        key: summary.key.clone(),
-                        executed_at: summary.executed_at,
-                        duration: summary.duration,
-                        method: summary.method.clone(),
-                        url: summary.url.clone(),
-                        success: summary.success.clone(),
-                        status: summary.status,
-                        status_text: summary.status_text.clone(),
-                        test_name: None,
-                        test_tag: None,
-                        test_success: None,
-                        test_logs: None,
-                        test_error: None,
-                        error: summary.error.clone(),
-                    });
-                } else if let Some(child_indexes) = &summary.child_exec_ctrs
-                    && !child_indexes.is_empty()
-                {
-                    // Deal with "parent" scenarois
-                    for child_index in child_indexes {
-                        Self::generate_csv(
-                            child_index,
-                            summaries,
-                            &name_parts,
-                            report,
-                            run_number,
-                        )?;
-                    }
-                } else if let Some(test_results) = &summary.test_results {
-                    // Deal with executed behavior results with tests
-                    for test_result in test_results {
-                        report.push(ExecutionReportCsv {
-                            run_number,
-                            name: name_parts.join(", "),
-                            key: summary.key.clone(),
-                            executed_at: summary.executed_at,
-                            duration: summary.duration,
-                            method: summary.method.clone(),
-                            url: summary.url.clone(),
-                            success: summary.success.clone(),
-                            status: summary.status,
-                            status_text: summary.status_text.clone(),
-                            error: summary.error.clone(),
-                            test_name: Some(test_result.name.clone()),
-                            test_tag: test_result.tag.clone(),
-                            test_success: Some(test_result.success),
-                            test_logs: test_result.logs.as_ref().map(|l| l.join("; ")),
-                            test_error: test_result.error.clone(),
-                        });
-                    }
-                } else {
-                    // Deal with executed behavior results without tests
-                    report.push(ExecutionReportCsv {
-                        run_number,
-                        name: name_parts.join(", "),
-                        key: summary.key.clone(),
-                        executed_at: summary.executed_at,
-                        duration: summary.duration,
-                        method: summary.method.clone(),
-                        url: summary.url.clone(),
-                        success: summary.success.clone(),
-                        status: summary.status,
-                        status_text: summary.status_text.clone(),
-                        error: summary.error.clone(),
-                        test_name: None,
-                        test_tag: None,
-                        test_success: None,
-                        test_logs: None,
-                        test_error: None,
-                    });
-                }
-                Ok(())
-            }
-            None => Err(ApicizeError::Error {
-                description: format!("Invalid execution counter ({exec_ctr})").to_string(),
-            }),
+        if processed_exec_ctrs.contains(exec_ctr) {
+            return Ok(());
         }
+
+        let Some(summary) = summaries.get(exec_ctr) else {
+            return Err(ApicizeError::Error {
+                description: format!("Invalid execution counter ({exec_ctr})").to_string(),
+            });
+        };
+
+        processed_exec_ctrs.insert(*exec_ctr);
+
+        let mut name_parts = Vec::from(parent_names);
+        let is_first = parent_names.is_empty();
+        let name_part = if !is_first
+            && let Some(row_number) = summary.row_number
+            && let Some(row_count) = summary.row_count
+        {
+            &format!("Row {row_number} of {row_count}")
+        } else if !is_first
+            && let Some(run_number) = summary.run_number
+            && let Some(run_count) = summary.run_count
+        {
+            &format!("Run {run_number} of {run_count}")
+        } else {
+            &summary.name
+        };
+
+        name_parts.push(name_part);
+
+        if summary.error.is_some() {
+            // Deal with summaries with errors
+            report.push(ExecutionReportCsv {
+                run_number,
+                name: name_parts.join(", "),
+                key: summary.key.clone(),
+                executed_at: summary.executed_at,
+                duration: summary.duration,
+                method: summary.method.clone(),
+                url: summary.url.clone(),
+                success: summary.success.clone(),
+                status: summary.status,
+                status_text: summary.status_text.clone(),
+                test_name: None,
+                test_tag: None,
+                test_success: None,
+                test_logs: None,
+                test_error: None,
+                error: summary.error.clone(),
+            });
+        } else if let Some(child_exec_ctrs) = &summary.child_exec_ctrs
+            && !child_exec_ctrs.is_empty()
+        {
+            // Deal with "parent" scenarois
+            for child_exec_ctr in child_exec_ctrs {
+                Self::generate_csv(
+                    run_number,
+                    child_exec_ctr,
+                    summaries,
+                    &name_parts,
+                    report,
+                    processed_exec_ctrs,
+                )?;
+            }
+        } else if let Some(test_results) = &summary.test_results
+            && !test_results.is_empty()
+        {
+            // Deal with executed behavior results with tests
+            for test_result in test_results {
+                report.push(ExecutionReportCsv {
+                    run_number,
+                    name: name_parts.join(", "),
+                    key: summary.key.clone(),
+                    executed_at: summary.executed_at,
+                    duration: summary.duration,
+                    method: summary.method.clone(),
+                    url: summary.url.clone(),
+                    success: summary.success.clone(),
+                    status: summary.status,
+                    status_text: summary.status_text.clone(),
+                    error: summary.error.clone(),
+                    test_name: Some(test_result.name.clone()),
+                    test_tag: test_result.tag.clone(),
+                    test_success: Some(test_result.success),
+                    test_logs: test_result.logs.as_ref().map(|l| l.join("; ")),
+                    test_error: test_result.error.clone(),
+                });
+            }
+        } else {
+            // Deal with executed behavior results without tests
+            report.push(ExecutionReportCsv {
+                run_number,
+                name: name_parts.join(", "),
+                key: summary.key.clone(),
+                executed_at: summary.executed_at,
+                duration: summary.duration,
+                method: summary.method.clone(),
+                url: summary.url.clone(),
+                success: summary.success.clone(),
+                status: summary.status,
+                status_text: summary.status_text.clone(),
+                error: summary.error.clone(),
+                test_name: None,
+                test_tag: None,
+                test_success: None,
+                test_logs: None,
+                test_error: None,
+            });
+        }
+        Ok(())
     }
 
     /// Generate a report from summarized execution results
@@ -1059,7 +1068,14 @@ impl Workspace {
             }
             ExecutionReportFormat::CSV => {
                 let mut data = Vec::<ExecutionReportCsv>::new();
-                Self::generate_csv(exec_ctr, summaries, &[], &mut data, 1)?;
+                Self::generate_csv(
+                    1,
+                    exec_ctr,
+                    summaries,
+                    &[],
+                    &mut data,
+                    &mut HashSet::<usize>::new(),
+                )?;
                 Self::generate_csv_text(data, false)
             }
         }
@@ -1097,8 +1113,16 @@ impl Workspace {
                 let mut run_data = Vec::<ExecutionReportCsv>::with_capacity(entry_count);
 
                 for (run_number, run_summaries) in all_run_summaries {
-                    for index in run_summaries.keys() {
-                        Self::generate_csv(index, run_summaries, &[], &mut run_data, *run_number)?;
+                    let mut processed_exec_ctrs = &mut HashSet::<usize>::new();
+                    for exec_ctr in run_summaries.keys() {
+                        Self::generate_csv(
+                            *run_number,
+                            exec_ctr,
+                            run_summaries,
+                            &[],
+                            &mut run_data,
+                            &mut processed_exec_ctrs,
+                        )?;
                     }
                 }
 
@@ -1121,10 +1145,7 @@ impl Workspace {
                 }
             }
         } else {
-            for d in run_data
-                .into_iter()
-                .map(ExecutionReportCsvSingleRun::from)
-            {
+            for d in run_data.into_iter().map(ExecutionReportCsvSingleRun::from) {
                 if let Err(err) = writer.serialize(d) {
                     return Err(ApicizeError::Error {
                         description: format!("{}", &err),
