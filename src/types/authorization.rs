@@ -52,11 +52,11 @@ pub enum Authorization {
         /// Scope to add to token (multiple scopes should be space-delimited)
         scope: Option<String>,
         /// Selected certificate, if applicable
-        #[serde(skip_serializing_if = "Option::is_none")]
-        selected_certificate: Option<Selection>,
+        #[serde(skip_serializing_if = "Selection::is_default", default = "Selection::new_none")]
+        selected_certificate: Selection,
         /// Selected proxy, if applicable
-        #[serde(skip_serializing_if = "Option::is_none")]
-        selected_proxy: Option<Selection>,
+        #[serde(skip_serializing_if = "Selection::is_default", default = "Selection::new_none")]
+        selected_proxy: Selection,
         /// If true, OAuth credentials are sent in body instead of header
         #[serde(skip_serializing_if = "Option::is_none")]
         send_credentials_in_body: Option<bool>,

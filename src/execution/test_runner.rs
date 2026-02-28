@@ -162,7 +162,9 @@ impl TestRunnerContext {
             Some(RequestEntry::Request(request)) => {
                 if let Some(key) = &request.key {
                     Ok(Some(key.clone()))
-                } else if let Some(parent_id) = self.workspace.requests.parent_ids.get(request_or_group_id) {
+                } else if let Some(parent_id) =
+                    self.workspace.requests.parent_ids.get(request_or_group_id)
+                {
                     self.get_request_key(parent_id)
                 } else {
                     Ok(None)
@@ -171,7 +173,9 @@ impl TestRunnerContext {
             Some(RequestEntry::Group(group)) => {
                 if let Some(key) = &group.key {
                     Ok(Some(key.clone()))
-                } else if let Some(parent_id) = self.workspace.requests.parent_ids.get(request_or_group_id) {
+                } else if let Some(parent_id) =
+                    self.workspace.requests.parent_ids.get(request_or_group_id)
+                {
                     self.get_request_key(parent_id)
                 } else {
                     Ok(None)
@@ -243,18 +247,6 @@ async fn run_request_entry(
             .workspace
             .retrieve_request_parameters(entry, &context.value_cache, &params)?;
 
-    let new_state = if state.row.is_some() && !new_params.data_enabled {
-        // If a row is active but we are not using a data set now (because the request/group data parameter
-        // has been set to off or is different than what is in use) then we need to not use the
-        // active row anymore
-        Arc::new(RequestExecutionState {
-            output_variables: state.output_variables.clone(),
-            row: None,
-        })
-    } else {
-        state.clone()
-    };
-
     match entry {
         RequestEntry::Request(request) => {
             if request.disabled && !force_run {
@@ -264,7 +256,7 @@ async fn run_request_entry(
                     context.clone(),
                     &request_or_group_id,
                     Arc::new(new_params),
-                    new_state,
+                    state,
                 )
                 .await?
                 {
@@ -281,7 +273,7 @@ async fn run_request_entry(
                     context.clone(),
                     &request_or_group_id,
                     Arc::new(new_params),
-                    new_state,
+                    state,
                 )
                 .await?
                 {
@@ -309,7 +301,8 @@ async fn run_request(
         return Ok(None);
     }
 
-    let (content, data_context, tallies, logs,) = if params.data_set.is_some() && state.row.is_none() {
+    let (content, data_context, tallies, logs) = if params.data_set.is_some() && state.row.is_none()
+    {
         let rows =
             run_request_rows(context.clone(), request_id, params.clone(), state.clone()).await?;
         let data_context = rows.generate_data_context();
@@ -615,7 +608,7 @@ async fn run_group(
                 row: state.row.clone(),
                 output_variables: Some(Arc::new(setup_response.output.clone())),
             }),
-            setup_response.logs
+            setup_response.logs,
         )
     } else {
         (state, None)
@@ -623,7 +616,8 @@ async fn run_group(
 
     let (content, data_context, tallies) = if params.data_set.is_some() && !child_ids.is_empty() {
         // Apply all data rows to each child of a group
-        let rows = run_group_rows(context.clone(), group_id, params.clone(), use_state.clone()).await?;
+        let rows =
+            run_group_rows(context.clone(), group_id, params.clone(), use_state.clone()).await?;
         let data_context = rows.generate_data_context();
         let tallies = rows.get_tallies();
         (
@@ -632,7 +626,8 @@ async fn run_group(
             tallies,
         )
     } else if multi_run {
-        let runs = run_group_runs(context.clone(), group_id, params.clone(), use_state.clone()).await?;
+        let runs =
+            run_group_runs(context.clone(), group_id, params.clone(), use_state.clone()).await?;
         let data_context = runs.generate_data_context();
         let tallies = runs.get_tallies();
         (
@@ -1320,11 +1315,8 @@ async fn dispatch_request(
                 context
                     .workspace
                     .certificates
-                    .get_optional(&selected_certificate.as_ref().map(|c| c.id.clone())),
-                context
-                    .workspace
-                    .proxies
-                    .get_optional(&selected_proxy.as_ref().map(|p| p.id.clone())),
+                    .get_optional(selected_certificate.get_id()),
+                context.workspace.proxies.get_optional(&selected_proxy.id),
                 context.enable_trace,
             )
             .await
@@ -1545,10 +1537,7 @@ async fn dispatch_request(
                                         output_variables = Some(obj.clone());
                                     }
 
-                                    Some(ApicizeBody::JSON {
-                                        text,
-                                        data: parsed,
-                                    })
+                                    Some(ApicizeBody::JSON { text, data: parsed })
                                 } else {
                                     Some(ApicizeBody::Text { text })
                                 }

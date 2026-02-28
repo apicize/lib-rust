@@ -7,8 +7,8 @@ use crate::{
     ExecutionReportCsvSingleRun, ExecutionReportFormat, ExecutionReportJson,
     ExecutionResultSummary, Identifiable, PersistedIndex, Proxy, RequestEntry, Scenario,
     SelectedParameters, Selection, SerializationSaveSuccess, StoredRequestEntry, Validated,
-    Workbook, WorkbookDefaultParameters, indexed_entities::NO_SELECTION_ID, open_data_file,
-    open_data_stream, save_data_file, selected_parameters::SelectableParameters,
+    Workbook, WorkbookDefaultParameters, open_data_file, open_data_stream, save_data_file,
+    selected_parameters::SelectableParameters,
 };
 
 use csv::WriterBuilder;
@@ -119,7 +119,7 @@ impl Workspace {
             ],
             "scenario",
         )? {
-            workbook.defaults.as_mut().unwrap().selected_scenario = Some(s);
+            workbook.defaults.as_mut().unwrap().selected_scenario = s;
         }
 
         if let Some(s) = Self::find_selection(
@@ -131,7 +131,7 @@ impl Workspace {
             ],
             "authorization",
         )? {
-            workbook.defaults.as_mut().unwrap().selected_authorization = Some(s);
+            workbook.defaults.as_mut().unwrap().selected_authorization = s;
         }
 
         if let Some(s) = Self::find_selection(
@@ -143,7 +143,7 @@ impl Workspace {
             ],
             "certificate",
         )? {
-            workbook.defaults.as_mut().unwrap().selected_certificate = Some(s);
+            workbook.defaults.as_mut().unwrap().selected_certificate = s;
         }
 
         if let Some(s) = Self::find_selection(
@@ -155,7 +155,7 @@ impl Workspace {
             ],
             "proxy",
         )? {
-            workbook.defaults.as_mut().unwrap().selected_proxy = Some(s);
+            workbook.defaults.as_mut().unwrap().selected_proxy = s;
         }
 
         // Commnad line seed may be an ID, a name or a file name
@@ -173,10 +173,10 @@ impl Workspace {
             {
                 // writeln!(feedback, "Using seed entry \"{}\"", seed.white()).unwrap();
 
-                workbook.defaults.as_mut().unwrap().selected_data = Some(Selection {
+                workbook.defaults.as_mut().unwrap().selected_data = Selection {
                     id,
                     name: "Command line seed".to_string(),
-                });
+                };
                 found_data = true;
             }
 
@@ -222,10 +222,10 @@ impl Workspace {
                         }
                     }
 
-                    workbook.defaults.as_mut().unwrap().selected_data = Some(Selection {
+                    workbook.defaults.as_mut().unwrap().selected_data = Selection {
                         id: "\0".to_string(),
                         name: "Command line seed".to_string(),
-                    });
+                    };
                 } else {
                     return Err(ApicizeError::FileAccess {
                         description: "seed file not found".to_string(),
@@ -466,36 +466,7 @@ impl Workspace {
                         None
                     } else {
                         // Don't save selected certificates or proxies set to None
-                        Some(
-                            entities
-                                .iter()
-                                .map(|auth| {
-                                    let mut auth = clone_to_storage(auth);
-                                    if let Authorization::OAuth2Client {
-                                        ref mut selected_certificate,
-                                        ref mut selected_proxy,
-                                        ..
-                                    } = auth
-                                    {
-                                        if selected_certificate
-                                            .as_ref()
-                                            .map(|s| s.id == NO_SELECTION_ID)
-                                            .unwrap_or(false)
-                                        {
-                                            *selected_certificate = None;
-                                        }
-                                        if selected_proxy
-                                            .as_ref()
-                                            .map(|s| s.id == NO_SELECTION_ID)
-                                            .unwrap_or(false)
-                                        {
-                                            *selected_proxy = None;
-                                        }
-                                    }
-                                    auth
-                                })
-                                .collect(),
-                        )
+                        Some(entities.iter().map(clone_to_storage).collect())
                     }
                 }
                 None => None,
@@ -525,48 +496,7 @@ impl Workspace {
 
         let stored_defaults = match self.defaults.any_values_set() {
             true => {
-                // Do not save default selections explicitly set to None
-                let mut defaults = clone_to_storage(&self.defaults);
-                if defaults
-                    .selected_scenario
-                    .as_ref()
-                    .map(|s| s.id == NO_SELECTION_ID)
-                    .unwrap_or(false)
-                {
-                    defaults.selected_scenario = None;
-                }
-                if defaults
-                    .selected_authorization
-                    .as_ref()
-                    .map(|s| s.id == NO_SELECTION_ID)
-                    .unwrap_or(false)
-                {
-                    defaults.selected_authorization = None;
-                }
-                if defaults
-                    .selected_certificate
-                    .as_ref()
-                    .map(|s| s.id == NO_SELECTION_ID)
-                    .unwrap_or(false)
-                {
-                    defaults.selected_certificate = None;
-                }
-                if defaults
-                    .selected_proxy
-                    .as_ref()
-                    .map(|s| s.id == NO_SELECTION_ID)
-                    .unwrap_or(false)
-                {
-                    defaults.selected_proxy = None;
-                }
-                if defaults
-                    .selected_data
-                    .as_ref()
-                    .map(|s| s.id == NO_SELECTION_ID)
-                    .unwrap_or(false)
-                {
-                    defaults.selected_data = None;
-                }
+                let defaults = clone_to_storage(&self.defaults);
                 Some(defaults)
             }
             false => None,
@@ -687,7 +617,7 @@ impl Workspace {
         while !done {
             // Set the credential values at the current request value
             if allow_scenario && scenario.is_none() {
-                match self.scenarios.find(current.selected_scenario()) {
+                match self.scenarios.find(current.selected_scenario())? {
                     SelectedOption::UseDefault => {}
                     SelectedOption::Off => {
                         allow_scenario = false;
@@ -698,7 +628,7 @@ impl Workspace {
                 }
             }
             if allow_authorization && authorization.is_none() {
-                match self.authorizations.find(current.selected_authorization()) {
+                match self.authorizations.find(current.selected_authorization())? {
                     SelectedOption::UseDefault => {}
                     SelectedOption::Off => {
                         allow_authorization = false;
@@ -709,7 +639,7 @@ impl Workspace {
                 }
             }
             if allow_certificate && certificate.is_none() {
-                match self.certificates.find(current.selected_certificate()) {
+                match self.certificates.find(current.selected_certificate())? {
                     SelectedOption::UseDefault => {}
                     SelectedOption::Off => {
                         allow_certificate = false;
@@ -720,7 +650,7 @@ impl Workspace {
                 }
             }
             if allow_proxy && proxy.is_none() {
-                match self.proxies.find(current.selected_proxy()) {
+                match self.proxies.find(current.selected_proxy())? {
                     SelectedOption::UseDefault => {}
                     SelectedOption::Off => {
                         allow_proxy = false;
@@ -731,7 +661,7 @@ impl Workspace {
                 }
             }
             if allow_data && data.is_none() {
-                match self.data.find(current.selected_data()) {
+                match self.data.find(current.selected_data())? {
                     SelectedOption::UseDefault => {}
                     SelectedOption::Off => {
                         allow_data = false;
@@ -776,7 +706,8 @@ impl Workspace {
         // Load from defaults if required
         if scenario.is_none()
             && allow_scenario
-            && let SelectedOption::Some(s) = self.scenarios.find(&self.defaults.selected_scenario)
+            && let SelectedOption::Some(s) =
+                self.scenarios.find(&self.defaults.selected_scenario)?
         {
             scenario = Some(s);
         }
@@ -785,29 +716,30 @@ impl Workspace {
             && allow_authorization
             && let SelectedOption::Some(a) = self
                 .authorizations
-                .find(&self.defaults.selected_authorization)
+                .find(&self.defaults.selected_authorization)?
         {
             authorization = Some(a);
         }
 
         if certificate.is_none()
             && allow_certificate
-            && let SelectedOption::Some(c) =
-                self.certificates.find(&self.defaults.selected_certificate)
+            && let SelectedOption::Some(c) = self
+                .certificates
+                .find(&self.defaults.selected_certificate)?
         {
             certificate = Some(c);
         }
 
         if proxy.is_none()
             && allow_proxy
-            && let SelectedOption::Some(p) = self.proxies.find(&self.defaults.selected_proxy)
+            && let SelectedOption::Some(p) = self.proxies.find(&self.defaults.selected_proxy)?
         {
             proxy = Some(p);
         }
 
         if data.is_none()
             && allow_data
-            && let SelectedOption::Some(p) = self.data.find(&self.defaults.selected_data)
+            && let SelectedOption::Some(p) = self.data.find(&self.defaults.selected_data)?
         {
             data = Some(p);
         }
@@ -819,11 +751,11 @@ impl Workspace {
             ..
         }) = authorization
         {
-            if let SelectedOption::Some(c) = self.certificates.find(selected_certificate) {
+            if let SelectedOption::Some(c) = self.certificates.find(selected_certificate)? {
                 auth_certificate_id = Some(c.get_id().to_string());
             }
 
-            if let SelectedOption::Some(proxy) = self.proxies.find(selected_proxy) {
+            if let SelectedOption::Some(proxy) = self.proxies.find(selected_proxy)? {
                 auth_proxy_id = Some(proxy.get_id().to_string());
             }
         }
@@ -846,33 +778,27 @@ impl Workspace {
         };
 
         // Retrieve data set if requested
-        let mut data_enabled = true;
-        let data_set = if allow_data {
-            if params.data_set.is_some() {
-                Arc::new(None)
-            } else {
-                match data {
-                    Some(d) => Arc::new(match locked_cache.get_external_data(d) {
-                        Ok(rows) => {
-                            if rows.is_empty() {
-                                None
-                            } else {
-                                Some(RequestDataSet {
-                                    id: d.id.clone(),
-                                    data: rows.clone(),
-                                })
-                            }
-                        }
-                        Err(err) => {
-                            return Err(err.clone());
-                        }
-                    }),
-                    None => params.data_set.clone(),
-                }
-            }
-        } else {
-            data_enabled = false;
+        let data_set = if params.data_set.is_some() {
             Arc::new(None)
+        } else {
+            match data {
+                Some(d) => Arc::new(match locked_cache.get_external_data(d) {
+                    Ok(rows) => {
+                        if rows.is_empty() {
+                            None
+                        } else {
+                            Some(RequestDataSet {
+                                id: d.id.clone(),
+                                data: rows.clone(),
+                            })
+                        }
+                    }
+                    Err(err) => {
+                        return Err(err.clone());
+                    }
+                }),
+                None => params.data_set.clone(),
+            }
         };
 
         Ok(RequestExecutionParameters {
@@ -882,12 +808,19 @@ impl Workspace {
                 Some(Arc::new(variables))
             },
             data_set,
-            data_enabled,
-            authorization_id: authorization.map(|a| a.get_id().to_string()),
-            certificate_id: certificate.map(|a| a.get_id().to_string()),
-            proxy_id: proxy.map(|p| p.get_id().to_string()),
-            auth_certificate_id,
-            auth_proxy_id,
+            authorization_id: authorization
+                .map_or(Selection::DEFAULT_SELECTION_ID.to_string(), |s| {
+                    s.get_id().to_string()
+                }),
+            certificate_id: certificate.map_or(Selection::DEFAULT_SELECTION_ID.to_string(), |s| {
+                s.get_id().to_string()
+            }),
+            proxy_id: proxy.map_or(Selection::DEFAULT_SELECTION_ID.to_string(), |s| {
+                s.get_id().to_string()
+            }),
+            auth_certificate_id: auth_certificate_id
+                .unwrap_or(Selection::DEFAULT_SELECTION_ID.to_string()),
+            auth_proxy_id: auth_proxy_id.unwrap_or(Selection::DEFAULT_SELECTION_ID.to_string()),
         })
     }
 
@@ -1113,7 +1046,7 @@ impl Workspace {
                 let mut run_data = Vec::<ExecutionReportCsv>::with_capacity(entry_count);
 
                 for (run_number, run_summaries) in all_run_summaries {
-                    let mut processed_exec_ctrs = &mut HashSet::<usize>::new();
+                    let mut processed_exec_ctrs = HashSet::<usize>::new();
                     for exec_ctr in run_summaries.keys() {
                         Self::generate_csv(
                             *run_number,
@@ -1163,13 +1096,12 @@ impl Workspace {
 #[derive(Clone, Default)]
 pub struct RequestExecutionParameters {
     pub data_set: Arc<Option<RequestDataSet>>,
-    pub data_enabled: bool,
     pub variables: Option<Arc<Map<String, Value>>>,
-    pub authorization_id: Option<String>,
-    pub certificate_id: Option<String>,
-    pub proxy_id: Option<String>,
-    pub auth_certificate_id: Option<String>,
-    pub auth_proxy_id: Option<String>,
+    pub authorization_id: String,
+    pub certificate_id: String,
+    pub proxy_id: String,
+    pub auth_certificate_id: String,
+    pub auth_proxy_id: String,
 }
 
 /// Thse values may change during the execution of a request/group

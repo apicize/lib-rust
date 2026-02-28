@@ -10,8 +10,6 @@ use super::{
     workspace::SelectedOption,
 };
 
-pub const NO_SELECTION_ID: &str = "\tNONE\t";
-
 /// Generic for indexed, ordered entities, optionally with children
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -44,7 +42,7 @@ impl<T: Identifiable + Clone> Default for IndexedEntities<T> {
 impl<T: Identifiable + Clone> IndexedEntities<T> {
     /// Find a match based upon ID or name
     pub fn is_valid(&self, selection: &Selection) -> bool {
-        selection.id == NO_SELECTION_ID
+        selection.id == Selection::NO_SELECTION_ID
             || self.entities.contains_key(&selection.id)
             || self
                 .entities
@@ -54,7 +52,7 @@ impl<T: Identifiable + Clone> IndexedEntities<T> {
 
     /// Return entry matched by ID
     pub fn get(&self, id: &str) -> Option<&T> {
-        if id == NO_SELECTION_ID {
+        if id == Selection::NO_SELECTION_ID {
             None
         } else {
             self.entities.get(id)
@@ -63,7 +61,7 @@ impl<T: Identifiable + Clone> IndexedEntities<T> {
 
     /// Return entry matched by ID as mutable
     pub fn get_mut(&mut self, id: &str) -> Option<&mut T> {
-        if id == NO_SELECTION_ID {
+        if id == Selection::NO_SELECTION_ID {
             None
         } else {
             self.entities.get_mut(id)
@@ -71,16 +69,11 @@ impl<T: Identifiable + Clone> IndexedEntities<T> {
     }
 
     /// Return entry matched by optional ID
-    pub fn get_optional(&self, id: &Option<String>) -> Option<&T> {
-        match id {
-            Some(id_to_find) => {
-                if id_to_find == NO_SELECTION_ID {
-                    None
-                } else {
-                    self.entities.get(id_to_find)
-                }
-            }
-            None => None,
+    pub fn get_optional(&self, id: &str) -> Option<&T> {
+        if id == Selection::NO_SELECTION_ID || id == Selection::DEFAULT_SELECTION_ID {
+            None
+        } else {
+            self.entities.get(id)
         }
     }
 
@@ -91,7 +84,7 @@ impl<T: Identifiable + Clone> IndexedEntities<T> {
     ) -> Result<Option<String>, ApicizeError> {
         match id_or_name {
             Some(id_to_find) => {
-                if id_to_find == NO_SELECTION_ID {
+                if id_to_find == Selection::NO_SELECTION_ID {
                     Ok(None)
                 } else if let Some(found) = self.entities.get(id_to_find) {
                     Ok(Some(found.get_id().to_string()))
@@ -110,26 +103,28 @@ impl<T: Identifiable + Clone> IndexedEntities<T> {
     }
 
     /// Find entity (Scenario, Authorization, etc.)
-    pub fn find<'a>(&'a self, selection: &Option<Selection>) -> SelectedOption<&'a T> {
-        if let Some(s) = selection {
-            if s.id == NO_SELECTION_ID {
-                return SelectedOption::Off;
-            }
-
+    pub fn find<'a>(
+        &'a self,
+        selection: &Selection,
+    ) -> Result<SelectedOption<&'a T>, ApicizeError> {
+        if selection.id == Selection::NO_SELECTION_ID {
+            Ok(SelectedOption::Off)
+        } else if selection.id == Selection::DEFAULT_SELECTION_ID {
+            Ok(SelectedOption::UseDefault)
+        } else if let Some(found_by_id) = self.entities.get(&selection.id) {
             // First, look for matches based upon ID
-            if let Some(found_by_id) = self.entities.get(&s.id) {
-                return SelectedOption::Some(found_by_id);
-            }
-
+            Ok(SelectedOption::Some(found_by_id))
+        } else if let Some(found_by_name) = self.entities.values().find(|v| {
+            let name = v.get_name();
+            name.eq_ignore_ascii_case(&selection.name)
+        }) {
             // Otherwise, look for name matches
-            if let Some(found_by_name) = self.entities.values().find(|v| {
-                let name = v.get_name();
-                name.eq_ignore_ascii_case(&s.name)
-            }) {
-                return SelectedOption::Some(found_by_name);
-            }
+            Ok(SelectedOption::Some(found_by_name))
+        } else {
+            Err(ApicizeError::InvalidId {
+                description: format!("Invalid id \"{}\"", selection.id),
+            })
         }
-        SelectedOption::UseDefault
     }
 }
 
@@ -228,15 +223,21 @@ impl IndexedEntities<DataSet> {
     pub fn new(entities: Option<Vec<DataSet>>) -> IndexedEntities<DataSet> {
         match entities {
             Some(entities) => {
-                let top_level_ids = entities.iter().map(|e| e.id.clone()).collect::<Vec<String>>();
-                let entities = entities.into_iter().map(|e| (e.id.clone(), e)).collect::<HashMap<String, DataSet>>();
+                let top_level_ids = entities
+                    .iter()
+                    .map(|e| e.id.clone())
+                    .collect::<Vec<String>>();
+                let entities = entities
+                    .into_iter()
+                    .map(|e| (e.id.clone(), e))
+                    .collect::<HashMap<String, DataSet>>();
                 IndexedEntities::<DataSet> {
                     top_level_ids,
                     child_ids: HashMap::new(),
                     entities,
                     parent_ids: HashMap::new(),
                 }
-            },
+            }
             None => IndexedEntities::default(),
         }
     }
@@ -267,14 +268,13 @@ fn from_persisted_lists<T: Identifiable + Clone>(
     private: Option<Vec<T>>,
     vault: Option<Vec<T>>,
 ) -> IndexedEntities<T> {
-    
     let map_ids = |list: &Option<Vec<T>>| -> Vec<String> {
         match list {
             Some(entries) => entries.iter().map(|e| e.get_id().to_string()).collect(),
-            None => Vec::default()
+            None => Vec::default(),
         }
     };
-    
+
     let workbook_ids = map_ids(&workbook);
     let private_ids = map_ids(&private);
     let vault_ids = map_ids(&vault);
@@ -319,18 +319,9 @@ fn from_persisted_lists<T: Identifiable + Clone>(
     IndexedEntities::<T> {
         top_level_ids: vec![],
         child_ids: HashMap::from([
-            (
-                PERSIST_WORKBOOK.to_string(),
-                workbook_ids,
-            ),
-            (
-                PERSIST_PRIVATE.to_string(),
-                private_ids,
-            ),
-            (
-                PERSIST_VAULT.to_string(),
-                vault_ids,
-            ),
+            (PERSIST_WORKBOOK.to_string(), workbook_ids),
+            (PERSIST_PRIVATE.to_string(), private_ids),
+            (PERSIST_VAULT.to_string(), vault_ids),
         ]),
         entities,
         parent_ids,
@@ -424,4 +415,3 @@ impl PersistedIndex<Proxy> for IndexedEntities<Proxy> {
         from_persisted_lists(workbook, private, vault)
     }
 }
-

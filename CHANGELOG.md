@@ -1,5 +1,9 @@
 # Change Log
 
+# 0.34.0
+
+* Update loaded parameters to be explicitly default instead of using Option
+
 # 0.33.1
 
 * Fix CSV output

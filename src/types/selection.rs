@@ -39,3 +39,49 @@ impl CloneIdentifiable for Selection {
         self.clone()
     }
 }
+
+impl Default for Selection {
+    fn default() -> Self {
+        Self {
+            id: Selection::DEFAULT_SELECTION_ID.to_string(),
+            name: Default::default(),
+        }
+    }
+}
+
+impl Selection {
+    pub const DEFAULT_SELECTION_ID: &str = "\tDEFAULT\t";
+    pub const NO_SELECTION_ID: &str = "\tNONE\t";
+
+    pub fn is_default_or_none(&self) -> bool {
+        self.id == Selection::DEFAULT_SELECTION_ID || self.id == Selection::NO_SELECTION_ID
+    }
+
+    pub fn is_default(&self) -> bool {
+        self.id == Selection::DEFAULT_SELECTION_ID
+    }
+
+    pub fn is_none(&self) -> bool {
+        self.id == Selection::NO_SELECTION_ID
+    }
+
+    pub fn new_default() -> Selection {
+        Selection {
+            id: Selection::DEFAULT_SELECTION_ID.to_string(),
+            name: "(Default)".to_string(),
+        }
+    }
+
+    pub fn new_none() -> Selection {
+        Selection {
+            id: Selection::NO_SELECTION_ID.to_string(),
+            name: "None (Off)".to_string(),
+        }
+    }
+}
+
+/// Type of seletion to fall back to if the specified selection entry is invalid
+pub enum SelectionIfInvalid {
+    Default,
+    None,
+}

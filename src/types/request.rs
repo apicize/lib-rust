@@ -142,20 +142,20 @@ pub struct Request {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub test: Option<String>,
     /// Selected scenario, if applicable
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_scenario: Option<Selection>,
+    #[serde(default = "Selection::default")]
+    pub selected_scenario: Selection,
     /// Selected authorization, if applicable
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_authorization: Option<Selection>,
+    #[serde(default = "Selection::default")]
+    pub selected_authorization: Selection,
     /// Selected certificate, if applicable
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_certificate: Option<Selection>,
+    #[serde(default = "Selection::default")]
+    pub selected_certificate: Selection,
     /// Selected proxy, if applicable
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_proxy: Option<Selection>,
+    #[serde(default = "Selection::default")]
+    pub selected_proxy: Selection,
     /// Selected external data, if any
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_data: Option<Selection>,
+    #[serde(default = "Selection::default")]
+    pub selected_data: Selection,
     /// Validation state
     #[serde(default, skip_serializing_if = "ValidationState::is_empty")]
     pub validation_state: ValidationState,
@@ -201,20 +201,20 @@ pub struct RequestGroup {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub setup: Option<String>,
     /// Selected scenario, if applicable
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_scenario: Option<Selection>,
+    #[serde(default = "Selection::default")]
+    pub selected_scenario: Selection,
     /// Selected authorization, if applicable
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_authorization: Option<Selection>,
+    #[serde(default = "Selection::default")]
+    pub selected_authorization: Selection,
     /// Selected certificate, if applicable
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_certificate: Option<Selection>,
+    #[serde(default = "Selection::default")]
+    pub selected_certificate: Selection,
     /// Selected proxy, if applicable
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_proxy: Option<Selection>,
+    #[serde(default = "Selection::default")]
+    pub selected_proxy: Selection,
     /// Selected external data, if any
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_data: Option<Selection>,
+    #[serde(default = "Selection::default")]
+    pub selected_data: Selection,
     /// Validation state
     #[serde(default, skip_serializing_if = "ValidationState::is_empty")]
     pub validation_state: ValidationState,
@@ -639,70 +639,70 @@ impl Display for RequestEntry {
 }
 
 impl SelectedParameters for RequestEntry {
-    fn selected_scenario(&self) -> &Option<Selection> {
+    fn selected_scenario(&self) -> &Selection {
         match self {
             RequestEntry::Request(info) => &info.selected_scenario,
             RequestEntry::Group(group) => &group.selected_scenario,
         }
     }
 
-    fn selected_authorization(&self) -> &Option<Selection> {
+    fn selected_authorization(&self) -> &Selection {
         match self {
             RequestEntry::Request(info) => &info.selected_authorization,
             RequestEntry::Group(group) => &group.selected_authorization,
         }
     }
 
-    fn selected_certificate(&self) -> &Option<Selection> {
+    fn selected_certificate(&self) -> &Selection {
         match self {
             RequestEntry::Request(info) => &info.selected_certificate,
             RequestEntry::Group(group) => &group.selected_certificate,
         }
     }
 
-    fn selected_proxy(&self) -> &Option<Selection> {
+    fn selected_proxy(&self) -> &Selection {
         match self {
             RequestEntry::Request(info) => &info.selected_proxy,
             RequestEntry::Group(group) => &group.selected_proxy,
         }
     }
 
-    fn selected_data(&self) -> &Option<Selection> {
+    fn selected_data(&self) -> &Selection {
         match self {
             RequestEntry::Request(info) => &info.selected_data,
             RequestEntry::Group(group) => &group.selected_data,
         }
     }
 
-    fn selected_scenario_as_mut(&mut self) -> &mut Option<Selection> {
+    fn selected_scenario_as_mut(&mut self) -> &mut Selection {
         match self {
             RequestEntry::Request(info) => &mut info.selected_scenario,
             RequestEntry::Group(group) => &mut group.selected_scenario,
         }
     }
 
-    fn selected_authorization_as_mut(&mut self) -> &mut Option<Selection> {
+    fn selected_authorization_as_mut(&mut self) -> &mut Selection {
         match self {
             RequestEntry::Request(info) => &mut info.selected_authorization,
             RequestEntry::Group(group) => &mut group.selected_authorization,
         }
     }
 
-    fn selected_certificate_as_mut(&mut self) -> &mut Option<Selection> {
+    fn selected_certificate_as_mut(&mut self) -> &mut Selection {
         match self {
             RequestEntry::Request(info) => &mut info.selected_certificate,
             RequestEntry::Group(group) => &mut group.selected_certificate,
         }
     }
 
-    fn selected_proxy_as_mut(&mut self) -> &mut Option<Selection> {
+    fn selected_proxy_as_mut(&mut self) -> &mut Selection {
         match self {
             RequestEntry::Request(info) => &mut info.selected_proxy,
             RequestEntry::Group(group) => &mut group.selected_proxy,
         }
     }
 
-    fn selected_data_as_mut(&mut self) -> &mut Option<Selection> {
+    fn selected_data_as_mut(&mut self) -> &mut Selection {
         match self {
             RequestEntry::Request(info) => &mut info.selected_data,
             RequestEntry::Group(group) => &mut group.selected_data,
@@ -798,20 +798,20 @@ pub struct StoredRequest {
     #[serde(default)]
     pub multi_run_execution: ExecutionConcurrency,
     /// Selected scenario, if applicable
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_scenario: Option<Selection>,
+    #[serde(skip_serializing_if = "Selection::is_default", default = "Selection::default")]
+    pub selected_scenario: Selection,
     /// Selected authorization, if applicable
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_authorization: Option<Selection>,
+    #[serde(skip_serializing_if = "Selection::is_default", default = "Selection::default")]
+    pub selected_authorization: Selection,
     /// Selected certificate, if applicable
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_certificate: Option<Selection>,
+    #[serde(skip_serializing_if = "Selection::is_default", default = "Selection::default")]
+    pub selected_certificate: Selection,
     /// Selected proxy, if applicable
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_proxy: Option<Selection>,
+    #[serde(skip_serializing_if = "Selection::is_default", default = "Selection::default")]
+    pub selected_proxy: Selection,
     /// Selected external data, if any
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_data: Option<Selection>,
+    #[serde(skip_serializing_if = "Selection::is_default", default = "Selection::default")]
+    pub selected_data: Selection,
 }
 
 /// A group of Apicize Requests
@@ -844,20 +844,20 @@ pub struct StoredRequestGroup {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub setup: Option<String>,
     /// Selected scenario, if applicable
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_scenario: Option<Selection>,
+    #[serde(skip_serializing_if = "Selection::is_default", default = "Selection::default")]
+    pub selected_scenario: Selection,
     /// Selected authorization, if applicable
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_authorization: Option<Selection>,
+    #[serde(skip_serializing_if = "Selection::is_default", default = "Selection::default")]
+    pub selected_authorization: Selection,
     /// Selected certificate, if applicable
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_certificate: Option<Selection>,
+    #[serde(skip_serializing_if = "Selection::is_default", default = "Selection::default")]
+    pub selected_certificate: Selection,
     /// Selected proxy, if applicable
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_proxy: Option<Selection>,
+    #[serde(skip_serializing_if = "Selection::is_default", default = "Selection::default")]
+    pub selected_proxy: Selection,
     /// Selected external data, if any
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_data: Option<Selection>,
+    #[serde(skip_serializing_if = "Selection::is_default", default = "Selection::default")]
+    pub selected_data: Selection,
 }
 
 /// Apcize Request that is either a specific request to run (Info)

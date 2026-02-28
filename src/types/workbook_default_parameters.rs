@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::{SelectedParameters, Selection, indexed_entities::NO_SELECTION_ID};
+use super::{SelectedParameters, Selection};
 use crate::{Identifiable, Validated, ValidationState};
 use serde::{Deserialize, Serialize};
 
@@ -9,20 +9,20 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub struct WorkbookDefaultParameters {
     /// Selected scenario, if applicable
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_scenario: Option<Selection>,
+    #[serde(skip_serializing_if = "Selection::is_none", default = "Selection::new_none")]
+    pub selected_scenario: Selection,
     /// Selected authorization, if applicable
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_authorization: Option<Selection>,
+    #[serde(skip_serializing_if = "Selection::is_none", default = "Selection::new_none")]
+    pub selected_authorization: Selection,
     /// Selected certificate, if applicable
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_certificate: Option<Selection>,
+    #[serde(skip_serializing_if = "Selection::is_none", default = "Selection::new_none")]
+    pub selected_certificate: Selection,
     /// Selected proxy, if applicable
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_proxy: Option<Selection>,
+    #[serde(skip_serializing_if = "Selection::is_none", default = "Selection::new_none")]
+    pub selected_proxy: Selection,
     /// Selected external data, if applicable
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected_data: Option<Selection>,
+    #[serde(skip_serializing_if = "Selection::is_none", default = "Selection::new_none")]
+    pub selected_data: Selection,
     /// Validation state
     #[serde(default, skip_serializing_if = "ValidationState::is_empty")]
     pub validation_state: ValidationState,
@@ -52,24 +52,19 @@ impl WorkbookDefaultParameters {
     pub fn any_values_set(&self) -> bool {
         !(self
             .selected_scenario
-            .as_ref()
-            .is_none_or(|s| s.id == NO_SELECTION_ID)
+            .is_default_or_none()
             && self
                 .selected_authorization
-                .as_ref()
-                .is_none_or(|s| s.id == NO_SELECTION_ID)
+                .is_default_or_none()
             && self
                 .selected_certificate
-                .as_ref()
-                .is_none_or(|s| s.id == NO_SELECTION_ID)
+                .is_default_or_none()
             && self
                 .selected_proxy
-                .as_ref()
-                .is_none_or(|s| s.id == NO_SELECTION_ID)
+                .is_default_or_none()
             && self
                 .selected_data
-                .as_ref()
-                .is_none_or(|s| s.id == NO_SELECTION_ID))
+                .is_default_or_none())
     }
 }
 
@@ -100,43 +95,43 @@ impl Validated for WorkbookDefaultParameters {
 }
 
 impl SelectedParameters for WorkbookDefaultParameters {
-    fn selected_scenario(&self) -> &Option<Selection> {
+    fn selected_scenario(&self) -> &Selection {
         &self.selected_scenario
     }
 
-    fn selected_authorization(&self) -> &Option<Selection> {
+    fn selected_authorization(&self) -> &Selection {
         &self.selected_authorization
     }
 
-    fn selected_certificate(&self) -> &Option<Selection> {
+    fn selected_certificate(&self) -> &Selection {
         &self.selected_certificate
     }
 
-    fn selected_proxy(&self) -> &Option<Selection> {
+    fn selected_proxy(&self) -> &Selection {
         &self.selected_proxy
     }
 
-    fn selected_data(&self) -> &Option<Selection> {
+    fn selected_data(&self) -> &Selection {
         &self.selected_data
     }
 
-    fn selected_scenario_as_mut(&mut self) -> &mut Option<Selection> {
+    fn selected_scenario_as_mut(&mut self) -> &mut Selection {
         &mut self.selected_scenario
     }
 
-    fn selected_authorization_as_mut(&mut self) -> &mut Option<Selection> {
+    fn selected_authorization_as_mut(&mut self) -> &mut Selection {
         &mut self.selected_authorization
     }
 
-    fn selected_certificate_as_mut(&mut self) -> &mut Option<Selection> {
+    fn selected_certificate_as_mut(&mut self) -> &mut Selection {
         &mut self.selected_certificate
     }
 
-    fn selected_proxy_as_mut(&mut self) -> &mut Option<Selection> {
+    fn selected_proxy_as_mut(&mut self) -> &mut Selection {
         &mut self.selected_proxy
     }
 
-    fn selected_data_as_mut(&mut self) -> &mut Option<Selection> {
+    fn selected_data_as_mut(&mut self) -> &mut Selection {
         &mut self.selected_data
     }
 }
