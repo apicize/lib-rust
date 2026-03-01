@@ -526,6 +526,7 @@ impl ExecutionResultBuilder {
                         get_response_info(&execution);
 
                     let exec_ctr = self.next_counter();
+                    indexes.push(exec_ctr);
                     for active_request_id in &active_request_ids {
                         self.add_index_entries(
                             active_request_id,
@@ -597,8 +598,6 @@ impl ExecutionResultBuilder {
                     );
                 }
             }
-
-            // indexes.push(exec_ctr);
 
             row_number += 1;
         }

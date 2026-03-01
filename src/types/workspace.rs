@@ -8,7 +8,7 @@ use crate::{
     ExecutionResultSummary, Identifiable, PersistedIndex, Proxy, RequestEntry, Scenario,
     SelectedParameters, Selection, SerializationSaveSuccess, StoredRequestEntry, Validated,
     Workbook, WorkbookDefaultParameters, open_data_file, open_data_stream, save_data_file,
-    selected_parameters::SelectableParameters,
+    selected_parameters::SelectableParameters, selection::SelectionIfInvalid,
 };
 
 use csv::WriterBuilder;
@@ -366,7 +366,7 @@ impl Workspace {
             .entities
             .values_mut()
             .filter_map(|e| {
-                if selectables.validate_request_or_group(e) {
+                if selectables.validate_request_or_group(e, &SelectionIfInvalid::Default) {
                     None
                 } else {
                     Some(e.get_id().to_string())
@@ -386,13 +386,14 @@ impl Workspace {
             })
             .collect::<Vec<String>>();
 
-        let defaults_valid = !selectables.validate_request_or_group(&mut self.defaults);
+        let defaults_valid =
+            selectables.validate_request_or_group(&mut self.defaults, &SelectionIfInvalid::None);
 
         if !invalid_request_ids.is_empty() || !invalid_auth_ids.is_empty() || !defaults_valid {
             Some(InvalidSelections {
                 request_or_group_ids: invalid_request_ids,
                 authorization_ids: invalid_auth_ids,
-                defaults: defaults_valid,
+                defaults: !defaults_valid,
             })
         } else {
             None

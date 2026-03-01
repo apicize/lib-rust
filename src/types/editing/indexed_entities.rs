@@ -27,6 +27,13 @@ impl<T: Identifiable> IndexedEntities<T> {
 
     /// Remove an indexed entity and its children completely from the list
     pub fn remove_entity(&mut self, entity_id: &str) -> Result<T, ApicizeError> {
+        // Remove child entities
+        if let Some(child_ids) = self.child_ids.get(entity_id) {
+            for child_id in child_ids.clone() {
+                self.remove_entity(&child_id)?;
+            }
+        }
+
         // Remove from the entity and top level list
         match self.entities.remove(entity_id) {
             Some(entity) => {
@@ -87,7 +94,8 @@ impl<T: Identifiable> IndexedEntities<T> {
                     self.child_ids
                         .insert(relative_to_id.to_string(), vec![entity_id.to_string()]);
                 }
-                self.parent_ids.insert(entity_id.to_string(), relative_to_id.to_string());
+                self.parent_ids
+                    .insert(entity_id.to_string(), relative_to_id.to_string());
                 is_inserted = true;
             } else {
                 // Try inserting at top level
@@ -133,7 +141,11 @@ impl<T: Identifiable> IndexedEntities<T> {
     }
 
     /// Clear indexed position information for the specified entity ID
-    fn clear_position(&mut self, entity_id: &str, remove_children: bool) -> Result<(), ApicizeError> {
+    fn clear_position(
+        &mut self,
+        entity_id: &str,
+        remove_children: bool,
+    ) -> Result<(), ApicizeError> {
         // Use parent reverse index for O(1) lookup when available
         if let Some(parent_id) = self.parent_ids.remove(entity_id) {
             if let Some(children) = self.child_ids.get_mut(&parent_id) {

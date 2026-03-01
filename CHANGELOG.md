@@ -1,5 +1,11 @@
 # Change Log
 
+# 0.34.1
+
+* Include child exec ctrs for multi-run requests
+* Add explicit param value to set (default or none) for missing parameters
+* Recursively delete indexed entries with children
+
 # 0.34.0
 
 * Update loaded parameters to be explicitly default instead of using Option
