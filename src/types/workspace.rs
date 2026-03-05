@@ -3,12 +3,7 @@
 //! This submodule defines modules used to manage workspaces
 
 use crate::{
-    ApicizeError, Authorization, Certificate, DataSourceType, ExecutionReportCsv,
-    ExecutionReportCsvSingleRun, ExecutionReportFormat, ExecutionReportJson,
-    ExecutionResultSummary, Identifiable, PersistedIndex, Proxy, RequestEntry, Scenario,
-    SelectedParameters, Selection, SerializationSaveSuccess, StoredRequestEntry, Validated,
-    Workbook, WorkbookDefaultParameters, open_data_file, open_data_stream, save_data_file,
-    selected_parameters::SelectableParameters, selection::SelectionIfInvalid,
+    ApicizeError, Authorization, Certificate, DataSourceType, ExecutionReportCsv, ExecutionReportCsvSingleRun, ExecutionReportFormat, ExecutionReportJson, ExecutionResultSummary, Identifiable, PersistedIndex, Proxy, RequestEntry, Scenario, SelectedParameters, Selection, SerializationSaveSuccess, StoredRequestEntry, Validated, Workbook, WorkbookDefaultParameters, indexed_entities::MergableSection, open_data_file, open_data_stream, save_data_file, selected_parameters::SelectableParameters, selection::SelectionIfInvalid
 };
 
 use csv::WriterBuilder;
@@ -97,7 +92,7 @@ impl Workspace {
         // Load private parameters if file exists
         let private_parameters = match workbook_file_name {
             Some(input_file_name) => Parameters::open(
-                &Parameters::get_workbook_vault_filename(input_file_name),
+                &Parameters::get_workbook_private_filename(input_file_name),
                 true,
             )?,
             None => Parameters::default(),
@@ -289,7 +284,7 @@ impl Workspace {
         let workspace_requests = workbook
             .requests
             .into_iter()
-            .map(|r| r.to_workspace())
+            .map(RequestEntry::from)
             .collect::<Vec<RequestEntry>>();
 
         let mut workspace = Workspace {
@@ -321,6 +316,23 @@ impl Workspace {
         workspace.perform_all_validations();
 
         Ok(workspace)
+    }
+
+    /// Merge in private or private parameters into a workspace (i.e. one that was opened with a password)
+    pub fn add_parameters_to_workspace(
+        workspace: &mut Workspace,
+        parameters: Parameters,
+        section: MergableSection,
+    ) -> Result<(), ApicizeError> {
+
+        workspace.scenarios.merge_entities(section, parameters.scenarios)?;
+        workspace.authorizations.merge_entities(section, parameters.authorizations)?;
+        workspace.certificates.merge_entities(section, parameters.certificates)?;
+        workspace.proxies.merge_entities(section, parameters.proxies)?;
+
+        workspace.perform_all_validations();
+
+        Ok(())
     }
 
     pub fn perform_all_validations(&mut self) {
@@ -507,7 +519,7 @@ impl Workspace {
             .requests
             .to_entities()
             .into_iter()
-            .map(StoredRequestEntry::from_workspace)
+            .map(StoredRequestEntry::from)
             .collect();
 
         let mut stored_data = self
@@ -566,7 +578,7 @@ impl Workspace {
             self.proxies.get_private(),
         );
 
-        match private_parameters.save(&Parameters::get_workbook_vault_filename(workbook_path)) {
+        match private_parameters.save(&Parameters::get_workbook_private_filename(workbook_path)) {
             Ok(success) => successes.push(success),
             Err(error) => return Err(error),
         }

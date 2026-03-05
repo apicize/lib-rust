@@ -149,8 +149,8 @@ impl Parameters {
         }
     }
 
-    /// Return the file name for a workbook's vault
-    pub fn get_workbook_vault_filename(workbook_path: &Path) -> path::PathBuf {
+    /// Return the file name for a workbook's private parameters file
+    pub fn get_workbook_private_filename(workbook_path: &Path) -> path::PathBuf {
         let mut private_path = PathBuf::from(workbook_path);
         private_path.set_extension("apicize-priv");
         private_path

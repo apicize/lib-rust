@@ -871,8 +871,8 @@ pub enum StoredRequestEntry {
     Group(StoredRequestGroup),
 }
 
-impl StoredRequestEntry {
-    pub fn from_workspace(entry: RequestEntry) -> StoredRequestEntry {
+impl From<RequestEntry> for StoredRequestEntry {
+    fn from(entry: RequestEntry) -> Self {
         match entry {
             RequestEntry::Request(request) => StoredRequestEntry::Request(StoredRequest {
                 id: request.id,
@@ -931,7 +931,7 @@ impl StoredRequestEntry {
                     Some(
                         children
                             .into_iter()
-                            .map(StoredRequestEntry::from_workspace)
+                            .map(StoredRequestEntry::from)
                             .collect()
                     )
                 } else {
@@ -949,9 +949,11 @@ impl StoredRequestEntry {
             }),
         }
     }
+} 
 
-    pub fn to_workspace(self) -> RequestEntry {
-        match self {
+impl From<StoredRequestEntry> for RequestEntry {
+    fn from(stored_entry: StoredRequestEntry) -> Self {
+        match stored_entry {
             StoredRequestEntry::Request(stored_request) => RequestEntry::Request(Request {
                 id: stored_request.id,
                 name: stored_request.name,
@@ -1019,7 +1021,7 @@ impl StoredRequestEntry {
                     Some(
                         children
                             .into_iter()
-                            .map(StoredRequestEntry::to_workspace)
+                            .map(RequestEntry::from)
                             .collect()
                     )
                 } else {
@@ -1040,4 +1042,3 @@ impl StoredRequestEntry {
         }
     }
 }
-

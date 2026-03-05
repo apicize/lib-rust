@@ -1,5 +1,10 @@
 # Change Log
 
+# 0.34.2
+
+* Change auth scope/aud to String instead of Option
+* Implement From for requests/groups
+
 # 0.34.1
 
 * Include child exec ctrs for multi-run requests

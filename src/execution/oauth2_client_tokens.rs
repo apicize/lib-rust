@@ -1,10 +1,10 @@
 //! This module implements OAuth2 client flow support
 use crate::{
-    retrieve_oauth2_token_from_cache, store_oauth2_token_in_cache, ApicizeError, CachedTokenInfo,
-    Certificate, Identifiable, Proxy,
+    ApicizeError, CachedTokenInfo, Certificate, Identifiable, Proxy,
+    retrieve_oauth2_token_from_cache, store_oauth2_token_in_cache,
 };
 use oauth2::basic::BasicClient;
-use oauth2::{reqwest, AuthType};
+use oauth2::{AuthType, reqwest};
 use oauth2::{ClientId, ClientSecret, Scope, TokenResponse, TokenUrl};
 use serde::{Deserialize, Serialize};
 use std::ops::Add;
@@ -37,8 +37,8 @@ pub async fn get_oauth2_client_credentials<'a>(
     client_id: &str,
     client_secret: &str,
     send_credentials_in_body: bool,
-    scopes: &'a Option<String>,
-    audience: &'a Option<String>,
+    scopes: &'a str,
+    audience: &'a str,
     certificate: Option<&'a Certificate>,
     proxy: Option<&'a Proxy>,
     enable_trace: bool,
@@ -89,14 +89,12 @@ pub async fn get_oauth2_client_credentials<'a>(
 
     let mut token_request = client.exchange_client_credentials();
 
-    if let Some(scope_value) = &scopes 
-        && !scope_value.is_empty() {
-            token_request = token_request.add_scope(Scope::new(scope_value.clone()));
+    if !scopes.is_empty() {
+        token_request = token_request.add_scope(Scope::new(scopes.to_string()));
     }
 
-    if let Some(audience_value) = &audience 
-        && !audience_value.is_empty() {
-            token_request = token_request.add_extra_param("audience", audience_value);
+    if !audience.is_empty() {
+        token_request = token_request.add_extra_param("audience", audience);
     }
 
     let mut reqwest_builder = reqwest::ClientBuilder::new()
@@ -105,18 +103,20 @@ pub async fn get_oauth2_client_credentials<'a>(
 
     // Add certificate to builder if configured
     if let Some(active_cert) = certificate {
-        reqwest_builder = active_cert.append_to_builder(reqwest_builder)
-            .map_err(|err| ApicizeError::OAuth2Client{
-                description: err.to_string(), 
+        reqwest_builder = active_cert
+            .append_to_builder(reqwest_builder)
+            .map_err(|err| ApicizeError::OAuth2Client {
+                description: err.to_string(),
                 context: Some("Unable to assign OAuth certificate".to_string()),
             })?;
     }
 
     // Add proxy to builder if configured
     if let Some(active_proxy) = proxy {
-        reqwest_builder = active_proxy.append_to_builder(reqwest_builder)
-            .map_err(|err| ApicizeError::OAuth2Client{
-                description: err.to_string(), 
+        reqwest_builder = active_proxy
+            .append_to_builder(reqwest_builder)
+            .map_err(|err| ApicizeError::OAuth2Client {
+                description: err.to_string(),
                 context: Some("Unable to assign OAuth proxy".to_string()),
             })?;
     }
@@ -139,7 +139,8 @@ pub async fn get_oauth2_client_credentials<'a>(
             refresh_token: None,
             expiration,
         },
-    ).await;
+    )
+    .await;
     Ok(TokenResult {
         token,
         cached: false,

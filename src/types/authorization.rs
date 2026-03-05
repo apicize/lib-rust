@@ -45,17 +45,23 @@ pub enum Authorization {
         client_id: String,
         /// Client secret (allowed to be blank)
         client_secret: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "String::is_empty")]
         /// Audience to add to token
-        audience: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        audience: String,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
         /// Scope to add to token (multiple scopes should be space-delimited)
-        scope: Option<String>,
+        scope: String,
         /// Selected certificate, if applicable
-        #[serde(skip_serializing_if = "Selection::is_default", default = "Selection::new_none")]
+        #[serde(
+            skip_serializing_if = "Selection::is_none",
+            default = "Selection::new_none"
+        )]
         selected_certificate: Selection,
         /// Selected proxy, if applicable
-        #[serde(skip_serializing_if = "Selection::is_default", default = "Selection::new_none")]
+        #[serde(
+            skip_serializing_if = "Selection::is_none",
+            default = "Selection::new_none"
+        )]
         selected_proxy: Selection,
         /// If true, OAuth credentials are sent in body instead of header
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -85,9 +91,9 @@ pub enum Authorization {
         access_token_url: String,
         /// Client ID
         client_id: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "String::is_empty")]
         /// Scope to add to token (multiple scopes should be space-delimited)
-        scope: Option<String>,
+        scope: String,
         /// Currently active token (needs to be set before usage)
         #[serde(skip_serializing)]
         token: Option<String>,
@@ -352,30 +358,53 @@ impl Validated for Authorization {
 impl Authorization {
     pub fn perform_validation(&mut self) {
         self.validate_name();
-    }    
+    }
 
     pub fn validate_name(&mut self) {
-        let perform_validation = |name: &str, validation_errors: &mut Option<HashMap<String, String>>, validation_state: &mut ValidationState | {
-            let name_ok = ! name.trim().is_empty();
-            if name_ok {
-                remove_validation_error(validation_errors, "name");
-            } else {
-                add_validation_error(validation_errors, "name", "Name is required");
-            }
-            validation_state.set(ValidationState::ERROR, validation_errors.is_some());
-        };
+        let perform_validation =
+            |name: &str,
+             validation_errors: &mut Option<HashMap<String, String>>,
+             validation_state: &mut ValidationState| {
+                let name_ok = !name.trim().is_empty();
+                if name_ok {
+                    remove_validation_error(validation_errors, "name");
+                } else {
+                    add_validation_error(validation_errors, "name", "Name is required");
+                }
+                validation_state.set(ValidationState::ERROR, validation_errors.is_some());
+            };
 
         match self {
-            Authorization::Basic { name, validation_errors, validation_state, .. } => {
+            Authorization::Basic {
+                name,
+                validation_errors,
+                validation_state,
+                ..
+            } => {
                 perform_validation(name, validation_errors, validation_state);
-            },
-            Authorization::OAuth2Client { name, validation_errors, validation_state, .. } => {
+            }
+            Authorization::OAuth2Client {
+                name,
+                validation_errors,
+                validation_state,
+                ..
+            } => {
                 perform_validation(name, validation_errors, validation_state);
-            },
-            Authorization::OAuth2Pkce { name, validation_errors, validation_state, .. } => {
+            }
+            Authorization::OAuth2Pkce {
+                name,
+                validation_errors,
+                validation_state,
+                ..
+            } => {
                 perform_validation(name, validation_errors, validation_state);
-            },
-            Authorization::ApiKey { name, validation_errors, validation_state, .. } => {
+            }
+            Authorization::ApiKey {
+                name,
+                validation_errors,
+                validation_state,
+                ..
+            } => {
                 perform_validation(name, validation_errors, validation_state);
             }
         }
