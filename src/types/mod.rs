@@ -47,4 +47,4 @@ pub use validation_state::*;
 pub use variable::*;
 pub use workbook::Workbook;
 pub use workbook_default_parameters::WorkbookDefaultParameters;
-pub use workspace::Workspace;
+pub use workspace::*;

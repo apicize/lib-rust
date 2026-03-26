@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::VariableSourceType;
-use crate::{convert_json, extract_csv, extract_json, ApicizeError};
+use crate::{ApicizeError, convert_json, extract_csv, extract_json};
+use crate::{Identifiable, VariableSourceType};
 use serde_json::{Map, Value};
 
 use super::{DataSet, DataSourceType, Scenario, Variable};
@@ -26,10 +26,18 @@ impl VariableCache {
     pub fn get_scenario_values(
         &mut self,
         scenario: &Scenario,
-    ) -> &HashMap<String, Result<Value, ApicizeError>> {
-        self.scenario_cache
-            .entry(scenario.id.clone())
-            .or_insert_with(|| match &scenario.variables {
+    ) -> Result<&HashMap<String, Result<Value, ApicizeError>>, ApicizeError> {
+        let id = scenario.get_id();
+        let Scenario::Plain(scenario) = scenario else {
+            return Err(ApicizeError::Encryption {
+                description: format!("Unable to extrace encrypted values for scenario {id}"),
+            });
+        };
+
+        Ok(self
+            .scenario_cache
+            .entry(id.to_string())
+            .or_insert(match &scenario.variables {
                 Some(vars) => vars
                     .iter()
                     .filter(|v| Some(true) != v.disabled)
@@ -50,7 +58,7 @@ impl VariableCache {
                     })
                     .collect::<HashMap<String, Result<Value, ApicizeError>>>(),
                 None => HashMap::new(),
-            })
+            }))
     }
 
     pub fn get_external_data(
@@ -90,7 +98,7 @@ impl VariableCache {
                     }
                     Ok(standardized)
                 }
-                Err(err) => Err(err)   
+                Err(err) => Err(err),
             }
         })
     }

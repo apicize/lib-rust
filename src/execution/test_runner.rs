@@ -25,20 +25,52 @@ use super::{
     ApicizeTestBehavior, ApicizeTestResponse, ApicizeTestResult, DataContext, DataContextGenerator,
     GetDataContext, Tally,
 };
+use crate::authorization::AuthorizationPlain;
 use crate::oauth2_client_tokens::TokenResult;
+use crate::parameters::ParameterCipher;
 use crate::types::workspace::RequestExecutionParameters;
 use crate::workspace::RequestExecutionState;
 use crate::{
     ApicizeError, ApicizeGroupResultRowContent, ApicizeRequestResultContent,
-    ApicizeRequestResultRow, ApicizeRequestResultRowContent, Authorization, ExecutionConcurrency,
-    Identifiable, Request, RequestBody, RequestEntry, RequestGroup, RequestMethod, VariableCache,
-    Workspace, get_oauth2_client_credentials, retrieve_oauth2_token_from_cache,
+    ApicizeRequestResultRow, ApicizeRequestResultRowContent, Authorization, Certificate,
+    ExecutionConcurrency, Identifiable, OAuth2ClientCredentialParameters, Proxy, Request,
+    RequestBody, RequestEntry, RequestGroup, RequestMethod, VariableCache, Workspace,
+    get_oauth2_client_credentials, retrieve_oauth2_token_from_cache,
 };
 
 // #[cfg(test)]
 // use crate::oauth2_client_tokens::tests::MockOAuth2ClientTokens as oauth2;
 
 static V8_INIT: Once = Once::new();
+
+/// Utility function to perform string substitution based upon search/replace values in "subs"
+fn clone_and_sub(text: &str, subs: &HashMap<String, String>) -> String {
+    if subs.is_empty() || !text.contains("{{") {
+        return text.to_string();
+    }
+
+    let mut result = String::with_capacity(text.len());
+    let mut remaining = text;
+
+    while let Some(start) = remaining.find("{{") {
+        result.push_str(&remaining[..start]);
+        if let Some(end) = remaining[start + 2..].find("}}") {
+            let key = &remaining[start..start + 2 + end + 2];
+            if let Some(value) = subs.get(key) {
+                result.push_str(value);
+            } else {
+                result.push_str(key);
+            }
+            remaining = &remaining[start + 2 + end + 2..];
+        } else {
+            // No closing }} — copy rest as-is
+            result.push_str(&remaining[start..]);
+            return result;
+        }
+    }
+    result.push_str(remaining);
+    result
+}
 
 static PORT_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r".+:(\d{1,5})(?:\?.*)?$").unwrap());
@@ -95,6 +127,8 @@ pub struct TestRunnerContext {
     single_run_no_timeout: bool,
     /// If true, reqwest trace will be enabled (for I/O logging)
     enable_trace: bool,
+    /// If true, generate curl commands for each execution
+    generate_curl: bool,
 }
 
 impl TestRunnerContext {
@@ -105,6 +139,7 @@ impl TestRunnerContext {
         single_run_no_timeout: bool,
         allowed_data_path: &Option<PathBuf>,
         enable_trace: bool,
+        generate_curl: bool,
     ) -> Self {
         // Ensure V8 is initialized
         V8_INIT.call_once(|| {
@@ -121,6 +156,7 @@ impl TestRunnerContext {
             tests_started: Instant::now(),
             single_run_no_timeout,
             enable_trace,
+            generate_curl,
         }
     }
 
@@ -1027,8 +1063,11 @@ async fn dispatch_request_and_test(
     let mut method: Option<String> = None;
     let url: Option<String>;
 
+    let mut curl: Option<String> = None;
+
     match dispatch_request(context.clone(), &request_id, &params, &subs).await {
-        Ok((name_with_subs, url_called, http_request, http_response, _)) => {
+        Ok((name_with_subs, url_called, http_request, http_response, _, curl_command)) => {
+            curl = curl_command;
             name = name_with_subs;
             url = Some(url_called);
             method = Some(http_request.method.clone());
@@ -1039,7 +1078,7 @@ async fn dispatch_request_and_test(
             match &request.test {
                 Some(t) => {
                     match execute_request_test(
-                        RequestEntry::clone_and_sub(t, &subs).as_str(),
+                        clone_and_sub(t, &subs).as_str(),
                         &execution_request,
                         &execution_response,
                         &params.variables,
@@ -1106,6 +1145,7 @@ async fn dispatch_request_and_test(
         key,
         method,
         url,
+        curl,
         test_context: ApicizeExecutionTestContext {
             merged,
             scenario: params.variables.clone(),
@@ -1137,6 +1177,7 @@ async fn dispatch_request(
         ApicizeHttpRequest,
         ApicizeHttpResponse,
         Option<Map<String, Value>>,
+        Option<String>,
     ),
     ApicizeError,
 > {
@@ -1197,30 +1238,22 @@ async fn dispatch_request(
         .certificates
         .get_optional(&params.certificate_id)
     {
-        match certificate.append_to_builder(reqwest_builder) {
-            Ok(updated_builder) => reqwest_builder = updated_builder,
-            Err(err) => return Err(err),
-        }
+        reqwest_builder = certificate.append_to_builder(reqwest_builder)?;
     }
 
     // Add proxy to builder if configured
     if let Some(proxy) = context.workspace.proxies.get_optional(&params.proxy_id) {
-        match proxy.append_to_builder(reqwest_builder) {
-            Ok(updated_builder) => reqwest_builder = updated_builder,
-            Err(err) => return Err(ApicizeError::from_reqwest(err, None)),
-        }
+        reqwest_builder = proxy.append_to_builder(reqwest_builder)?;
     }
 
     let builder_result = reqwest_builder.build();
     let mut oauth2_token: Option<TokenResult> = None;
 
-    let name = RequestEntry::clone_and_sub(&request.name, subs);
+    let name = clone_and_sub(&request.name, subs);
 
     let client = builder_result.map_err(|err| ApicizeError::from_reqwest(err, None))?;
 
-    let mut url = RequestEntry::clone_and_sub(request.url.as_str(), subs)
-        .trim()
-        .to_string();
+    let mut url = clone_and_sub(request.url.as_str(), subs).trim().to_string();
 
     if url.is_empty() {
         return Err(ApicizeError::Http {
@@ -1266,8 +1299,8 @@ async fn dispatch_request(
     if let Some(h) = &request.headers {
         for nvp in h {
             if nvp.disabled != Some(true) {
-                let name_str = RequestEntry::clone_and_sub(&nvp.name, subs);
-                let value_str = RequestEntry::clone_and_sub(&nvp.value, subs);
+                let name_str = clone_and_sub(&nvp.name, subs);
+                let value_str = clone_and_sub(&nvp.value, subs);
                 headers.insert(
                     reqwest::header::HeaderName::try_from(name_str).unwrap(),
                     reqwest::header::HeaderValue::try_from(value_str).unwrap(),
@@ -1281,65 +1314,82 @@ async fn dispatch_request(
         .authorizations
         .get_optional(&params.authorization_id)
     {
-        Some(Authorization::Basic {
-            username, password, ..
-        }) => {
-            request_builder = request_builder.basic_auth(username, Some(password));
+        Some(Authorization::Cipher(ParameterCipher { id, .. })) => {
+            return Err(ApicizeError::Encryption {
+                description: format!("Unable to add encrypted Authorization {id}"),
+            });
         }
-        Some(Authorization::ApiKey { header, value, .. }) => {
-            headers.append(
-                reqwest::header::HeaderName::try_from(header).unwrap(),
-                reqwest::header::HeaderValue::try_from(value).unwrap(),
-            );
-        }
-        Some(Authorization::OAuth2Client {
-            id,
-            access_token_url,
-            client_id,
-            client_secret,
-            audience,
-            scope,
-            send_credentials_in_body,
-            selected_certificate,
-            selected_proxy,
-            ..
-        }) => {
-            match get_oauth2_client_credentials(
-                id.as_str(),
-                access_token_url.as_str(),
-                client_id.as_str(),
-                client_secret.as_str(),
-                send_credentials_in_body.unwrap_or(false),
-                scope,
+        Some(Authorization::Plain(plain)) => match plain.as_ref() {
+            AuthorizationPlain::Basic {
+                username, password, ..
+            } => {
+                request_builder = request_builder.basic_auth(
+                    clone_and_sub(username, subs),
+                    Some(clone_and_sub(password, subs)),
+                );
+            }
+            AuthorizationPlain::ApiKey { header, value, .. } => {
+                headers.append(
+                    reqwest::header::HeaderName::try_from(clone_and_sub(header, subs)).unwrap(),
+                    reqwest::header::HeaderValue::try_from(clone_and_sub(value, subs)).unwrap(),
+                );
+            }
+            AuthorizationPlain::OAuth2Client {
+                id,
+                access_token_url,
+                client_id,
+                client_secret,
                 audience,
-                context
-                    .workspace
-                    .certificates
-                    .get_optional(selected_certificate.get_id()),
-                context.workspace.proxies.get_optional(&selected_proxy.id),
-                context.enable_trace,
-            )
-            .await
-            {
-                Ok(token_result) => {
-                    request_builder = request_builder.bearer_auth(token_result.token.clone());
-                    oauth2_token = Some(token_result);
+                scope,
+                send_credentials_in_body,
+                selected_certificate,
+                selected_proxy,
+                ..
+            } => {
+                let sub_token_url = clone_and_sub(access_token_url.as_str(), subs);
+                let sub_client_id = clone_and_sub(client_id.as_str(), subs);
+                let sub_client_secret = clone_and_sub(client_secret.as_str(), subs);
+                let sub_scope = clone_and_sub(scope.as_str(), subs);
+                let sub_audience = clone_and_sub(audience.as_str(), subs);
+                match get_oauth2_client_credentials(
+                    id.as_str(),
+                    OAuth2ClientCredentialParameters {
+                        token_url: sub_token_url.as_str(),
+                        client_id: sub_client_id.as_str(),
+                        client_secret: sub_client_secret.as_str(),
+                        send_credentials_in_body: send_credentials_in_body.unwrap_or(false),
+                        scope: sub_scope.as_str(),
+                        audience: sub_audience.as_str(),
+                        certificate: context
+                            .workspace
+                            .certificates
+                            .get_optional(selected_certificate.get_id()),
+                        proxy: context.workspace.proxies.get_optional(&selected_proxy.id),
+                        enable_trace: context.enable_trace,
+                    },
+                )
+                .await
+                {
+                    Ok(token_result) => {
+                        request_builder = request_builder.bearer_auth(token_result.token.clone());
+                        oauth2_token = Some(token_result);
+                    }
+                    Err(err) => return Err(err),
                 }
-                Err(err) => return Err(err),
             }
-        }
-        Some(Authorization::OAuth2Pkce { id, .. }) => {
-            match retrieve_oauth2_token_from_cache(id).await {
-                Some(t) => {
-                    request_builder = request_builder.bearer_auth(t.access_token.clone());
-                }
-                None => {
-                    return Err(ApicizeError::Error {
-                        description: String::from("PKCE access token is not available"),
-                    });
+            AuthorizationPlain::OAuth2Pkce { id, .. } => {
+                match retrieve_oauth2_token_from_cache(id).await {
+                    Some(t) => {
+                        request_builder = request_builder.bearer_auth(t.access_token.clone());
+                    }
+                    None => {
+                        return Err(ApicizeError::Error {
+                            description: String::from("PKCE access token is not available"),
+                        });
+                    }
                 }
             }
-        }
+        },
         None => {}
     }
 
@@ -1353,8 +1403,8 @@ async fn dispatch_request(
         for nvp in q {
             if nvp.disabled != Some(true) {
                 query.push((
-                    RequestEntry::clone_and_sub(&nvp.name, subs),
-                    RequestEntry::clone_and_sub(&nvp.value, subs),
+                    clone_and_sub(&nvp.name, subs),
+                    clone_and_sub(&nvp.value, subs),
                 ));
             }
         }
@@ -1365,7 +1415,7 @@ async fn dispatch_request(
     let mut request_body: Option<ApicizeBody>;
     match &request.body {
         Some(RequestBody::Text { data }) => {
-            let s = RequestEntry::clone_and_sub(data, subs);
+            let s = clone_and_sub(data, subs);
             request_body = Some(ApicizeBody::Text {
                 text: "".to_string(),
             });
@@ -1377,7 +1427,7 @@ async fn dispatch_request(
                 .map(|(n, v)| (n.to_string(), v.replace("\"", "\\\"")))
                 .collect::<HashMap<String, String>>();
 
-            let s = RequestEntry::clone_and_sub(data, &escaped_subs);
+            let s = clone_and_sub(data, &escaped_subs);
             request_body = match serde_json::from_str::<Value>(&s) {
                 Ok(data) => Some(ApicizeBody::JSON {
                     text: "".to_string(),
@@ -1388,7 +1438,7 @@ async fn dispatch_request(
             request_builder = request_builder.body(Body::from(s));
         }
         Some(RequestBody::XML { data }) => {
-            let s = RequestEntry::clone_and_sub(data, subs);
+            let s = clone_and_sub(data, subs);
             request_body = match to_json(data) {
                 Ok(data) => Some(ApicizeBody::XML {
                     text: "".to_string(),
@@ -1403,8 +1453,8 @@ async fn dispatch_request(
                 .iter()
                 .map(|pair| {
                     (
-                        RequestEntry::clone_and_sub(&pair.name, subs),
-                        RequestEntry::clone_and_sub(&pair.value, subs),
+                        clone_and_sub(&pair.name, subs),
+                        clone_and_sub(&pair.value, subs),
                     )
                 })
                 .collect::<HashMap<String, String>>();
@@ -1461,6 +1511,23 @@ async fn dispatch_request(
             }
         }
     }
+
+    // Generate curl command if requested
+    let curl_command = if context.generate_curl {
+        Some(generate_curl_command(
+            request.method.as_ref().unwrap_or(&RequestMethod::Get),
+            &request_url,
+            &request_headers,
+            &request_body,
+            context
+                .workspace
+                .certificates
+                .get_optional(&params.certificate_id),
+            context.workspace.proxies.get_optional(&params.proxy_id),
+        ))
+    } else {
+        None
+    };
 
     let client_response: Result<Response, ApicizeError> = select! {
         _ = context.cancellation.cancelled() => Err(ApicizeError::Cancelled),
@@ -1569,6 +1636,7 @@ async fn dispatch_request(
                             oauth2_token,
                         },
                         output_variables,
+                        curl_command,
                     );
 
                     Ok(response)
@@ -1577,6 +1645,110 @@ async fn dispatch_request(
             }
         }
     }
+}
+
+/// Shell-escape a string for use in a single-quoted curl argument
+fn shell_escape(s: &str) -> String {
+    // Replace single quotes with '\'' (end quote, escaped quote, start quote)
+    s.replace('\'', "'\\''")
+}
+
+/// Generate a curl command that recreates the given HTTP request
+fn generate_curl_command(
+    method: &RequestMethod,
+    url: &str,
+    headers: &HashMap<String, String>,
+    body: &Option<ApicizeBody>,
+    certificate: Option<&Certificate>,
+    proxy: Option<&Proxy>,
+) -> String {
+    let mut parts = vec!["curl".to_string()];
+
+    // Method
+    let method_str = method.as_str();
+    if method_str != "GET" {
+        parts.push("-X".to_string());
+        parts.push(method_str.to_string());
+    }
+
+    // Headers
+    let mut sorted_headers: Vec<_> = headers.iter().collect();
+    sorted_headers.sort_by_key(|(k, _)| k.to_lowercase());
+    for (name, value) in sorted_headers {
+        parts.push("-H".to_string());
+        parts.push(format!("'{}: {}'", shell_escape(name), shell_escape(value)));
+    }
+
+    // Body
+    if let Some(body) = body {
+        match body {
+            ApicizeBody::Text { text, .. }
+            | ApicizeBody::JSON { text, .. }
+            | ApicizeBody::XML { text, .. } => {
+                if !text.is_empty() {
+                    parts.push("-d".to_string());
+                    parts.push(format!("'{}'", shell_escape(text)));
+                }
+            }
+            ApicizeBody::Form { data, .. } => {
+                for (key, value) in data {
+                    parts.push("--data-urlencode".to_string());
+                    parts.push(format!("'{}={}'", shell_escape(key), shell_escape(value)));
+                }
+            }
+            ApicizeBody::Binary { .. } => {
+                parts.push("--data-binary".to_string());
+                parts.push("'<BINARY_DATA>'".to_string());
+            }
+        }
+    }
+
+    // Certificate
+    if let Some(cert) = certificate {
+        match cert {
+            Certificate::Plain(plain) => match plain.as_ref() {
+                crate::types::certificate::CertificatePlain::PKCS12 { name, .. } => {
+                    parts.push("--cert".to_string());
+                    parts.push(format!("'{}.p12'", shell_escape(name)));
+                    parts.push("--cert-type".to_string());
+                    parts.push("P12".to_string());
+                }
+                crate::types::certificate::CertificatePlain::PKCS8PEM { name, .. } => {
+                    parts.push("--cert".to_string());
+                    parts.push(format!("'{}.pem'", shell_escape(name)));
+                    parts.push("--key".to_string());
+                    parts.push(format!("'{}.key'", shell_escape(name)));
+                }
+                crate::types::certificate::CertificatePlain::PEM { name, .. } => {
+                    parts.push("--cert".to_string());
+                    parts.push(format!("'{}.pem'", shell_escape(name)));
+                }
+            },
+            Certificate::Cipher(_) => {
+                parts.push("--cert".to_string());
+                parts.push("'<ENCRYPTED_CERTIFICATE>'".to_string());
+            }
+        }
+    }
+
+    // Proxy
+    if let Some(proxy) = proxy {
+        match proxy {
+            Proxy::Plain(plain) => {
+                parts.push("--proxy".to_string());
+                parts.push(format!("'{}'", shell_escape(&plain.url)));
+            }
+            Proxy::Cipher(_) => {
+                parts.push("--proxy".to_string());
+                parts.push("'<ENCRYPTED_PROXY>'".to_string());
+            }
+        }
+    }
+
+    // URL (always last)
+    parts.push(format!("'{}'", shell_escape(url)));
+
+    parts.join(" ")
 }
 
 /// Set a JSON string as a named global variable on a V8 context

@@ -15,6 +15,10 @@ pub enum ApicizeError {
         description: String,
     },
 
+    Encryption {
+        description: String,
+    },
+
     Http {
         context: Option<String>,
         description: String,
@@ -60,6 +64,9 @@ impl Display for ApicizeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ApicizeError::Error { description } => {
+                write!(f, "{description}")
+            }
+            ApicizeError::Encryption { description } => {
                 write!(f, "{description}")
             }
             ApicizeError::Http {
@@ -115,7 +122,7 @@ impl Display for ApicizeError {
                     write!(f, "OAuth2 error {s} - {description}")
                 }
                 None => {
-                    write!(f, "OAuth 2 error - {description}")
+                    write!(f, "OAuth2 error - {description}")
                 }
             },
             ApicizeError::Async { description, id } => {
@@ -214,6 +221,7 @@ impl ApicizeError {
     pub fn get_label(&self) -> &str {
         match &self {
             ApicizeError::Error { .. } => "Error",
+            ApicizeError::Encryption { .. } => "Encryption",
             ApicizeError::Http { .. } => "HTTP Error",
             ApicizeError::Timeout { .. } => "HTTP Timeout",
             ApicizeError::Cancelled => "Cancelled",
@@ -226,85 +234,3 @@ impl ApicizeError {
         }
     }
 }
-
-// fn format_child_description(
-//     parent_description: &str,
-//     child: Option<&dyn Error>,
-//     f: &mut std::fmt::Formatter<'_>,
-// ) -> std::fmt::Result {
-//     match child {
-//         Some(c) => {
-//             let child_desc = c.to_string();
-//             if parent_description.ends_with(&child_desc) {
-//                 Ok(())
-//             } else {
-//                 f.write_str(format!(", {}", &child_desc).as_str())
-//                     .and_then(|()| format_child_description(&child_desc, c.source(), f))
-//             }
-//         }
-//         None => Ok(()),
-//     }
-// }
-
-// impl Display for ApicizeError {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         let desc: &String;
-//         let suffix: Option<String>;
-//         match &self {
-//             ApicizeError::Error { description, .. } => {
-//                 suffix = None;
-//                 desc = description;
-//             }
-//             ApicizeError::Http { description, .. } => {
-//                 suffix = None;
-//                 desc = description;
-//             }
-//             ApicizeError::Timeout {
-//                 description, url, ..
-//             } => {
-//                 suffix = url
-//                     .as_ref()
-//                     .map_or_else(|| None, |u| Some(format!("calling {}", u)));
-//                 desc = description;
-//             }
-//             ApicizeError::Cancelled { description, .. } => {
-//                 suffix = None;
-//                 desc = description;
-//             }
-//             ApicizeError::OAuth2Client { description, .. } => {
-//                 suffix = None;
-//                 desc = description;
-//             }
-//             ApicizeError::Async {
-//                 description, id, ..
-//             } => {
-//                 suffix = Some(format!("(task {})", id));
-//                 desc = description;
-//             }
-//             ApicizeError::IO { description, .. } => {
-//                 suffix = None;
-//                 desc = description;
-//             }
-//             ApicizeError::Parse { description, name } => {
-//                 suffix = Some(format!("(value \"{}\"", name));
-//                 desc = description;
-//             }
-//             ApicizeError::FailedTest { description, .. } => {
-//                 suffix = None;
-//                 desc = description;
-//             }
-//             ApicizeError::InvalidId { description, .. } => {
-//                 suffix = None;
-//                 desc = description;
-//             }
-//         }
-
-//         let result = if let Some(sfx) = suffix {
-//             f.write_str(format!("{}, {}", desc, sfx,).as_str())
-//         } else {
-//             f.write_str(desc)
-//         };
-
-//         result.and_then(|()| format_child_description(desc, self.source(), f))
-//     }
-// }

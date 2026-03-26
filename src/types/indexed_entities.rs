@@ -126,37 +126,6 @@ impl<T: Identifiable + Clone> IndexedEntities<T> {
             })
         }
     }
-    
-    pub fn merge_entities(&mut self, destination: MergableSection, entities: Option<Vec<T>>) -> Result<(), ApicizeError> {
-        if let Some(entities) = entities && ! entities.is_empty() {
-            let section_id = match destination {
-                MergableSection::Private => PERSIST_PRIVATE,
-                MergableSection::Vault => PERSIST_VAULT,
-            };
-
-            let section = if let Some(existing_ids) = self.child_ids.get_mut(section_id) {
-                existing_ids
-            } else {
-                self.child_ids.insert(section_id.to_string(), Vec::<String>::new());
-                self.child_ids.get_mut(section_id).unwrap()
-            };
-
-            for entity in entities {
-                let id = entity.get_id().to_string();
-                if ! section.contains(&id) {
-                    section.push(id.to_string());
-                    self.entities.insert(id, entity);
-                }
-            }
-        }
-        Ok(())
-    }
-}
-
-#[derive(Clone, Copy)]
-pub enum MergableSection {
-    Private,
-    Vault
 }
 
 impl IndexedEntities<RequestEntry> {

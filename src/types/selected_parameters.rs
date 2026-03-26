@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{Authorization, Identifiable, Validated, selection::SelectionIfInvalid};
+use crate::{Authorization, Identifiable, Validated, authorization::AuthorizationPlain, selection::SelectionIfInvalid};
 
 use super::Selection;
 
@@ -123,11 +123,12 @@ impl SelectableParameters {
         let mut warnings = Vec::<String>::new();
         let entity_label = entity.get_title();
 
-        if let Authorization::OAuth2Client {
-            selected_certificate,
-            selected_proxy,
-            ..
-        } = entity
+        if let Authorization::Plain(plain) = entity
+            && let AuthorizationPlain::OAuth2Client {
+                selected_certificate,
+                selected_proxy,
+                ..
+            } = plain.as_mut()
         {
             if let Some(warning) = validate_selection(
                 &entity_label,

@@ -61,6 +61,9 @@ pub struct ExecutionResultSummary {
     /// If true, this is for a request and headers were returned
     pub has_response_headers: bool,
 
+    /// If true, a curl command is available in the detail
+    pub has_curl: bool,
+
     /// Used to indicate the length of a response body, if any
     pub response_body_length: Option<usize>,
 

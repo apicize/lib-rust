@@ -5,7 +5,7 @@ use crate::{Identifiable, Validated, ValidationState};
 use serde::{Deserialize, Serialize};
 
 /// Default parameters for the workbook
-#[derive(Serialize, Deserialize, PartialEq, Clone, Default)]
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkbookDefaultParameters {
     /// Selected scenario, if applicable
@@ -32,6 +32,20 @@ pub struct WorkbookDefaultParameters {
     /// Validation errors
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub validation_errors: Option<HashMap<String, String>>,
+}
+
+impl Default for WorkbookDefaultParameters {
+    fn default() -> Self {
+        Self { selected_scenario: Selection::new_none(),
+        selected_authorization: Selection::new_none(),
+        selected_certificate: Selection::new_none(),
+        selected_proxy: Selection::new_none(),
+        selected_data: Selection::new_none(),
+        validation_state: ValidationState::empty(),
+        validation_warnings: None,
+        validation_errors: None
+    }
+}
 }
 
 impl Identifiable for WorkbookDefaultParameters {

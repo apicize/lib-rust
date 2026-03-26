@@ -163,6 +163,7 @@ impl ExecutionResultBuilder {
             status: None,
             status_text: None,
             has_response_headers: false,
+            has_curl: false,
             response_body_length: None,
             success: success.clone(),
             error: None,
@@ -249,6 +250,7 @@ impl ExecutionResultBuilder {
                 summary.status = status;
                 summary.status_text = status_text;
                 summary.has_response_headers = has_response_headers;
+                summary.has_curl = execution.curl.is_some();
                 summary.response_body_length = response_body_length;
                 summary.error = execution.error.clone();
                 summary.test_results = execution.tests.clone();
@@ -274,6 +276,7 @@ impl ExecutionResultBuilder {
                         .as_ref()
                         .map(|arc| (**arc).clone()),
                     tests: execution.tests,
+                    curl: execution.curl,
                     error: execution.error,
                     success,
                     request_success_count: result.request_success_count,
@@ -349,6 +352,7 @@ impl ExecutionResultBuilder {
                     status: None,
                     status_text: None,
                     has_response_headers: false,
+                    has_curl: false,
                     response_body_length: None,
                     success: success.clone(),
                     error: None,
@@ -469,6 +473,7 @@ impl ExecutionResultBuilder {
                                 status: None,
                                 status_text: None,
                                 has_response_headers: false,
+                                has_curl: false,
                                 response_body_length: None,
                                 success: success.clone(),
                                 error: None,
@@ -554,6 +559,7 @@ impl ExecutionResultBuilder {
                                 status,
                                 status_text,
                                 has_response_headers,
+                                has_curl: execution.curl.is_some(),
                                 response_body_length,
                                 success: success.clone(),
                                 error: execution.error.clone(),
@@ -585,6 +591,7 @@ impl ExecutionResultBuilder {
                                         .as_ref()
                                         .map(|arc| (**arc).clone()),
                                     tests: execution.tests,
+                                    curl: execution.curl,
                                     error: execution.error,
                                     success,
                                     request_success_count: row.request_success_count,
@@ -812,6 +819,7 @@ impl ExecutionResultBuilder {
                         status,
                         status_text,
                         has_response_headers,
+                        has_curl: run.execution.curl.is_some(),
                         response_body_length,
                         success: success.clone(),
                         error: run.execution.error.clone(),
@@ -843,6 +851,7 @@ impl ExecutionResultBuilder {
                             .as_ref()
                             .map(|arc| (**arc).clone()),
                         tests: run.execution.tests,
+                        curl: run.execution.curl,
                         error: run.execution.error,
                         success,
                         request_success_count: run.request_success_count,
@@ -913,6 +922,7 @@ impl ExecutionResultBuilder {
                         status: None,
                         status_text: None,
                         has_response_headers: false,
+                        has_curl: false,
                         response_body_length: None,
                         success: success.clone(),
                         error: None,
@@ -1042,6 +1052,7 @@ impl ExecutionResultBuilder {
                         status: None,
                         status_text: None,
                         has_response_headers: false,
+                        has_curl: false,
                         response_body_length: None,
                         success: success.clone(),
                         error: None,

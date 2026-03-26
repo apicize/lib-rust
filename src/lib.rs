@@ -1,6 +1,7 @@
 //! Apicize test routine persistence and execution.
 //!
 //! This library supports the opening, saving and dispatching Apicize functional web tests
+pub mod encryption;
 pub mod errors;
 pub mod execution;
 pub mod results;
@@ -8,6 +9,7 @@ pub mod serialization;
 pub mod utility;
 pub mod types;
 
+pub use encryption::*;
 pub use errors::*;
 pub use scenario::*;
 pub use utility::*;

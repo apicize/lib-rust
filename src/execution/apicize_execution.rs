@@ -39,6 +39,10 @@ pub struct ApicizeExecution {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tests: Option<Vec<ApicizeTestBehavior>>,
 
+    /// Generated curl command to recreate the request
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub curl: Option<String>,
+
     /// Error on dispatch or error execution
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<ApicizeError>,

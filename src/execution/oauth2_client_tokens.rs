@@ -29,22 +29,37 @@ pub struct TokenResult {
     pub proxy: Option<String>,
 }
 
+/// Parameters for retrieving OAuth2 client credentials
+pub struct OAuth2ClientCredentialParameters<'a> {
+    pub token_url: &'a str,
+    pub client_id: &'a str,
+    pub client_secret: &'a str,
+    pub send_credentials_in_body: bool,
+    pub scope: &'a str,
+    pub audience: &'a str,
+    pub certificate: Option<&'a Certificate>,
+    pub proxy: Option<&'a Proxy>,
+    pub enable_trace: bool,
+}
+
 /// Return cached oauth2 token, with indicator of whether value was retrieved from cache
-#[allow(clippy::too_many_arguments)]
 pub async fn get_oauth2_client_credentials<'a>(
-    id: &str,
-    token_url: &str,
-    client_id: &str,
-    client_secret: &str,
-    send_credentials_in_body: bool,
-    scopes: &'a str,
-    audience: &'a str,
-    certificate: Option<&'a Certificate>,
-    proxy: Option<&'a Proxy>,
-    enable_trace: bool,
+    authorization_id: &str,
+    options: OAuth2ClientCredentialParameters<'a>,
 ) -> Result<TokenResult, ApicizeError> {
+    let OAuth2ClientCredentialParameters {
+        token_url,
+        client_id,
+        client_secret,
+        send_credentials_in_body,
+        scope: scopes,
+        audience,
+        certificate,
+        proxy,
+        enable_trace,
+    } = options;
     // Check cache and return if token found and not expired
-    let valid_token = match retrieve_oauth2_token_from_cache(id).await {
+    let valid_token = match retrieve_oauth2_token_from_cache(authorization_id).await {
         Some(cached_token) => match cached_token.expiration {
             Some(expiration) => {
                 let now = SystemTime::now()
@@ -133,7 +148,7 @@ pub async fn get_oauth2_client_credentials<'a>(
     });
     let token = token_response.access_token().secret().clone();
     store_oauth2_token_in_cache(
-        id,
+        authorization_id,
         CachedTokenInfo {
             access_token: token.clone(),
             refresh_token: None,

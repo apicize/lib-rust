@@ -579,35 +579,6 @@ impl RequestEntry {
         }
     }
 
-    /// Utility function to perform string substitution based upon search/replace values in "subs"
-    pub fn clone_and_sub(text: &str, subs: &HashMap<String, String>) -> String {
-        if subs.is_empty() || !text.contains("{{") {
-            return text.to_string();
-        }
-
-        let mut result = String::with_capacity(text.len());
-        let mut remaining = text;
-
-        while let Some(start) = remaining.find("{{") {
-            result.push_str(&remaining[..start]);
-            if let Some(end) = remaining[start + 2..].find("}}") {
-                let key = &remaining[start..start + 2 + end + 2];
-                if let Some(value) = subs.get(key) {
-                    result.push_str(value);
-                } else {
-                    result.push_str(key);
-                }
-                remaining = &remaining[start + 2 + end + 2..];
-            } else {
-                // No closing }} — copy rest as-is
-                result.push_str(&remaining[start..]);
-                return result;
-            }
-        }
-        result.push_str(remaining);
-        result
-    }
-
     /// Retrieve request entry number of runs
     pub fn get_runs(&self) -> usize {
         match self {

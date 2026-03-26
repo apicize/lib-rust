@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
 use apicize_lib::{
-    ApicizeError, ApicizeResult, ApicizeRunner, ExecutionConcurrency, Identifiable,
-    IndexedEntities, Request, RequestEntry, RequestGroup, TestRunnerContext,
-    WorkbookDefaultParameters, Workspace,
+    ApicizeError, ApicizeResult, ApicizeRunner, ExecutionConcurrency, Identifiable, IndexedEntities, Request, RequestEntry, RequestGroup, TestRunnerContext, WorkbookDefaultParameters, Workspace, workspace::ParameterLockStatus
 };
 use serial_test::serial;
 use tokio_util::sync::CancellationToken;
@@ -11,6 +9,10 @@ use tokio_util::sync::CancellationToken;
 /// Helper to build a minimal workspace with the given request entries
 fn build_workspace(entries: Vec<RequestEntry>) -> Workspace {
     Workspace {
+        private_lock_status: ParameterLockStatus::UnlockedNoPassword,
+        vault_lock_status: ParameterLockStatus::UnlockedNoPassword,
+        private_password: None,
+        vault_password: None,
         requests: IndexedEntities::<RequestEntry>::new(&entries),
         scenarios: IndexedEntities::default(),
         authorizations: IndexedEntities::default(),
@@ -18,6 +20,8 @@ fn build_workspace(entries: Vec<RequestEntry>) -> Workspace {
         proxies: IndexedEntities::default(),
         data: IndexedEntities::default(),
         defaults: WorkbookDefaultParameters::default(),
+        private_encryption: None,
+        vault_encryption: None,
     }
 }
 
@@ -69,6 +73,7 @@ fn build_context(
         "test-run",
         false,
         &None,
+        false,
         false,
     ))
 }

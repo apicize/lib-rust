@@ -3,13 +3,24 @@
 //! This submodule defines modules used to manage workspaces
 
 use crate::{
-    ApicizeError, Authorization, Certificate, DataSourceType, ExecutionReportCsv, ExecutionReportCsvSingleRun, ExecutionReportFormat, ExecutionReportJson, ExecutionResultSummary, Identifiable, PersistedIndex, Proxy, RequestEntry, Scenario, SelectedParameters, Selection, SerializationSaveSuccess, StoredRequestEntry, Validated, Workbook, WorkbookDefaultParameters, indexed_entities::MergableSection, open_data_file, open_data_stream, save_data_file, selected_parameters::SelectableParameters, selection::SelectionIfInvalid
+    ApicizeError, Authorization, Certificate, DataSet, DataSourceType, ExecutionReportCsv,
+    ExecutionReportCsvSingleRun, ExecutionReportFormat, ExecutionReportJson,
+    ExecutionResultSummary, Identifiable, IndexedEntities, Parameters, PersistedIndex, Proxy,
+    RequestEntry, Scenario, SelectedParameters, Selection, SerializationSaveSuccess,
+    StoredRequestEntry, Validated, VariableCache, Workbook, WorkbookDefaultParameters,
+    authorization::AuthorizationPlain,
+    open_data_file, open_data_stream,
+    parameters::{EncryptableParameter, ParameterEncryption},
+    save_data_file,
+    selected_parameters::SelectableParameters,
+    selection::SelectionIfInvalid,
 };
 
 use csv::WriterBuilder;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, ser::PrettyFormatter};
+use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::{
     collections::{HashMap, HashSet},
     ffi::OsStr,
@@ -18,7 +29,44 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use super::{DataSet, IndexedEntities, Parameters, VariableCache};
+/// Lock status of workbook opened in workspace, indicating whether entries can be accessed
+#[derive(Clone, Copy, Debug, Serialize_repr, Deserialize_repr, PartialEq)]
+#[repr(u8)]
+pub enum ParameterLockStatus {
+    UnlockedNoPassword = 0,
+    UnlockedWithEnvVar = 1,
+    UnlockedWithPassword = 2,
+    Locked = 3,
+    LockedInvalidEnvVar = 4,
+    LockedInvalidPassword = 5,
+}
+
+impl ParameterLockStatus {
+    pub fn is_locked(&self) -> bool {
+        *self == ParameterLockStatus::Locked
+            || *self == ParameterLockStatus::LockedInvalidEnvVar
+            || *self == ParameterLockStatus::LockedInvalidPassword
+    }
+}
+
+#[derive(Clone, Copy, Serialize_repr, Deserialize_repr, PartialEq)]
+#[repr(u8)]
+pub enum ParameterStore {
+    Vault = 1,
+    Private = 2,
+}
+
+/// Options for opening a workbook as a workspace
+#[derive(Default)]
+pub struct OpenWorkbookOptions {
+    pub override_default_scenario: Option<String>,
+    pub override_default_authorization: Option<String>,
+    pub override_default_certificate: Option<String>,
+    pub override_default_proxy: Option<String>,
+    pub override_data_seed: Option<String>,
+    pub private_password: Option<String>,
+    pub vault_password: Option<String>,
+}
 
 /// Data type for entities used by Apicize during testing and editing.  This will be
 /// the combination of ,  credential and global settings values
@@ -45,6 +93,28 @@ pub struct Workspace {
 
     /// Default values for requests and groups
     pub defaults: WorkbookDefaultParameters,
+
+    /// Indicates the Vault file's password protection status
+    pub private_lock_status: ParameterLockStatus,
+
+    /// Indicates the Vault file's password protection status
+    pub vault_lock_status: ParameterLockStatus,
+
+    /// Password protecting private parameter file
+    #[serde(skip_serializing)]
+    pub private_password: Option<String>,
+
+    /// Password protecting vault parameter file
+    #[serde(skip_serializing)]
+    pub vault_password: Option<String>,
+
+    /// Private file encryption method
+    #[serde(skip_serializing)]
+    pub private_encryption: Option<ParameterEncryption>,
+
+    /// Vault file encryption method
+    #[serde(skip_serializing)]
+    pub vault_encryption: Option<ParameterEncryption>,
 }
 
 impl Workspace {
@@ -69,19 +139,30 @@ impl Workspace {
             proxies: IndexedEntities::<Proxy>::new(None, None, global_parameters.proxies),
             data: IndexedEntities::default(),
             defaults: WorkbookDefaultParameters::default(),
+            private_lock_status: ParameterLockStatus::UnlockedNoPassword,
+            vault_lock_status: ParameterLockStatus::UnlockedNoPassword,
+            private_password: None,
+            vault_password: None,
+            private_encryption: None,
+            vault_encryption: None,
         })
     }
 
     /// Open the specified  and globals file names
     pub fn open(
         workbook_file_name: Option<&PathBuf>,
-        override_default_scenario: Option<String>,
-        override_default_authorization: Option<String>,
-        override_default_certificate: Option<String>,
-        override_default_proxy: Option<String>,
-        override_data_seed: Option<String>,
         allowed_data_path: &Path,
+        options: OpenWorkbookOptions,
     ) -> Result<Workspace, ApicizeError> {
+        let OpenWorkbookOptions {
+            override_default_scenario,
+            override_default_authorization,
+            override_default_certificate,
+            override_default_proxy,
+            override_data_seed,
+            private_password,
+            vault_password,
+        } = options;
         // Open workbook
         let mut workbook: Workbook = match workbook_file_name {
             Some(input_file_name) => open_data_file(input_file_name),
@@ -90,7 +171,7 @@ impl Workspace {
         .data;
 
         // Load private parameters if file exists
-        let private_parameters = match workbook_file_name {
+        let mut private_parameters = match workbook_file_name {
             Some(input_file_name) => Parameters::open(
                 &Parameters::get_workbook_private_filename(input_file_name),
                 true,
@@ -98,8 +179,8 @@ impl Workspace {
             None => Parameters::default(),
         };
 
-        // Load globals if file exists
-        let global_parameters = Parameters::open(&Parameters::get_globals_filename(), true)?;
+        // Load vault if file exists
+        let mut vault_parameters = Parameters::open(&Parameters::get_globals_filename(), true)?;
 
         if workbook.defaults.is_none() {
             workbook.defaults = Some(WorkbookDefaultParameters::default());
@@ -110,7 +191,7 @@ impl Workspace {
             vec![
                 &workbook.scenarios,
                 &private_parameters.scenarios,
-                &global_parameters.scenarios,
+                &vault_parameters.scenarios,
             ],
             "scenario",
         )? {
@@ -122,7 +203,7 @@ impl Workspace {
             vec![
                 &workbook.authorizations,
                 &private_parameters.authorizations,
-                &global_parameters.authorizations,
+                &vault_parameters.authorizations,
             ],
             "authorization",
         )? {
@@ -134,7 +215,7 @@ impl Workspace {
             vec![
                 &workbook.certificates,
                 &private_parameters.certificates,
-                &global_parameters.certificates,
+                &vault_parameters.certificates,
             ],
             "certificate",
         )? {
@@ -146,14 +227,14 @@ impl Workspace {
             vec![
                 &workbook.proxies,
                 &private_parameters.proxies,
-                &global_parameters.proxies,
+                &vault_parameters.proxies,
             ],
             "proxy",
         )? {
             workbook.defaults.as_mut().unwrap().selected_proxy = s;
         }
 
-        // Commnad line seed may be an ID, a name or a file name
+        // Commnad data seed may be an ID, a name or a file name
         if let Some(seed) = override_data_seed {
             let mut found_data = false;
 
@@ -230,7 +311,23 @@ impl Workspace {
             }
         }
 
-        Self::build_workspace(workbook, private_parameters, global_parameters)
+        let (private_lock_status, private_password) = private_parameters.decrypt(
+            private_password.as_deref(),
+            Some("APICIZE_PRIVATE_PWD"),
+        );
+
+        let (vault_lock_status, vault_password) =
+            vault_parameters.decrypt(vault_password.as_deref(), Some("APICIZE_VAULT_PWD"));
+
+        Self::build_workspace(
+            workbook,
+            private_parameters,
+            private_lock_status,
+            private_password,
+            vault_parameters,
+            vault_lock_status,
+            vault_password,
+        )
     }
 
     /// Return matching selection (if any)
@@ -279,7 +376,11 @@ impl Workspace {
     fn build_workspace(
         workbook: Workbook,
         private_parameters: Parameters,
-        global_parameters: Parameters,
+        private_lock_status: ParameterLockStatus,
+        private_password: Option<String>,
+        vault_parameters: Parameters,
+        vault_lock_status: ParameterLockStatus,
+        vault_password: Option<String>,
     ) -> Result<Workspace, ApicizeError> {
         let workspace_requests = workbook
             .requests
@@ -292,25 +393,31 @@ impl Workspace {
             scenarios: IndexedEntities::<Scenario>::new(
                 workbook.scenarios,
                 private_parameters.scenarios,
-                global_parameters.scenarios,
+                vault_parameters.scenarios,
             ),
             authorizations: IndexedEntities::<Authorization>::new(
                 workbook.authorizations,
                 private_parameters.authorizations,
-                global_parameters.authorizations,
+                vault_parameters.authorizations,
             ),
             certificates: IndexedEntities::<Certificate>::new(
                 workbook.certificates,
                 private_parameters.certificates,
-                global_parameters.certificates,
+                vault_parameters.certificates,
             ),
             proxies: IndexedEntities::<Proxy>::new(
                 workbook.proxies,
                 private_parameters.proxies,
-                global_parameters.proxies,
+                vault_parameters.proxies,
             ),
             data: IndexedEntities::<DataSet>::new(workbook.data),
             defaults: workbook.defaults.unwrap_or_default(),
+            private_lock_status,
+            vault_lock_status,
+            private_password,
+            vault_password,
+            private_encryption: None,
+            vault_encryption: None,
         };
 
         workspace.perform_all_validations();
@@ -318,21 +425,141 @@ impl Workspace {
         Ok(workspace)
     }
 
-    /// Merge in private or private parameters into a workspace (i.e. one that was opened with a password)
-    pub fn add_parameters_to_workspace(
-        workspace: &mut Workspace,
-        parameters: Parameters,
-        section: MergableSection,
+    /// Sets the password for the specified parameter store, but only if the entries in the
+    /// store are already decyrpted
+    pub fn set_password(
+        &mut self,
+        store: ParameterStore,
+        password: &str,
     ) -> Result<(), ApicizeError> {
+        let (scenarios, authorizations, certificates, proxies) = match store {
+            ParameterStore::Vault => (
+                self.scenarios.get_vault(),
+                self.authorizations.get_vault(),
+                self.certificates.get_vault(),
+                self.proxies.get_vault(),
+            ),
+            ParameterStore::Private => (
+                self.scenarios.get_private(),
+                self.authorizations.get_private(),
+                self.certificates.get_private(),
+                self.proxies.get_private(),
+            ),
+        };
 
-        workspace.scenarios.merge_entities(section, parameters.scenarios)?;
-        workspace.authorizations.merge_entities(section, parameters.authorizations)?;
-        workspace.certificates.merge_entities(section, parameters.certificates)?;
-        workspace.proxies.merge_entities(section, parameters.proxies)?;
+        if scenarios.is_some_and(|s| s.iter().any(|s| s.is_encrypted()))
+            || authorizations.is_some_and(|a| a.iter().any(|s| s.is_encrypted()))
+            || certificates.is_some_and(|c| c.iter().any(|s| s.is_encrypted()))
+            || proxies.is_some_and(|p| p.iter().any(|s| s.is_encrypted()))
+        {
+            Err(ApicizeError::Encryption {
+                description:
+                    "Workspace must be decrypted with valid password before setting a new password"
+                        .to_string(),
+            })
+        } else {
+            match store {
+                ParameterStore::Vault => {
+                    self.vault_password = Some(password.to_string());
+                    self.vault_lock_status = ParameterLockStatus::UnlockedWithPassword;
+                }
+                ParameterStore::Private => {
+                    self.private_password = Some(password.to_string());
+                    self.private_lock_status = ParameterLockStatus::UnlockedWithPassword;
+                }
+            }
+            Ok(())
+        }
+    }
 
-        workspace.perform_all_validations();
+    /// Decrypt vault or private parameters using the specified password.  Returns
+    /// decrypted parameters upon success or an error otherwise.  The workspace
+    /// password and encyrption settings are updated upon successful decryption
+    pub fn decrypt_parameters(
+        &mut self,
+        store: ParameterStore,
+        password: &str,
+    ) -> Result<Parameters, ApicizeError> {
+        let (encryption, scenarios, authorizations, certificates, proxies) = match store {
+            ParameterStore::Vault => (
+                self.vault_encryption,
+                self.scenarios.get_vault(),
+                self.authorizations.get_vault(),
+                self.certificates.get_vault(),
+                self.proxies.get_vault(),
+            ),
+            ParameterStore::Private => (
+                self.private_encryption,
+                self.scenarios.get_private(),
+                self.authorizations.get_private(),
+                self.certificates.get_private(),
+                self.proxies.get_private(),
+            ),
+        };
 
-        Ok(())
+        let mut parameters = Parameters {
+            version: 1.0,
+            encryption,
+            scenarios,
+            authorizations,
+            certificates,
+            proxies,
+        };
+
+        let (lock_status, _) = Parameters::decrypt(&mut parameters, Some(password), None);
+
+        if lock_status.is_locked() {
+            Err(ApicizeError::Encryption {
+                description: "Unable to decrypt with the given credentials".to_string(),
+            })
+        } else {
+            if let Some(scenarios) = &mut parameters.scenarios {
+                scenarios.iter_mut().for_each(|scenario| {
+                    if let Scenario::Plain(scenario) = scenario {
+                        scenario.perform_validation();
+                    }
+                    self.scenarios
+                        .entities
+                        .insert(scenario.get_id().to_string(), scenario.clone());
+                });
+            }
+            if let Some(authorizations) = &parameters.authorizations {
+                authorizations.iter().for_each(|a| {
+                    self.authorizations
+                        .entities
+                        .insert(a.get_id().to_string(), a.clone());
+                });
+            }
+            if let Some(certificates) = &parameters.certificates {
+                certificates.iter().for_each(|c| {
+                    self.certificates
+                        .entities
+                        .insert(c.get_id().to_string(), c.clone());
+                });
+            }
+            if let Some(proxies) = &parameters.proxies {
+                proxies.iter().for_each(|p| {
+                    self.proxies
+                        .entities
+                        .insert(p.get_id().to_string(), p.clone());
+                });
+            }
+
+            match store {
+                ParameterStore::Vault => {
+                    self.vault_password = Some(password.to_string());
+                    self.vault_encryption = parameters.encryption;
+                    self.vault_lock_status = lock_status;
+                }
+                ParameterStore::Private => {
+                    self.private_password = Some(password.to_string());
+                    self.private_encryption = parameters.encryption;
+                    self.private_lock_status = lock_status;
+                }
+            }
+
+            Ok(parameters)
+        }
     }
 
     pub fn perform_all_validations(&mut self) {
@@ -341,25 +568,32 @@ impl Workspace {
             .values_mut()
             .for_each(|entity| entity.perform_validation());
 
-        self.scenarios
-            .entities
-            .values_mut()
-            .for_each(|entity| entity.perform_validation());
+        self.scenarios.entities.values_mut().for_each(|entity| {
+            if let Scenario::Plain(entity) = entity {
+                entity.perform_validation()
+            }
+        });
 
         self.authorizations
             .entities
             .values_mut()
-            .for_each(|entity| entity.perform_validation());
+            .for_each(|entity| {
+                if let Authorization::Plain(authorization) = entity {
+                    authorization.perform_validation()
+                }
+            });
 
-        self.certificates
-            .entities
-            .values_mut()
-            .for_each(|entity| entity.perform_validation());
+        self.certificates.entities.values_mut().for_each(|entity| {
+            if let Certificate::Plain(certificate) = entity {
+                certificate.perform_validation()
+            }
+        });
 
-        self.proxies
-            .entities
-            .values_mut()
-            .for_each(|entity| entity.perform_validation());
+        self.proxies.entities.values_mut().for_each(|entity| {
+            if let Proxy::Plain(proxy) = entity {
+                proxy.perform_validation()
+            }
+        });
 
         self.data
             .entities
@@ -418,7 +652,7 @@ impl Workspace {
                 .scenarios
                 .entities
                 .values()
-                .map(|e| (e.id.clone(), e.name.clone()))
+                .map(|e| (e.get_id().to_string(), e.get_name().to_string()))
                 .collect::<HashMap<String, String>>(),
             authorizations: self
                 .authorizations
@@ -436,7 +670,7 @@ impl Workspace {
                 .proxies
                 .entities
                 .values()
-                .map(|e| (e.id.clone(), e.name.clone()))
+                .map(|e| (e.get_id().to_string(), e.get_name().to_string()))
                 .collect::<HashMap<String, String>>(),
             data: self
                 .data
@@ -450,7 +684,7 @@ impl Workspace {
     /// Save workspace to specified path, including private and global parameters
     pub fn save(
         &self,
-        workbook_path: &PathBuf,
+        params: &SaveWorkspaceParameters,
     ) -> Result<Vec<SerializationSaveSuccess>, ApicizeError> {
         fn clone_to_storage<T: Validated + Clone>(parameter: &T) -> T {
             let mut cloned = parameter.clone();
@@ -466,7 +700,17 @@ impl Workspace {
                 if entities.is_empty() {
                     None
                 } else {
-                    Some(entities.iter().map(clone_to_storage).collect())
+                    Some(
+                        entities
+                            .iter()
+                            .map(|entity| match entity {
+                                Scenario::Cipher(cipher) => Scenario::Cipher(cipher.clone()),
+                                Scenario::Plain(plain) => {
+                                    Scenario::Plain(Box::new(clone_to_storage(plain.as_ref())))
+                                }
+                            })
+                            .collect(),
+                    )
                 }
             }
             None => None,
@@ -515,84 +759,106 @@ impl Workspace {
             false => None,
         };
 
-        let stored_requests = self
-            .requests
-            .to_entities()
-            .into_iter()
-            .map(StoredRequestEntry::from)
-            .collect();
+        if params.include_workbook || params.include_private {
+            let Some(workbook_path) = &params.workbook_path else {
+                return Err(ApicizeError::Error {
+                    description: "Unable to save workbook that does not have an assigned path"
+                        .to_string(),
+                });
+            };
 
-        let mut stored_data = self
-            .data
-            .entities
-            .values()
-            .map(|ds| {
-                let mut ds = ds.clone();
-                ds.source_error = None;
-                ds.validation_warnings = None;
-                ds.validation_errors = None;
-                ds
-            })
-            .collect::<Vec<DataSet>>();
+            if params.include_workbook {
+                let stored_requests = self
+                    .requests
+                    .to_entities()
+                    .into_iter()
+                    .map(StoredRequestEntry::from)
+                    .collect();
 
-        stored_data.sort_by(|a, b| {
-            let idx_a = self
-                .data
-                .top_level_ids
-                .iter()
-                .position(|i| i == &a.id)
-                .unwrap_or(0);
-            let idx_b = self
-                .data
-                .top_level_ids
-                .iter()
-                .position(|i| i == &b.id)
-                .unwrap_or(0);
-            idx_a.cmp(&idx_b)
-        });
+                let mut stored_data = self
+                    .data
+                    .entities
+                    .values()
+                    .map(|ds| {
+                        let mut ds = ds.clone();
+                        ds.source_error = None;
+                        ds.validation_warnings = None;
+                        ds.validation_errors = None;
+                        ds
+                    })
+                    .collect::<Vec<DataSet>>();
 
-        let workbook = Workbook {
-            version: 1.0,
-            requests: stored_requests,
-            scenarios: stored_scenarios,
-            authorizations: stored_authorizations,
-            certificates: stored_certiificates,
-            proxies: stored_proxies,
-            data: if stored_data.is_empty() {
-                None
-            } else {
-                Some(stored_data)
-            },
-            defaults: stored_defaults,
-        };
+                stored_data.sort_by(|a, b| {
+                    let idx_a = self
+                        .data
+                        .top_level_ids
+                        .iter()
+                        .position(|i| i == &a.id)
+                        .unwrap_or(0);
+                    let idx_b = self
+                        .data
+                        .top_level_ids
+                        .iter()
+                        .position(|i| i == &b.id)
+                        .unwrap_or(0);
+                    idx_a.cmp(&idx_b)
+                });
 
-        match save_data_file(workbook_path, &workbook) {
-            Ok(success) => successes.push(success),
-            Err(error) => return Err(error),
+                let workbook = Workbook {
+                    version: 1.0,
+                    requests: stored_requests,
+                    scenarios: stored_scenarios,
+                    authorizations: stored_authorizations,
+                    certificates: stored_certiificates,
+                    proxies: stored_proxies,
+                    data: if stored_data.is_empty() {
+                        None
+                    } else {
+                        Some(stored_data)
+                    },
+                    defaults: stored_defaults,
+                };
+
+                match save_data_file(workbook_path, &workbook) {
+                    Ok(success) => successes.push(success),
+                    Err(error) => return Err(error),
+                }
+            }
+
+            if params.include_private {
+                let private_parameters = Parameters::new(
+                    self.scenarios.get_private(),
+                    self.authorizations.get_private(),
+                    self.certificates.get_private(),
+                    self.proxies.get_private(),
+                );
+
+                match private_parameters.save(
+                    &Parameters::get_workbook_private_filename(workbook_path),
+                    "Private store",
+                    &self.private_password,
+                ) {
+                    Ok(success) => successes.push(success),
+                    Err(error) => return Err(error),
+                }
+            }
         }
+        if params.include_vault {
+            let global_parameters = Parameters::new(
+                self.scenarios.get_vault(),
+                self.authorizations.get_vault(),
+                self.certificates.get_vault(),
+                self.proxies.get_vault(),
+            );
 
-        let private_parameters = Parameters::new(
-            self.scenarios.get_private(),
-            self.authorizations.get_private(),
-            self.certificates.get_private(),
-            self.proxies.get_private(),
-        );
-
-        match private_parameters.save(&Parameters::get_workbook_private_filename(workbook_path)) {
-            Ok(success) => successes.push(success),
-            Err(error) => return Err(error),
-        }
-
-        let global_parameters = Parameters::new(
-            self.scenarios.get_vault(),
-            self.authorizations.get_vault(),
-            self.certificates.get_vault(),
-            self.proxies.get_vault(),
-        );
-
-        match global_parameters.save(&Parameters::get_globals_filename()) {
-            Ok(success) => successes.push(success),
-            Err(error) => return Err(error),
+            match global_parameters.save(
+                &Parameters::get_globals_filename(),
+                "Vault",
+                &self.vault_password,
+            ) {
+                Ok(success) => successes.push(success),
+                Err(error) => return Err(error),
+            }
         }
 
         Ok(successes)
@@ -758,11 +1024,12 @@ impl Workspace {
         }
 
         // Set up OAuth2 cert/proxy if specified
-        if let Some(Authorization::OAuth2Client {
-            selected_certificate,
-            selected_proxy,
-            ..
-        }) = authorization
+        if let Some(Authorization::Plain(plain)) = authorization
+            && let AuthorizationPlain::OAuth2Client {
+                selected_certificate,
+                selected_proxy,
+                ..
+            } = plain.as_ref()
         {
             if let SelectedOption::Some(c) = self.certificates.find(selected_certificate)? {
                 auth_certificate_id = Some(c.get_id().to_string());
@@ -779,7 +1046,7 @@ impl Workspace {
         let variables = if let Some(active_scenario) = scenario {
             Map::from_iter(
                 locked_cache
-                    .get_scenario_values(active_scenario)
+                    .get_scenario_values(active_scenario)?
                     .iter()
                     .filter_map(|(name, value)| match value {
                         Ok(v) => Some((name.clone(), v.clone())),
@@ -1146,4 +1413,11 @@ pub struct InvalidSelections {
     pub request_or_group_ids: Vec<String>,
     pub authorization_ids: Vec<String>,
     pub defaults: bool,
+}
+
+pub struct SaveWorkspaceParameters {
+    pub workbook_path: Option<PathBuf>,
+    pub include_workbook: bool,
+    pub include_vault: bool,
+    pub include_private: bool,
 }

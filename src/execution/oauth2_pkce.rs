@@ -1,15 +1,14 @@
 //! This module implements helpers for OAuth2 PKCE flow.  It does not include mechanisms
 //! to enable interactive retrieval of tokens (i.e. HTML browser)
 
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use oauth2::{
-    AuthType, AuthUrl, AuthorizationCode, ClientId, CsrfToken, PkceCodeChallenge, PkceCodeVerifier,
-    RedirectUrl, RefreshToken, Scope, TokenResponse, TokenUrl, basic::BasicClient, reqwest,
-    url::ParseError,
+    AuthType, AuthUrl, ClientId, CsrfToken, PkceCodeChallenge, RedirectUrl, Scope,
+    basic::BasicClient, url::ParseError,
 };
-use reqwest::Url;
 
 /// OAuth2 issued PKCE token result
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -21,6 +20,35 @@ pub struct PkceTokenResult {
     pub refresh_token: Option<String>,
     /// Expiration of token in seconds past Unix epoch
     pub expiration: Option<u64>,
+}
+
+#[derive(Deserialize)]
+struct OAuthTokenResponse {
+    access_token: String,
+    refresh_token: Option<String>,
+    expires_in: Option<u64>,
+}
+
+#[derive(Deserialize)]
+struct OAuthErrorResponse {
+    error: String,
+    error_description: Option<String>,
+}
+
+async fn format_token_error(response: reqwest::Response) -> String {
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    if let Ok(error_response) = serde_json::from_str::<OAuthErrorResponse>(&body) {
+        match error_response.error_description {
+            Some(desc) => format!(
+                "Unable to retrieve token ({}: {})",
+                error_response.error, desc
+            ),
+            None => format!("Unable to retrieve token ({})", error_response.error),
+        }
+    } else {
+        format!("HTTP {}: {}", status, body)
+    }
 }
 
 /// Generate authorization URL and include the CSRF token and PKCE verifier in the response
@@ -82,42 +110,53 @@ pub async fn retrieve_access_token(
     verifier: &str,
     enable_trace: bool,
 ) -> Result<PkceTokenResult, String> {
-    let http_client = reqwest::ClientBuilder::new()
-        // Following redirects opens the client up to SSRF vulnerabilities.
+    let http_client = reqwest::Client::builder()
         .connection_verbose(enable_trace)
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .expect("Client should build");
 
-    // println!("Token URL: {}, Redirect URL: {}, Client ID: {}, Code: {}, Verifier: {}", access_token_uri, redirect_uri, client_id, code, verifier);
-
-    match BasicClient::new(ClientId::new(client_id.to_string()))
-        .set_token_uri(TokenUrl::new(access_token_uri.to_string()).unwrap())
-        .set_redirect_uri(RedirectUrl::new(redirect_uri.to_string()).unwrap())
-        .exchange_code(AuthorizationCode::new(code.to_string()))
-        .set_pkce_verifier(PkceCodeVerifier::new(verifier.to_string()))
-        .request_async(&http_client)
+    let response = http_client
+        .post(access_token_uri)
+        .form(&[
+            ("grant_type", "authorization_code"),
+            ("code", code),
+            ("redirect_uri", redirect_uri),
+            ("client_id", client_id),
+            ("code_verifier", verifier),
+        ])
+        .send()
         .await
-    {
-        Ok(token_result) => {
-            let access_token = token_result.access_token().secret().to_string();
-            let refresh_token = token_result.refresh_token().map(|t| t.secret().to_string());
-            let expiration = token_result.expires_in().map(|e| {
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs()
-                    + e.as_secs()
-            });
+        .map_err(|e| format!("Request failed: {}", e))?;
 
-            Ok(PkceTokenResult {
-                access_token,
-                refresh_token,
-                expiration,
-            })
-        }
-        Err(err) => Err(format!("{err:?}")),
+    if !response.status().is_success() {
+        // println!("Token request failed with status {}. Response headers:", response.status());
+        // for (name, value) in response.headers().iter() {
+        //     println!("  {}: {:?}", name, value);
+        // }
+        return Err(format_token_error(response).await);
     }
+
+    let body = response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read token response: {}", e))?;
+    let token: OAuthTokenResponse = serde_json::from_str(&body)
+        .map_err(|e| format!("Failed to parse token response: {}", e))?;
+
+    let expiration = token.expires_in.map(|e| {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            + e
+    });
+
+    Ok(PkceTokenResult {
+        access_token: token.access_token,
+        refresh_token: token.refresh_token,
+        expiration,
+    })
 }
 
 /// Exchange refresh token for access token (after call to retrieve_access_token)
@@ -126,34 +165,44 @@ pub async fn refresh_token(
     refresh_token: &str,
     client_id: &str,
 ) -> Result<PkceTokenResult, String> {
-    let http_client = reqwest::ClientBuilder::new()
-        // Following redirects opens the client up to SSRF vulnerabilities.
+    let http_client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .expect("Client should build");
 
-    let token_result = BasicClient::new(ClientId::new(client_id.to_string()))
-        .set_token_uri(
-            TokenUrl::new(access_token_uri.to_string()).expect("Unable to parse token_url"),
-        )
-        .exchange_refresh_token(&RefreshToken::new(refresh_token.to_string()))
-        .request_async(&http_client)
+    let response = http_client
+        .post(access_token_uri)
+        .form(&[
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh_token),
+            ("client_id", client_id),
+        ])
+        .send()
         .await
-        .expect("Unable to retrieve token");
+        .map_err(|e| format!("Request failed: {}", e))?;
 
-    let access_token = token_result.access_token().secret().to_string();
-    let refresh_token = token_result.refresh_token().map(|t| t.secret().to_string());
-    let expiration = token_result.expires_in().map(|e| {
+    if !response.status().is_success() {
+        return Err(format_token_error(response).await);
+    }
+
+    let body = response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read token response: {}", e))?;
+    let token: OAuthTokenResponse = serde_json::from_str(&body)
+        .map_err(|e| format!("Failed to parse token response: {}", e))?;
+
+    let expiration = token.expires_in.map(|e| {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs()
-            + e.as_secs()
+            + e
     });
 
     Ok(PkceTokenResult {
-        access_token,
-        refresh_token,
+        access_token: token.access_token,
+        refresh_token: token.refresh_token,
         expiration,
     })
 }
