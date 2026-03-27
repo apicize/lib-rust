@@ -22,6 +22,17 @@ pub struct ExecutionResultBuilder {
     /// up which parent request/group executed them
     executing_request_index: HashMap<String, IndexMap<String, Vec<usize>>>,
 }
+
+impl ExecutionResultBuilder {
+    pub fn with_exec_ctr(exec_ctr: usize) -> Self {
+        ExecutionResultBuilder {
+            exec_ctr,
+            results: Default::default(),
+            executing_request_index: Default::default(),
+        }
+    }
+}
+
 struct EntryIdentifiers {
     pub id: String,
     pub title: String,
@@ -118,7 +129,7 @@ impl ExecutionResultBuilder {
 
         let request_id = result.get_id();
         let executing_request_or_group_id = context.get_executing_request_or_group_id();
-        let exec_ctr = self.next_counter();
+        let exec_ctr = self.increment_counter();
 
         // Add the counter to list of requests/groups that we are collecting for
         let mut active_request_ids = active_request_ids.clone();
@@ -305,7 +316,7 @@ impl ExecutionResultBuilder {
 
         let group_id = result.get_id();
         let executing_request_or_group_id = context.get_executing_request_or_group_id();
-        let exec_ctr = self.next_counter();
+        let exec_ctr = self.increment_counter();
 
         let mut active_request_ids = active_request_ids.clone();
         active_request_ids.insert(group_id.to_string());
@@ -442,7 +453,7 @@ impl ExecutionResultBuilder {
 
             match row.results {
                 ApicizeRequestResultRowContent::Runs(runs) => {
-                    let exec_ctr = self.next_counter();
+                    let exec_ctr = self.increment_counter();
                     indexes.push(exec_ctr);
 
                     for active_request_id in &active_request_ids {
@@ -530,7 +541,7 @@ impl ExecutionResultBuilder {
                     let (status, status_text, has_response_headers, response_body_length) =
                         get_response_info(&execution);
 
-                    let exec_ctr = self.next_counter();
+                    let exec_ctr = self.increment_counter();
                     indexes.push(exec_ctr);
                     for active_request_id in &active_request_ids {
                         self.add_index_entries(
@@ -789,7 +800,7 @@ impl ExecutionResultBuilder {
             let (status, status_text, has_response_headers, response_body_length) =
                 get_response_info(&run.execution);
 
-            let exec_ctr = self.next_counter();
+            let exec_ctr = self.increment_counter();
 
             for active_request_id in &active_request_ids {
                 self.add_index_entries(
@@ -894,7 +905,7 @@ impl ExecutionResultBuilder {
                 identifiers.title, row_number, row_count,
             );
 
-            let exec_ctr = self.next_counter();
+            let exec_ctr = self.increment_counter();
             for active_request_id in &active_request_ids {
                 self.add_index_entries(
                     active_request_id,
@@ -1023,7 +1034,7 @@ impl ExecutionResultBuilder {
                 identifiers.title, run_number, run_count
             );
 
-            let exec_ctr = self.next_counter();
+            let exec_ctr = self.increment_counter();
 
             for active_request_id in &active_request_ids {
                 self.add_index_entries(
@@ -1114,9 +1125,10 @@ impl ExecutionResultBuilder {
     }
 
     /// Return next incremented counter
-    fn next_counter(&mut self) -> usize {
+    fn increment_counter(&mut self) -> usize {
+        let current_ctr = self.exec_ctr;
         self.exec_ctr = self.exec_ctr.wrapping_add(1);
-        self.exec_ctr
+        current_ctr
     }
 }
 

@@ -1,11 +1,14 @@
 # Change Log
 
+## 0.35.1
+
+* Fix report rendering on request errors
+
 ## 0.35.0
 
 * Add password-based locking/unlocking of private and vault parameter stores (AES-256-GCM encryption)
 * Add variable substitution ({{handlebar}}) support in authorization fields
 * Add cURL command generation for executed requests
-* Refactor OAuth2 client credentials into `OAuth2ClientCredentialParameters` struct
 * Refactor OAuth2 PKCE token exchange to use direct HTTP requests instead of oauth2 crate helpers
 
 ## 0.34.2

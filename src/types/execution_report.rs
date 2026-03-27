@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{ApicizeError, ApicizeTestBehavior, ExecutionResultSuccess, ExecutionResultSummary};
+use crate::{ApicizeTestBehavior, ExecutionResultSuccess, ExecutionResultSummary};
 
 #[derive(Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "UPPERCASE")]
@@ -78,7 +78,7 @@ pub struct ExecutionReportJson {
 
     /// Error on dispatch or error execution
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<ApicizeError>,
+    pub error: Option<String>,
 
     /// Request test results
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -148,7 +148,7 @@ pub struct ExecutionReportCsv {
 
     /// Error on dispatch or error execution
     #[serde(rename = "Error")]
-    pub error: Option<ApicizeError>,
+    pub error: Option<String>,
 
     /// Error generated during the test
     #[serde(rename = "Test Error")]
@@ -210,7 +210,7 @@ pub struct ExecutionReportCsvSingleRun {
 
     /// Error on dispatch or error execution
     #[serde(rename = "Error")]
-    pub error: Option<ApicizeError>,
+    pub error: Option<String>,
 
     /// Error generated during the test
     #[serde(rename = "Test Error")]
@@ -257,7 +257,7 @@ impl ExecutionReportJson {
             success: summary.success.clone(),
             status: summary.status,
             status_text: summary.status_text.clone(),
-            error: summary.error.clone(),
+            error: summary.error.as_ref().map(|e| e.to_string()),
             test_results,
             run_number: summary.run_number,
             run_count: summary.run_count,

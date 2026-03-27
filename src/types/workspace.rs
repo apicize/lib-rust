@@ -311,10 +311,8 @@ impl Workspace {
             }
         }
 
-        let (private_lock_status, private_password) = private_parameters.decrypt(
-            private_password.as_deref(),
-            Some("APICIZE_PRIVATE_PWD"),
-        );
+        let (private_lock_status, private_password) =
+            private_parameters.decrypt(private_password.as_deref(), Some("APICIZE_PRIVATE_PWD"));
 
         let (vault_lock_status, vault_password) =
             vault_parameters.decrypt(vault_password.as_deref(), Some("APICIZE_VAULT_PWD"));
@@ -1199,7 +1197,7 @@ impl Workspace {
                 test_success: None,
                 test_logs: None,
                 test_error: None,
-                error: summary.error.clone(),
+                error: summary.error.as_ref().map(|e| e.to_string()),
             });
         } else if let Some(child_exec_ctrs) = &summary.child_exec_ctrs
             && !child_exec_ctrs.is_empty()
@@ -1231,7 +1229,7 @@ impl Workspace {
                     success: summary.success.clone(),
                     status: summary.status,
                     status_text: summary.status_text.clone(),
-                    error: summary.error.clone(),
+                    error: summary.error.as_ref().map(|e| e.to_string()),
                     test_name: Some(test_result.name.clone()),
                     test_tag: test_result.tag.clone(),
                     test_success: Some(test_result.success),
@@ -1252,7 +1250,7 @@ impl Workspace {
                 success: summary.success.clone(),
                 status: summary.status,
                 status_text: summary.status_text.clone(),
-                error: summary.error.clone(),
+                error: summary.error.as_ref().map(|e| e.to_string()),
                 test_name: None,
                 test_tag: None,
                 test_success: None,
@@ -1296,21 +1294,19 @@ impl Workspace {
 
     /// Generate a report from summarized execution results
     pub fn generate_multirun_report(
-        all_run_summaries: &IndexMap<usize, IndexMap<usize, ExecutionResultSummary>>,
+        all_run_summaries: &IndexMap<usize, (Vec<usize>, IndexMap<usize, ExecutionResultSummary>)>,
         format: &ExecutionReportFormat,
     ) -> Result<String, ApicizeError> {
         match format {
             ExecutionReportFormat::JSON => {
                 let mut all_data = HashMap::<usize, Vec<ExecutionReportJson>>::new();
 
-                for (run_number, run_summaries) in all_run_summaries {
-                    let mut data = Vec::<ExecutionReportJson>::new();
-                    Self::generate_json(run_number, run_summaries, &mut data)?;
-                    if let Some(entry) = all_data.get_mut(run_number) {
-                        entry.extend(data);
-                    } else {
-                        all_data.insert(*run_number, data);
+                for (run_number, (exec_ctrs, run_summaries)) in all_run_summaries {
+                    let mut data = Vec::<ExecutionReportJson>::with_capacity(run_summaries.len());
+                    for exec_ctr in exec_ctrs {
+                        Self::generate_json(exec_ctr, run_summaries, &mut data)?;
                     }
+                    all_data.insert(*run_number, data);
                 }
 
                 let mut buf = Vec::new();
@@ -1322,12 +1318,12 @@ impl Workspace {
             ExecutionReportFormat::CSV => {
                 let entry_count: usize = all_run_summaries
                     .values()
-                    .fold(0, |total, summaries| total + summaries.len());
+                    .fold(0, |total, (_, summaries)| total + summaries.len());
                 let mut run_data = Vec::<ExecutionReportCsv>::with_capacity(entry_count);
 
-                for (run_number, run_summaries) in all_run_summaries {
+                for (run_number, (exec_ctrs, run_summaries)) in all_run_summaries {
                     let mut processed_exec_ctrs = HashSet::<usize>::new();
-                    for exec_ctr in run_summaries.keys() {
+                    for exec_ctr in exec_ctrs {
                         Self::generate_csv(
                             *run_number,
                             exec_ctr,
