@@ -176,7 +176,7 @@ impl ExecutionResultBuilder {
             has_response_headers: false,
             has_curl: false,
             response_body_length: None,
-            success: success.clone(),
+            success,
             error: None,
             request_success_count: 0,
             request_failure_count: 0,
@@ -211,7 +211,7 @@ impl ExecutionResultBuilder {
                     executed_at: result.executed_at,
                     duration: result.duration,
                     data_context: result.data_context.clone(),
-                    success: success.clone(),
+                    success,
                     request_success_count: result.request_success_count,
                     request_failure_count: result.request_failure_count,
                     request_error_count: result.request_error_count,
@@ -244,7 +244,7 @@ impl ExecutionResultBuilder {
                     executed_at: result.executed_at,
                     duration: result.duration,
                     data_context: result.data_context.clone(),
-                    success: success.clone(),
+                    success,
                     request_success_count: result.request_success_count,
                     request_failure_count: result.request_failure_count,
                     request_error_count: result.request_error_count,
@@ -365,7 +365,7 @@ impl ExecutionResultBuilder {
                     has_response_headers: false,
                     has_curl: false,
                     response_body_length: None,
-                    success: success.clone(),
+                    success,
                     error: None,
                     request_success_count: result.request_success_count,
                     request_failure_count: result.request_failure_count,
@@ -387,7 +387,7 @@ impl ExecutionResultBuilder {
                     executed_at: result.executed_at,
                     duration: result.duration,
                     data_context: result.data_context.clone(),
-                    success: success.clone(),
+                    success,
                     request_success_count: result.request_success_count,
                     request_failure_count: result.request_failure_count,
                     request_error_count: result.request_error_count,
@@ -486,7 +486,7 @@ impl ExecutionResultBuilder {
                                 has_response_headers: false,
                                 has_curl: false,
                                 response_body_length: None,
-                                success: success.clone(),
+                                success,
                                 error: None,
                                 request_success_count: row.request_success_count,
                                 request_failure_count: row.request_failure_count,
@@ -572,7 +572,7 @@ impl ExecutionResultBuilder {
                                 has_response_headers,
                                 has_curl: execution.curl.is_some(),
                                 response_body_length,
-                                success: success.clone(),
+                                success,
                                 error: execution.error.clone(),
                                 request_success_count: row.request_success_count,
                                 request_failure_count: row.request_failure_count,
@@ -702,36 +702,23 @@ impl ExecutionResultBuilder {
         }
     }
 
-    /// Delete out any stored request index entries for the specified request/group
-    pub fn delete_indexed_request_results(&mut self, executing_request_or_group_id: &str) {
+    /// Delete out any stored request index entries for the specified request/group,
+    /// return request/group IDs that were impacted
+    pub fn delete_indexed_request_results(
+        &mut self,
+        executing_request_or_group_id: &str,
+    ) -> Vec<String> {
         // Remove all results for which the specified request executed them
-        for request_executions in self.executing_request_index.values_mut() {
-            request_executions.shift_remove(executing_request_or_group_id);
+        let mut results = Vec::<String>::with_capacity(self.executing_request_index.len());
+        for (id, request_executions) in &mut self.executing_request_index {
+            if request_executions
+                .shift_remove(executing_request_or_group_id)
+                .is_some()
+            {
+                results.push(id.to_string())
+            }
         }
-        // let mut executions_to_clear: IndexSet<usize> = IndexSet::new();
-
-        // // Remove all results for which the specified request executed them
-        // for request_executions in self.executing_request_index.values_mut() {
-        //     if request_executions.contains_key(executing_request_or_group_id) {
-        //         // If there are results for request children, then remove those executions as well
-        //         executions_to_clear.extend(
-        //             request_executions
-        //                 .get(executing_request_or_group_id)
-        //                 .unwrap(),
-        //         );
-        //         request_executions.shift_remove(executing_request_or_group_id);
-        //     }
-        // }
-
-        // for parent_requests in self.associated_parent_request_index.values_mut() {
-        //     parent_requests.remove(executing_request_or_group_id);
-        // }
-
-        // // Delete any stored executions identified as being associated with the request/group
-        // if !executions_to_clear.is_empty() {
-        //     self.results
-        //         .retain(|id, _| !executions_to_clear.contains(id));
-        // }
+        results
     }
 
     /// Add request index entry, storing which request the execution was returned from
@@ -832,7 +819,7 @@ impl ExecutionResultBuilder {
                         has_response_headers,
                         has_curl: run.execution.curl.is_some(),
                         response_body_length,
-                        success: success.clone(),
+                        success,
                         error: run.execution.error.clone(),
                         request_success_count: run.request_success_count,
                         request_failure_count: run.request_failure_count,
@@ -935,7 +922,7 @@ impl ExecutionResultBuilder {
                         has_response_headers: false,
                         has_curl: false,
                         response_body_length: None,
-                        success: success.clone(),
+                        success,
                         error: None,
                         request_success_count: row.request_success_count,
                         request_failure_count: row.request_failure_count,
@@ -1065,7 +1052,7 @@ impl ExecutionResultBuilder {
                         has_response_headers: false,
                         has_curl: false,
                         response_body_length: None,
-                        success: success.clone(),
+                        success,
                         error: None,
                         request_success_count: run.request_success_count,
                         request_failure_count: run.request_failure_count,
@@ -1126,9 +1113,8 @@ impl ExecutionResultBuilder {
 
     /// Return next incremented counter
     fn increment_counter(&mut self) -> usize {
-        let current_ctr = self.exec_ctr;
         self.exec_ctr = self.exec_ctr.wrapping_add(1);
-        current_ctr
+        self.exec_ctr
     }
 }
 

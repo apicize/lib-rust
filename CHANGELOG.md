@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.35.2
+
+* Single-row results show up as executed results (no rows)
+
 ## 0.35.1
 
 * Fix report rendering on request errors

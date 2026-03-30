@@ -339,16 +339,44 @@ async fn run_request(
 
     let (content, data_context, tallies, logs) = if params.data_set.is_some() && state.row.is_none()
     {
-        let rows =
+        let mut rows =
             run_request_rows(context.clone(), request_id, params.clone(), state.clone()).await?;
         let data_context = rows.generate_data_context();
         let tallies = rows.get_tallies();
-        (
-            ApicizeRequestResultContent::Rows { rows },
-            data_context,
-            tallies,
-            None,
-        )
+
+        if rows.len() == 1 {
+            let row = rows.remove(0);
+            match row.results {
+                ApicizeRequestResultRowContent::Runs(runs) => {
+                    let data_context = runs.generate_data_context();
+                    let tallies = runs.get_tallies();
+                    (
+                        ApicizeRequestResultContent::Runs { runs },
+                        data_context,
+                        tallies,
+                        None,
+                    )
+                }
+                ApicizeRequestResultRowContent::Execution(execution) => {
+                    let data_context = execution.generate_data_context();
+                    let tallies = execution.get_tallies();
+                    let logs = execution.logs.clone();
+                    (
+                        ApicizeRequestResultContent::Execution { execution },
+                        data_context,
+                        tallies,
+                        logs,
+                    )
+                }
+            }
+        } else {
+            (
+                ApicizeRequestResultContent::Rows { rows },
+                data_context,
+                tallies,
+                None,
+            )
+        }
     } else if multi_run {
         let runs =
             run_request_runs(context.clone(), request_id, params.clone(), state.clone()).await?;
@@ -652,15 +680,39 @@ async fn run_group(
 
     let (content, data_context, tallies) = if params.data_set.is_some() && !child_ids.is_empty() {
         // Apply all data rows to each child of a group
-        let rows =
+        let mut rows =
             run_group_rows(context.clone(), group_id, params.clone(), use_state.clone()).await?;
-        let data_context = rows.generate_data_context();
-        let tallies = rows.get_tallies();
-        (
-            ApicizeGroupResultContent::Rows { rows },
-            data_context,
-            tallies,
-        )
+        if rows.len() == 1 {
+            let row = rows.remove(0);
+            match row.content {
+                ApicizeGroupResultRowContent::Runs { runs } => {
+                    let data_context = runs.generate_data_context();
+                    let tallies = runs.get_tallies();
+                    (
+                        ApicizeGroupResultContent::Runs { runs },
+                        data_context,
+                        tallies,
+                    )
+                }
+                ApicizeGroupResultRowContent::Results { results } => {
+                    let data_context = results.generate_data_context();
+                    let tallies = results.get_tallies();
+                    (
+                        ApicizeGroupResultContent::Results { results },
+                        data_context,
+                        tallies,
+                    )
+                }
+            }
+        } else {
+            let data_context = rows.generate_data_context();
+            let tallies = rows.get_tallies();
+            (
+                ApicizeGroupResultContent::Rows { rows },
+                data_context,
+                tallies,
+            )
+        }
     } else if multi_run {
         let runs =
             run_group_runs(context.clone(), group_id, params.clone(), use_state.clone()).await?;
@@ -672,7 +724,7 @@ async fn run_group(
             tallies,
         )
     } else {
-        let entries = run_group_children(
+        let results = run_group_children(
             context.clone(),
             child_ids,
             params.clone(),
@@ -680,10 +732,10 @@ async fn run_group(
             &group.execution,
         )
         .await?;
-        let data_context = entries.generate_data_context();
-        let tallies = entries.get_tallies();
+        let data_context = results.generate_data_context();
+        let tallies = results.get_tallies();
         (
-            ApicizeGroupResultContent::Results { results: entries },
+            ApicizeGroupResultContent::Results { results },
             data_context,
             tallies,
         )

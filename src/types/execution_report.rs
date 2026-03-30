@@ -254,7 +254,7 @@ impl ExecutionReportJson {
             url: summary.url.clone(),
             executed_at: summary.executed_at,
             duration: summary.duration,
-            success: summary.success.clone(),
+            success: summary.success,
             status: summary.status,
             status_text: summary.status_text.clone(),
             error: summary.error.as_ref().map(|e| e.to_string()),
