@@ -1699,10 +1699,10 @@ async fn dispatch_request(
     }
 }
 
-/// Shell-escape a string for use in a single-quoted curl argument
+/// Shell-escape a string for use in a double-quoted curl argument (Windows-compatible)
 fn shell_escape(s: &str) -> String {
-    // Replace single quotes with '\'' (end quote, escaped quote, start quote)
-    s.replace('\'', "'\\''")
+    // Escape backslashes first, then double quotes
+    s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 /// Generate a curl command that recreates the given HTTP request
@@ -1728,7 +1728,7 @@ fn generate_curl_command(
     sorted_headers.sort_by_key(|(k, _)| k.to_lowercase());
     for (name, value) in sorted_headers {
         parts.push("-H".to_string());
-        parts.push(format!("'{}: {}'", shell_escape(name), shell_escape(value)));
+        parts.push(format!("\"{}: {}\"", shell_escape(name), shell_escape(value)));
     }
 
     // Body
@@ -1739,18 +1739,18 @@ fn generate_curl_command(
             | ApicizeBody::XML { text, .. } => {
                 if !text.is_empty() {
                     parts.push("-d".to_string());
-                    parts.push(format!("'{}'", shell_escape(text)));
+                    parts.push(format!("\"{}\"", shell_escape(text)));
                 }
             }
             ApicizeBody::Form { data, .. } => {
                 for (key, value) in data {
                     parts.push("--data-urlencode".to_string());
-                    parts.push(format!("'{}={}'", shell_escape(key), shell_escape(value)));
+                    parts.push(format!("\"{}={}\"", shell_escape(key), shell_escape(value)));
                 }
             }
             ApicizeBody::Binary { .. } => {
                 parts.push("--data-binary".to_string());
-                parts.push("'<BINARY_DATA>'".to_string());
+                parts.push("\"<BINARY_DATA>\"".to_string());
             }
         }
     }
@@ -1761,24 +1761,24 @@ fn generate_curl_command(
             Certificate::Plain(plain) => match plain.as_ref() {
                 crate::types::certificate::CertificatePlain::PKCS12 { name, .. } => {
                     parts.push("--cert".to_string());
-                    parts.push(format!("'{}.p12'", shell_escape(name)));
+                    parts.push(format!("\"{}.p12\"", shell_escape(name)));
                     parts.push("--cert-type".to_string());
                     parts.push("P12".to_string());
                 }
                 crate::types::certificate::CertificatePlain::PKCS8PEM { name, .. } => {
                     parts.push("--cert".to_string());
-                    parts.push(format!("'{}.pem'", shell_escape(name)));
+                    parts.push(format!("\"{}.pem\"", shell_escape(name)));
                     parts.push("--key".to_string());
-                    parts.push(format!("'{}.key'", shell_escape(name)));
+                    parts.push(format!("\"{}.key\"", shell_escape(name)));
                 }
                 crate::types::certificate::CertificatePlain::PEM { name, .. } => {
                     parts.push("--cert".to_string());
-                    parts.push(format!("'{}.pem'", shell_escape(name)));
+                    parts.push(format!("\"{}.pem\"", shell_escape(name)));
                 }
             },
             Certificate::Cipher(_) => {
                 parts.push("--cert".to_string());
-                parts.push("'<ENCRYPTED_CERTIFICATE>'".to_string());
+                parts.push("\"<ENCRYPTED_CERTIFICATE>\"".to_string());
             }
         }
     }
@@ -1788,17 +1788,17 @@ fn generate_curl_command(
         match proxy {
             Proxy::Plain(plain) => {
                 parts.push("--proxy".to_string());
-                parts.push(format!("'{}'", shell_escape(&plain.url)));
+                parts.push(format!("\"{}\"", shell_escape(&plain.url)));
             }
             Proxy::Cipher(_) => {
                 parts.push("--proxy".to_string());
-                parts.push("'<ENCRYPTED_PROXY>'".to_string());
+                parts.push("\"<ENCRYPTED_PROXY>\"".to_string());
             }
         }
     }
 
     // URL (always last)
-    parts.push(format!("'{}'", shell_escape(url)));
+    parts.push(format!("\"{}\"", shell_escape(url)));
 
     parts.join(" ")
 }

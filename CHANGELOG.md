@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.35.3
+
+* Update CURL output to use double quotes instead of single quotes (Windows compatibility)
+
 ## 0.35.2
 
 * Single-row results show up as executed results (no rows)
