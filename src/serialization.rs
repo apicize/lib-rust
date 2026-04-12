@@ -1,10 +1,11 @@
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::ser::PrettyFormatter;
 use std::{
-    fs::{self, File},
-    io::Read,
+    fs,
+    io::{BufWriter, Read, Write},
     path::{Path, PathBuf},
 };
+use tempfile::NamedTempFile;
 use crate::ApicizeError;
 
 /// Information on open success, including data
@@ -56,22 +57,74 @@ pub fn open_data_stream<T: DeserializeOwned>(
     }
 }
 
-/// Save the specified data file
+/// Save the specified data file atomically.
+///
+/// Writes to a temporary file in the same directory, flushes, fsyncs, then
+/// atomically renames over the target. If any step fails, the original file
+/// is left untouched.
 pub fn save_data_file<T: Serialize>(
     output_file_name: &PathBuf,
     data: &T,
 ) -> Result<SerializationSaveSuccess, ApicizeError> {
     let file_name = String::from(output_file_name.to_string_lossy());
-    let formatter = PrettyFormatter::with_indent(b"    ");
+    let dir = output_file_name.parent().ok_or_else(|| ApicizeError::FileAccess {
+        file_name: Some(file_name.clone()),
+        description: "Unable to determine parent directory".to_string(),
+    })?;
 
-    let writer = File::create(output_file_name)
+    let tmp = NamedTempFile::new_in(dir)
         .map_err(|err| ApicizeError::from_io(err, Some(file_name.clone())))?;
-    let mut ser = serde_json::Serializer::with_formatter(writer, formatter);
-    data.serialize(&mut ser).map_err(|err| ApicizeError::from_serde(err, file_name.clone()))?;
+
+    let formatter = PrettyFormatter::with_indent(b"    ");
+    {
+        let mut writer = BufWriter::new(tmp.as_file());
+        let mut ser = serde_json::Serializer::with_formatter(&mut writer, formatter);
+        data.serialize(&mut ser).map_err(|err| ApicizeError::from_serde(err, file_name.clone()))?;
+        writer.flush().map_err(|err| ApicizeError::from_io(err, Some(file_name.clone())))?;
+        writer.get_ref().sync_all().map_err(|err| ApicizeError::from_io(err, Some(file_name.clone())))?;
+    }
+
+    tmp.persist(output_file_name).map_err(|err| ApicizeError::FileAccess {
+        file_name: Some(file_name.clone()),
+        description: format!("Failed to persist temp file: {}", err),
+    })?;
+
     Ok(SerializationSaveSuccess {
         file_name,
         operation: SerializationOperation::Save,
     })
+}
+
+/// Save data to a file atomically.
+///
+/// Writes content to a temporary file, flushes, fsyncs, then atomically
+/// renames over the target.
+pub fn save_file_atomically(
+    output_file_name: &PathBuf,
+    content: &str,
+) -> Result<(), ApicizeError> {
+    let file_name = String::from(output_file_name.to_string_lossy());
+    let dir = output_file_name.parent().ok_or_else(|| ApicizeError::FileAccess {
+        file_name: Some(file_name.clone()),
+        description: "Unable to determine parent directory".to_string(),
+    })?;
+
+    let tmp = NamedTempFile::new_in(dir)
+        .map_err(|err| ApicizeError::from_io(err, Some(file_name.clone())))?;
+
+    {
+        let mut writer = BufWriter::new(tmp.as_file());
+        writer.write_all(content.as_bytes()).map_err(|err| ApicizeError::from_io(err, Some(file_name.clone())))?;
+        writer.flush().map_err(|err| ApicizeError::from_io(err, Some(file_name.clone())))?;
+        writer.get_ref().sync_all().map_err(|err| ApicizeError::from_io(err, Some(file_name.clone())))?;
+    }
+
+    tmp.persist(output_file_name).map_err(|err| ApicizeError::FileAccess {
+        file_name: Some(file_name.clone()),
+        description: format!("Failed to persist temp file: {}", err),
+    })?;
+
+    Ok(())
 }
 
 /// Delete the specified file, if it exists
