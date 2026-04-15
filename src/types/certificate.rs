@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use crate::parameters::{EncryptableParameter, ParameterCipher, ParameterEncryption};
 use crate::{
-    ApicizeError, Identifiable, Validated, ValidationState, add_validation_error, decrypt, encrypt, remove_validation_error, utility::*
+    ApicizeError, Identifiable, Validated, ValidationState, add_validation_error, decrypt, encrypt,
+    remove_validation_error, utility::*,
 };
 use reqwest::{ClientBuilder, Identity};
 use serde::{Deserialize, Serialize};
@@ -235,7 +236,11 @@ impl EncryptableParameter for Certificate {
         matches!(self, Certificate::Cipher(_))
     }
 
-    fn encrypt(&self, password: &str, method: ParameterEncryption) -> Result<Certificate, ApicizeError> {
+    fn encrypt(
+        &self,
+        password: &str,
+        method: ParameterEncryption,
+    ) -> Result<Certificate, ApicizeError> {
         let Certificate::Plain(certificate) = self else {
             return Err(ApicizeError::Encryption {
                 description: "Encrypted certificates cannot be re-encrypted".to_string(),
@@ -288,7 +293,11 @@ impl EncryptableParameter for Certificate {
         }))
     }
 
-    fn decrypt(&self, password: &str, method: ParameterEncryption) -> Result<Certificate, ApicizeError> {
+    fn decrypt(
+        &self,
+        password: &str,
+        method: ParameterEncryption,
+    ) -> Result<Certificate, ApicizeError> {
         let Certificate::Cipher(certificate) = self else {
             return Err(ApicizeError::Encryption {
                 description: "Certificate is already decrypted".to_string(),
@@ -363,7 +372,6 @@ impl Certificate {
 
         Ok(builder.identity(identity).use_native_tls())
     }
-    
 }
 
 impl Validated for CertificatePlain {

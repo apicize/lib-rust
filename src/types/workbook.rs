@@ -1,6 +1,6 @@
+use super::{DataSet, StoredRequestEntry, WorkbookDefaultParameters};
 use crate::{Authorization, Certificate, Proxy, Scenario};
 use serde::{Deserialize, Serialize};
-use super::{DataSet, StoredRequestEntry, WorkbookDefaultParameters};
 
 /// Persisted Apcizize requests and scenario definitions
 #[derive(Serialize, Deserialize, PartialEq)]
@@ -26,5 +26,5 @@ pub struct Workbook {
     pub data: Option<Vec<DataSet>>,
     /// Workbook defaults
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub defaults: Option<WorkbookDefaultParameters>    
+    pub defaults: Option<WorkbookDefaultParameters>,
 }

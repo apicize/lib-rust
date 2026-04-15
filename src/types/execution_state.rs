@@ -5,10 +5,12 @@ bitflags! {
     /// Information reflecting current execution and definition state of a request or group, should not be stored
     #[derive(Clone, Copy, Default, PartialEq, Debug)]
     pub struct ExecutionState: u32 {
-        const RUNNING = 0b00000001;
-        const SUCCESS = 0b00000010;
-        const FAILURE = 0b00000100;
-        const ERROR   = 0b00001000;
+        const RUNNING      = 0b00000001;
+        const SUCCESS      = 0b00000010;
+        const FAILURE      = 0b00000100;
+        const ERROR        = 0b00001000;
+        const TEST_STARTED = 0b00010000;
+        const TEST_ENDED   = 0b00100000;
     }
 }
 
@@ -45,7 +47,7 @@ impl fmt::Display for ExecutionState {
 
 impl<'de> serde::Deserialize<'de> for ExecutionState {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        use serde::de::{self, Visitor, MapAccess};
+        use serde::de::{self, MapAccess, Visitor};
 
         struct ExecutionStateVisitor;
 
@@ -53,7 +55,9 @@ impl<'de> serde::Deserialize<'de> for ExecutionState {
             type Value = ExecutionState;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("an ExecutionState as either a number or an object with 'bits' field")
+                formatter.write_str(
+                    "an ExecutionState as either a number or an object with 'bits' field",
+                )
             }
 
             // Handle plain number from TypeScript (e.g., 10)
@@ -71,7 +75,10 @@ impl<'de> serde::Deserialize<'de> for ExecutionState {
                 E: de::Error,
             {
                 if value < 0 {
-                    return Err(E::custom(format!("ExecutionState cannot be negative: {}", value)));
+                    return Err(E::custom(format!(
+                        "ExecutionState cannot be negative: {}",
+                        value
+                    )));
                 }
                 self.visit_u64(value as u64)
             }
@@ -92,8 +99,9 @@ impl<'de> serde::Deserialize<'de> for ExecutionState {
                 }
 
                 let bits = bits.ok_or_else(|| de::Error::missing_field("bits"))?;
-                ExecutionState::from_bits(bits)
-                    .ok_or_else(|| de::Error::custom(format!("invalid ExecutionState bits: {}", bits)))
+                ExecutionState::from_bits(bits).ok_or_else(|| {
+                    de::Error::custom(format!("invalid ExecutionState bits: {}", bits))
+                })
             }
         }
 

@@ -5,5 +5,5 @@ use serde::{Deserialize, Serialize};
 pub enum ExecutionResultSuccess {
     Success,
     Failure,
-    Error
+    Error,
 }

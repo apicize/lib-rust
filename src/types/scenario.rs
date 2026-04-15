@@ -134,7 +134,11 @@ impl EncryptableParameter for Scenario {
         matches!(self, Scenario::Cipher(_))
     }
 
-    fn encrypt(&self, password: &str, method: ParameterEncryption) -> Result<Scenario, ApicizeError> {
+    fn encrypt(
+        &self,
+        password: &str,
+        method: ParameterEncryption,
+    ) -> Result<Scenario, ApicizeError> {
         let Scenario::Plain(scenario) = self else {
             return Err(ApicizeError::Encryption {
                 description: "Encrypted scenarios cannot be re-encrypted".to_string(),
@@ -154,18 +158,25 @@ impl EncryptableParameter for Scenario {
         }))
     }
 
-    fn decrypt(&self, password: &str, method: ParameterEncryption) -> Result<Scenario, ApicizeError> {
+    fn decrypt(
+        &self,
+        password: &str,
+        method: ParameterEncryption,
+    ) -> Result<Scenario, ApicizeError> {
         let Scenario::Cipher(scenario) = self else {
             return Err(ApicizeError::Encryption {
                 description: "Scenario is already decrypted".to_string(),
             });
         };
 
-        let data =
-            serde_json::from_str::<ScenarioEncryptedData>(&decrypt(&scenario.data, password, method)?)
-                .map_err(|err| ApicizeError::Encryption {
-                    description: format!("Unable to deserialize scenario - {}", err),
-                })?;
+        let data = serde_json::from_str::<ScenarioEncryptedData>(&decrypt(
+            &scenario.data,
+            password,
+            method,
+        )?)
+        .map_err(|err| ApicizeError::Encryption {
+            description: format!("Unable to deserialize scenario - {}", err),
+        })?;
 
         Ok(Scenario::Plain(Box::new(ScenarioPlain {
             id: scenario.id.to_string(),
@@ -176,8 +187,7 @@ impl EncryptableParameter for Scenario {
             validation_errors: None,
         })))
     }
-    }
-
+}
 
 impl ScenarioPlain {
     pub fn perform_validation(&mut self) {

@@ -1,9 +1,9 @@
 use std::path::Path;
 
 use apicize_lib::{
-    build_absolute_file_name, convert_json, extract_csv, extract_json, generate_uuid,
-    get_existing_absolute_file_name, get_relative_file_name, sequential, ApicizeError,
-    ExecutionConcurrency,
+    ApicizeError, ExecutionConcurrency, build_absolute_file_name, convert_json, extract_csv,
+    extract_json, generate_uuid, get_existing_absolute_file_name, get_relative_file_name,
+    sequential,
 };
 
 // =============================================================================
@@ -115,11 +115,13 @@ fn test_get_existing_absolute_file_name_no_allowed_path() {
 #[test]
 fn test_get_existing_absolute_file_name_file_not_found() {
     let temp_dir = std::env::temp_dir();
-    let result =
-        get_existing_absolute_file_name("nonexistent_file_12345.json", &Some(temp_dir));
+    let result = get_existing_absolute_file_name("nonexistent_file_12345.json", &Some(temp_dir));
     assert!(result.is_err());
     match result.unwrap_err() {
-        ApicizeError::FileAccess { description, file_name } => {
+        ApicizeError::FileAccess {
+            description,
+            file_name,
+        } => {
             assert_eq!(description, "Not found");
             assert_eq!(file_name, Some("nonexistent_file_12345.json".to_string()));
         }
@@ -133,10 +135,8 @@ fn test_get_existing_absolute_file_name_file_exists() {
     let test_file = temp_dir.join("apicize_test_utility_exists.txt");
     std::fs::write(&test_file, "test").unwrap();
 
-    let result = get_existing_absolute_file_name(
-        "apicize_test_utility_exists.txt",
-        &Some(temp_dir),
-    );
+    let result =
+        get_existing_absolute_file_name("apicize_test_utility_exists.txt", &Some(temp_dir));
     assert!(result.is_ok());
     assert!(result.unwrap().exists());
 
@@ -161,7 +161,10 @@ fn test_build_absolute_file_name_nonexistent_directory() {
     let result = build_absolute_file_name("output.json", bad_dir);
     assert!(result.is_err());
     match result.unwrap_err() {
-        ApicizeError::FileAccess { description, file_name } => {
+        ApicizeError::FileAccess {
+            description,
+            file_name,
+        } => {
             assert!(description.contains("invalid directory"));
             assert!(file_name.is_some());
         }
@@ -229,11 +232,7 @@ fn test_extract_json_valid_file() {
     let test_file = temp_dir.join("apicize_test_extract.json");
     std::fs::write(&test_file, r#"{"name": "test", "count": 5}"#).unwrap();
 
-    let result = extract_json(
-        "test-data",
-        "apicize_test_extract.json",
-        &Some(temp_dir),
-    );
+    let result = extract_json("test-data", "apicize_test_extract.json", &Some(temp_dir));
     assert!(result.is_ok());
     let val = result.unwrap();
     assert_eq!(val["name"], "test");
@@ -248,11 +247,7 @@ fn test_extract_json_invalid_json_file() {
     let test_file = temp_dir.join("apicize_test_bad.json");
     std::fs::write(&test_file, "not json content").unwrap();
 
-    let result = extract_json(
-        "bad-data",
-        "apicize_test_bad.json",
-        &Some(temp_dir),
-    );
+    let result = extract_json("bad-data", "apicize_test_bad.json", &Some(temp_dir));
     assert!(result.is_err());
     match result.unwrap_err() {
         ApicizeError::Serialization { name, .. } => {
@@ -267,11 +262,7 @@ fn test_extract_json_invalid_json_file() {
 #[test]
 fn test_extract_json_file_not_found() {
     let temp_dir = std::env::temp_dir();
-    let result = extract_json(
-        "missing",
-        "apicize_nonexistent_99999.json",
-        &Some(temp_dir),
-    );
+    let result = extract_json("missing", "apicize_nonexistent_99999.json", &Some(temp_dir));
     assert!(result.is_err());
 }
 
@@ -291,11 +282,7 @@ fn test_extract_csv_valid_file() {
     let test_file = temp_dir.join("apicize_test_extract.csv");
     std::fs::write(&test_file, "name,age\nAlice,30\nBob,25\n").unwrap();
 
-    let result = extract_csv(
-        "csv-data",
-        "apicize_test_extract.csv",
-        &Some(temp_dir),
-    );
+    let result = extract_csv("csv-data", "apicize_test_extract.csv", &Some(temp_dir));
     assert!(result.is_ok());
     let val = result.unwrap();
     assert!(val.is_array());
@@ -315,11 +302,7 @@ fn test_extract_csv_empty_file() {
     let test_file = temp_dir.join("apicize_test_empty.csv");
     std::fs::write(&test_file, "").unwrap();
 
-    let result = extract_csv(
-        "empty-csv",
-        "apicize_test_empty.csv",
-        &Some(temp_dir),
-    );
+    let result = extract_csv("empty-csv", "apicize_test_empty.csv", &Some(temp_dir));
     assert!(result.is_ok());
     let val = result.unwrap();
     assert!(val.is_array());
@@ -350,11 +333,7 @@ fn test_extract_csv_headers_only() {
 #[test]
 fn test_extract_csv_file_not_found() {
     let temp_dir = std::env::temp_dir();
-    let result = extract_csv(
-        "missing",
-        "apicize_nonexistent_99999.csv",
-        &Some(temp_dir),
-    );
+    let result = extract_csv("missing", "apicize_nonexistent_99999.csv", &Some(temp_dir));
     assert!(result.is_err());
 }
 

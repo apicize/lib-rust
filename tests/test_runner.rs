@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use apicize_lib::{
-    ApicizeError, ApicizeResult, ApicizeRunner, ExecutionConcurrency, Identifiable, IndexedEntities, Request, RequestEntry, RequestGroup, TestRunnerContext, WorkbookDefaultParameters, Workspace, workspace::ParameterLockStatus
+    ApicizeError, ApicizeResult, ApicizeRunner, ExecutionConcurrency, Identifiable,
+    IndexedEntities, Request, RequestEntry, RequestGroup, TestRunnerContext, TestRunnerContextInit,
+    WorkbookDefaultParameters, Workspace, workspace::ParameterLockStatus,
 };
 use serial_test::serial;
 use tokio_util::sync::CancellationToken;
@@ -67,15 +69,16 @@ fn build_context(
     workspace: Workspace,
     cancellation: Option<CancellationToken>,
 ) -> Arc<TestRunnerContext> {
-    Arc::new(TestRunnerContext::new(
+    Arc::new(TestRunnerContext::new(TestRunnerContextInit {
         workspace,
         cancellation,
-        "test-run",
-        false,
-        &None,
-        false,
-        false,
-    ))
+        executing_request_or_group_id: "test-run",
+        single_run_no_timeout: false,
+        allowed_data_path: &None,
+        enable_trace: false,
+        generate_curl: false,
+        execution_counter_callback: None,
+    }))
 }
 
 // =============================================================================
@@ -157,10 +160,7 @@ fn test_get_group_children_with_children() {
     let group = make_group(
         "grp-1",
         "Group 1",
-        vec![
-            RequestEntry::Request(child1),
-            RequestEntry::Request(child2),
-        ],
+        vec![RequestEntry::Request(child1), RequestEntry::Request(child2)],
         ExecutionConcurrency::Sequential,
     );
     let ws = build_workspace(vec![RequestEntry::Group(group)]);
@@ -253,7 +253,11 @@ async fn test_run_single_request_success() {
         .create_async()
         .await;
 
-    let req = make_request("req-1", "Test Request", &format!("{}/api/test", server.url()));
+    let req = make_request(
+        "req-1",
+        "Test Request",
+        &format!("{}/api/test", server.url()),
+    );
     let ws = build_workspace(vec![RequestEntry::Request(req)]);
     let ctx = build_context(ws, None);
 
@@ -376,7 +380,11 @@ async fn test_cancellation_stops_execution() {
         .await;
 
     let cancel = CancellationToken::new();
-    let req = make_request("req-1", "Slow Request", &format!("{}/api/slow", server.url()));
+    let req = make_request(
+        "req-1",
+        "Slow Request",
+        &format!("{}/api/slow", server.url()),
+    );
     let ws = build_workspace(vec![RequestEntry::Request(req)]);
     let ctx = build_context(ws, Some(cancel.clone()));
 
@@ -387,10 +395,13 @@ async fn test_cancellation_stops_execution() {
     assert_eq!(results.len(), 1);
     match &results[0] {
         Err(ApicizeError::Cancelled) => {}
-        other => panic!("Expected Cancelled error, got an unexpected result: {}", match other {
-            Ok(_) => "Ok(...)".to_string(),
-            Err(e) => format!("Err({})", e),
-        }),
+        other => panic!(
+            "Expected Cancelled error, got an unexpected result: {}",
+            match other {
+                Ok(_) => "Ok(...)".to_string(),
+                Err(e) => format!("Err({})", e),
+            }
+        ),
     }
 }
 
@@ -415,8 +426,7 @@ async fn test_disabled_request_skipped_in_group() {
         .await;
 
     let enabled_req = make_request("req-1", "Enabled", &format!("{}/enabled", server.url()));
-    let mut disabled_req =
-        make_request("req-2", "Disabled", &format!("{}/disabled", server.url()));
+    let mut disabled_req = make_request("req-2", "Disabled", &format!("{}/disabled", server.url()));
     disabled_req.disabled = true;
 
     let group = make_group(
@@ -454,7 +464,11 @@ async fn test_disabled_request_runs_when_force_run() {
         .create_async()
         .await;
 
-    let mut req = make_request("req-1", "Disabled Direct", &format!("{}/api/test", server.url()));
+    let mut req = make_request(
+        "req-1",
+        "Disabled Direct",
+        &format!("{}/api/test", server.url()),
+    );
     req.disabled = true;
 
     let ws = build_workspace(vec![RequestEntry::Request(req)]);
@@ -491,10 +505,7 @@ async fn test_sequential_group_execution() {
     let group = make_group(
         "grp-1",
         "Group 1",
-        vec![
-            RequestEntry::Request(req1),
-            RequestEntry::Request(req2),
-        ],
+        vec![RequestEntry::Request(req1), RequestEntry::Request(req2)],
         ExecutionConcurrency::Sequential,
     );
 
@@ -589,10 +600,7 @@ async fn test_concurrent_group_preserves_order() {
     let group = make_group(
         "grp-1",
         "Group 1",
-        vec![
-            RequestEntry::Request(req1),
-            RequestEntry::Request(req2),
-        ],
+        vec![RequestEntry::Request(req1), RequestEntry::Request(req2)],
         ExecutionConcurrency::Concurrent,
     );
 
@@ -701,7 +709,12 @@ async fn test_request_zero_runs_returns_none() {
 #[tokio::test]
 #[serial]
 async fn test_group_zero_runs_returns_none() {
-    let mut group = make_group("grp-1", "Zero Runs Group", vec![], ExecutionConcurrency::Sequential);
+    let mut group = make_group(
+        "grp-1",
+        "Zero Runs Group",
+        vec![],
+        ExecutionConcurrency::Sequential,
+    );
     group.runs = 0;
 
     let ws = build_workspace(vec![RequestEntry::Group(group)]);
@@ -731,10 +744,7 @@ async fn test_concurrent_group_runs() {
     let mut group = make_group(
         "grp-1",
         "Group 1",
-        vec![
-            RequestEntry::Request(req1),
-            RequestEntry::Request(req2),
-        ],
+        vec![RequestEntry::Request(req1), RequestEntry::Request(req2)],
         ExecutionConcurrency::Sequential,
     );
     group.runs = 3;
@@ -909,10 +919,13 @@ async fn test_cancellation_during_concurrent_runs() {
     assert!(results[0].is_err());
     match &results[0] {
         Err(ApicizeError::Cancelled) => {}
-        other => panic!("Expected Cancelled error, got an unexpected result: {}", match other {
-            Ok(_) => "Ok(...)".to_string(),
-            Err(e) => format!("Err({})", e),
-        }),
+        other => panic!(
+            "Expected Cancelled error, got an unexpected result: {}",
+            match other {
+                Ok(_) => "Ok(...)".to_string(),
+                Err(e) => format!("Err({})", e),
+            }
+        ),
     }
 }
 
@@ -1078,7 +1091,11 @@ async fn test_post_request() {
         .create_async()
         .await;
 
-    let mut req = make_request("req-1", "POST Request", &format!("{}/api/create", server.url()));
+    let mut req = make_request(
+        "req-1",
+        "POST Request",
+        &format!("{}/api/create", server.url()),
+    );
     req.method = Some(apicize_lib::RequestMethod::Post);
 
     let ws = build_workspace(vec![RequestEntry::Request(req)]);
@@ -1342,7 +1359,12 @@ async fn test_cancellation_race_with_concurrent_group_children() {
 #[tokio::test]
 #[serial]
 async fn test_empty_group() {
-    let group = make_group("grp-1", "Empty Group", vec![], ExecutionConcurrency::Sequential);
+    let group = make_group(
+        "grp-1",
+        "Empty Group",
+        vec![],
+        ExecutionConcurrency::Sequential,
+    );
     let ws = build_workspace(vec![RequestEntry::Group(group)]);
     let ctx = build_context(ws, None);
 

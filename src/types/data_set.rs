@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
 use super::{Identifiable, identifiable::CloneIdentifiable};
-use crate::{Validated, ValidationState, add_validation_error, remove_validation_error, utility::*};
+use crate::{
+    Validated, ValidationState, add_validation_error, remove_validation_error, utility::*,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, PartialEq, Clone, Default)]
@@ -116,24 +118,26 @@ impl DataSet {
     }
 
     pub fn validate_name(&mut self) {
-        let name_ok = ! self.name.trim().is_empty();
+        let name_ok = !self.name.trim().is_empty();
         if name_ok {
             remove_validation_error(&mut self.validation_errors, "name");
         } else {
             add_validation_error(&mut self.validation_errors, "name", "Name is required");
         }
-        self.validation_state.set(ValidationState::ERROR, self.validation_errors.is_some());
+        self.validation_state
+            .set(ValidationState::ERROR, self.validation_errors.is_some());
     }
 
     pub fn validate_source(&mut self) {
         match &mut self.source_error {
             Some(source_error) => {
                 add_validation_error(&mut self.validation_errors, "source", source_error);
-            },
+            }
             None => {
-                remove_validation_error(&mut self.validation_errors, "source");    
+                remove_validation_error(&mut self.validation_errors, "source");
             }
         }
-        self.validation_state.set(ValidationState::ERROR, self.validation_errors.is_some());
+        self.validation_state
+            .set(ValidationState::ERROR, self.validation_errors.is_some());
     }
 }

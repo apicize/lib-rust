@@ -20,11 +20,17 @@ const PBKDF2_ITERATIONS: u32 = 100_000;
 /// Derives an AES-256-GCM key from the password via PBKDF2 with a random salt,
 /// encrypts the text, and returns a Base64 string containing the nonce, salt,
 /// SHA-256 checksum of the plaintext, and ciphertext.
-pub fn encrypt(plaintext: &str, password: &str, method: ParameterEncryption) -> Result<String, ApicizeError> {
+pub fn encrypt(
+    plaintext: &str,
+    password: &str,
+    method: ParameterEncryption,
+) -> Result<String, ApicizeError> {
     if method != ParameterEncryption::Aes256Gcm {
-        return Err(ApicizeError::Encryption { description: "Invalid supported encyrption method".to_string() });
+        return Err(ApicizeError::Encryption {
+            description: "Invalid supported encyrption method".to_string(),
+        });
     }
-    
+
     let mut rng = rand::rng();
 
     let mut salt = [0u8; SALT_LEN];
@@ -39,11 +45,12 @@ pub fn encrypt(plaintext: &str, password: &str, method: ParameterEncryption) -> 
     let cipher = Aes256Gcm::new(&key);
     let nonce = Nonce::from_slice(&nonce_bytes);
 
-    let ciphertext = cipher
-        .encrypt(nonce, plaintext.as_bytes())
-        .map_err(|e| ApicizeError::Encryption {
-            description: format!("Encryption failed: {}", e),
-        })?;
+    let ciphertext =
+        cipher
+            .encrypt(nonce, plaintext.as_bytes())
+            .map_err(|e| ApicizeError::Encryption {
+                description: format!("Encryption failed: {}", e),
+            })?;
 
     // Layout: nonce || salt || checksum || ciphertext
     let mut combined = Vec::with_capacity(NONCE_LEN + SALT_LEN + CHECKSUM_LEN + ciphertext.len());
@@ -59,9 +66,15 @@ pub fn encrypt(plaintext: &str, password: &str, method: ParameterEncryption) -> 
 ///
 /// Extracts the nonce, salt, and checksum, derives the key via PBKDF2,
 /// decrypts the ciphertext, and validates the result against the checksum.
-pub fn decrypt(encrypted: &str, password: &str, method: ParameterEncryption) -> Result<String, ApicizeError> {
+pub fn decrypt(
+    encrypted: &str,
+    password: &str,
+    method: ParameterEncryption,
+) -> Result<String, ApicizeError> {
     if method != ParameterEncryption::Aes256Gcm {
-        return Err(ApicizeError::Encryption { description: "Unsupported encyrption method".to_string() });
+        return Err(ApicizeError::Encryption {
+            description: "Unsupported encyrption method".to_string(),
+        });
     }
 
     let combined = BASE64
@@ -86,11 +99,12 @@ pub fn decrypt(encrypted: &str, password: &str, method: ParameterEncryption) -> 
     let cipher = Aes256Gcm::new(&key);
     let nonce = Nonce::from_slice(nonce_bytes);
 
-    let plaintext_bytes = cipher
-        .decrypt(nonce, ciphertext)
-        .map_err(|_| ApicizeError::Encryption {
-            description: "Decryption failed: invalid password or corrupted data".to_string(),
-        })?;
+    let plaintext_bytes =
+        cipher
+            .decrypt(nonce, ciphertext)
+            .map_err(|_| ApicizeError::Encryption {
+                description: "Decryption failed: invalid password or corrupted data".to_string(),
+            })?;
 
     let actual_checksum = Sha256::digest(&plaintext_bytes);
     if actual_checksum.as_slice() != checksum {

@@ -9,19 +9,34 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub struct WorkbookDefaultParameters {
     /// Selected scenario, if applicable
-    #[serde(skip_serializing_if = "Selection::is_none", default = "Selection::new_none")]
+    #[serde(
+        skip_serializing_if = "Selection::is_none",
+        default = "Selection::new_none"
+    )]
     pub selected_scenario: Selection,
     /// Selected authorization, if applicable
-    #[serde(skip_serializing_if = "Selection::is_none", default = "Selection::new_none")]
+    #[serde(
+        skip_serializing_if = "Selection::is_none",
+        default = "Selection::new_none"
+    )]
     pub selected_authorization: Selection,
     /// Selected certificate, if applicable
-    #[serde(skip_serializing_if = "Selection::is_none", default = "Selection::new_none")]
+    #[serde(
+        skip_serializing_if = "Selection::is_none",
+        default = "Selection::new_none"
+    )]
     pub selected_certificate: Selection,
     /// Selected proxy, if applicable
-    #[serde(skip_serializing_if = "Selection::is_none", default = "Selection::new_none")]
+    #[serde(
+        skip_serializing_if = "Selection::is_none",
+        default = "Selection::new_none"
+    )]
     pub selected_proxy: Selection,
     /// Selected external data, if applicable
-    #[serde(skip_serializing_if = "Selection::is_none", default = "Selection::new_none")]
+    #[serde(
+        skip_serializing_if = "Selection::is_none",
+        default = "Selection::new_none"
+    )]
     pub selected_data: Selection,
     /// Validation state
     #[serde(default, skip_serializing_if = "ValidationState::is_empty")]
@@ -36,16 +51,17 @@ pub struct WorkbookDefaultParameters {
 
 impl Default for WorkbookDefaultParameters {
     fn default() -> Self {
-        Self { selected_scenario: Selection::new_none(),
-        selected_authorization: Selection::new_none(),
-        selected_certificate: Selection::new_none(),
-        selected_proxy: Selection::new_none(),
-        selected_data: Selection::new_none(),
-        validation_state: ValidationState::empty(),
-        validation_warnings: None,
-        validation_errors: None
+        Self {
+            selected_scenario: Selection::new_none(),
+            selected_authorization: Selection::new_none(),
+            selected_certificate: Selection::new_none(),
+            selected_proxy: Selection::new_none(),
+            selected_data: Selection::new_none(),
+            validation_state: ValidationState::empty(),
+            validation_warnings: None,
+            validation_errors: None,
+        }
     }
-}
 }
 
 impl Identifiable for WorkbookDefaultParameters {
@@ -64,21 +80,11 @@ impl Identifiable for WorkbookDefaultParameters {
 
 impl WorkbookDefaultParameters {
     pub fn any_values_set(&self) -> bool {
-        !(self
-            .selected_scenario
-            .is_default_or_none()
-            && self
-                .selected_authorization
-                .is_default_or_none()
-            && self
-                .selected_certificate
-                .is_default_or_none()
-            && self
-                .selected_proxy
-                .is_default_or_none()
-            && self
-                .selected_data
-                .is_default_or_none())
+        !(self.selected_scenario.is_default_or_none()
+            && self.selected_authorization.is_default_or_none()
+            && self.selected_certificate.is_default_or_none()
+            && self.selected_proxy.is_default_or_none()
+            && self.selected_data.is_default_or_none())
     }
 }
 

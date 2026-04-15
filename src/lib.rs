@@ -6,14 +6,14 @@ pub mod errors;
 pub mod execution;
 pub mod results;
 pub mod serialization;
-pub mod utility;
 pub mod types;
+pub mod utility;
 
 pub use encryption::*;
 pub use errors::*;
-pub use scenario::*;
-pub use utility::*;
 pub use execution::*;
 pub use results::*;
+pub use scenario::*;
 pub use serialization::*;
 pub use types::*;
+pub use utility::*;

@@ -129,18 +129,33 @@ pub struct TestRunnerContext {
     enable_trace: bool,
     /// If true, generate curl commands for each execution
     generate_curl: bool,
+    /// Optional callback mechanism to track executions
+    execution_counter_callback: Option<Box<ExecutionCounterCallback>>,
+}
+
+type ExecutionCounterCallback = dyn Fn(&str, i8) + Send + Sync;
+
+pub struct TestRunnerContextInit<'a> {
+    /// The workspace the test is being run against
+    pub workspace: Workspace,
+    /// Token to cancel asynchronous execution
+    pub cancellation: Option<CancellationToken>,
+    /// The request which is being executed (used to track execution results)
+    pub executing_request_or_group_id: &'a str,
+    /// Used for interactive UI runs where a single execution is requested with no timeout
+    pub single_run_no_timeout: bool,
+    /// Permitted parent path for data files
+    pub allowed_data_path: &'a Option<PathBuf>,
+    /// If true, reqwest trace will be enabled (for I/O logging)
+    pub enable_trace: bool,
+    /// If true, generate curl commands for each execution
+    pub generate_curl: bool,
+    /// Optional callback mechanism to track executions
+    pub execution_counter_callback: Option<Box<ExecutionCounterCallback>>,
 }
 
 impl TestRunnerContext {
-    pub fn new(
-        workspace: Workspace,
-        cancellation: Option<CancellationToken>,
-        executing_request_or_group_id: &str,
-        single_run_no_timeout: bool,
-        allowed_data_path: &Option<PathBuf>,
-        enable_trace: bool,
-        generate_curl: bool,
-    ) -> Self {
+    pub fn new(init: TestRunnerContextInit) -> Self {
         // Ensure V8 is initialized
         V8_INIT.call_once(|| {
             let platform = v8::new_unprotected_default_platform(0, false).make_shared();
@@ -149,14 +164,15 @@ impl TestRunnerContext {
         });
 
         TestRunnerContext {
-            workspace,
-            cancellation: cancellation.unwrap_or_default(),
-            executing_request_or_group_id: executing_request_or_group_id.to_string(),
-            value_cache: Mutex::new(VariableCache::new(allowed_data_path)),
+            workspace: init.workspace,
+            cancellation: init.cancellation.unwrap_or_default(),
+            executing_request_or_group_id: init.executing_request_or_group_id.to_string(),
+            value_cache: Mutex::new(VariableCache::new(init.allowed_data_path)),
             tests_started: Instant::now(),
-            single_run_no_timeout,
-            enable_trace,
-            generate_curl,
+            single_run_no_timeout: init.single_run_no_timeout,
+            enable_trace: init.enable_trace,
+            generate_curl: init.generate_curl,
+            execution_counter_callback: init.execution_counter_callback,
         }
     }
 
@@ -283,7 +299,11 @@ async fn run_request_entry(
             .workspace
             .retrieve_request_parameters(entry, &context.value_cache, &params)?;
 
-    match entry {
+    if let Some(execution_counter) = &context.execution_counter_callback {
+        execution_counter(&request_or_group_id, 1);
+    }
+
+    let result = match entry {
         RequestEntry::Request(request) => {
             if request.disabled && !force_run {
                 Ok(None)
@@ -318,7 +338,13 @@ async fn run_request_entry(
                 }
             }
         }
+    };
+
+    if let Some(execution_counter) = &context.execution_counter_callback {
+        execution_counter(&request_or_group_id, -1);
     }
+
+    result
 }
 
 // Execute a request
@@ -1728,7 +1754,11 @@ fn generate_curl_command(
     sorted_headers.sort_by_key(|(k, _)| k.to_lowercase());
     for (name, value) in sorted_headers {
         parts.push("-H".to_string());
-        parts.push(format!("\"{}: {}\"", shell_escape(name), shell_escape(value)));
+        parts.push(format!(
+            "\"{}: {}\"",
+            shell_escape(name),
+            shell_escape(value)
+        ));
     }
 
     // Body

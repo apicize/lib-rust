@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.40.0
+
+* Add execution counter callback
+
 ## 0.35.4
 
 * Refactor save to be atomic to address edge-case with file truncation

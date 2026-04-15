@@ -13,16 +13,16 @@ pub mod parameters;
 pub mod proxy;
 pub mod request;
 pub mod scenario;
-pub mod variable_cache;
-pub mod selection;
 pub mod selected_parameters;
-pub mod variable;
+pub mod selection;
 pub mod validation_state;
+pub mod variable;
+pub mod variable_cache;
 pub mod workbook;
 pub mod workbook_default_parameters;
 pub mod workspace;
 
-#[cfg(feature="editing")]
+#[cfg(feature = "editing")]
 pub mod editing;
 
 pub use authorization::Authorization;
@@ -37,14 +37,14 @@ pub use identifiable::Identifiable;
 pub use indexed_entities::IndexedEntities;
 pub use name_value_pair::NameValuePair;
 pub use parameters::Parameters;
-pub use variable_cache::*;
 pub use proxy::Proxy;
 pub use request::*;
 pub use scenario::Scenario;
-pub use selection::Selection;
 pub use selected_parameters::SelectedParameters;
+pub use selection::Selection;
 pub use validation_state::*;
 pub use variable::*;
+pub use variable_cache::*;
 pub use workbook::Workbook;
 pub use workbook_default_parameters::WorkbookDefaultParameters;
 pub use workspace::*;

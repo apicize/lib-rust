@@ -30,20 +30,33 @@ fn test_encrypt_different_each_time() {
 
 #[test]
 fn test_decrypt_wrong_password() {
-    let encrypted = encrypt("secret data", "correct-password", ParameterEncryption::Aes256Gcm).unwrap();
+    let encrypted = encrypt(
+        "secret data",
+        "correct-password",
+        ParameterEncryption::Aes256Gcm,
+    )
+    .unwrap();
     let result = decrypt(&encrypted, "wrong-password", ParameterEncryption::Aes256Gcm);
     assert!(result.is_err());
 }
 
 #[test]
 fn test_decrypt_invalid_base64() {
-    let result = decrypt("not-valid-base64!!!", "password", ParameterEncryption::Aes256Gcm);
+    let result = decrypt(
+        "not-valid-base64!!!",
+        "password",
+        ParameterEncryption::Aes256Gcm,
+    );
     assert!(result.is_err());
 }
 
 #[test]
 fn test_decrypt_truncated_data() {
-    let result = decrypt(&BASE64.encode(b"tooshort"), "password", ParameterEncryption::Aes256Gcm);
+    let result = decrypt(
+        &BASE64.encode(b"tooshort"),
+        "password",
+        ParameterEncryption::Aes256Gcm,
+    );
     assert!(result.is_err());
     assert!(matches!(
         result.unwrap_err(),

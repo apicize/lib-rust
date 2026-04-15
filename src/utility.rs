@@ -2,7 +2,10 @@
 //!
 //! This submodule defines utility functions used for serialization and deserialization
 
-use std::{fs::File, path::{Path, PathBuf}};
+use std::{
+    fs::File,
+    path::{Path, PathBuf},
+};
 
 use serde_json::{Map, Value};
 use uuid::Uuid;

@@ -5,7 +5,8 @@ use std::str::FromStr;
 use super::identifiable::CloneIdentifiable;
 use super::{NameValuePair, Selection};
 use crate::{
-    Disabled, Identifiable, SelectedParameters, Validated, ValidationState, add_validation_error, remove_validation_error, utility::*
+    Disabled, Identifiable, SelectedParameters, Validated, ValidationState, add_validation_error,
+    remove_validation_error, utility::*,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -98,7 +99,7 @@ pub struct Request {
     /// Human-readable name describing the Apicize Request
     pub name: String,
     /// If set to True, group will not be executed unless executed directly
-    #[serde(skip_serializing_if = "std::ops::Not::not", default="bool::default")]
+    #[serde(skip_serializing_if = "std::ops::Not::not", default = "bool::default")]
     pub disabled: bool,
     // /// Current execution state of request
     // #[serde(default, skip_serializing_if = "ExecutionState::is_empty")]
@@ -177,7 +178,7 @@ pub struct RequestGroup {
     /// Human-readable name of the Apicize Group
     pub name: String,
     /// If set to True, group will not be executed unless executed directly
-    #[serde(skip_serializing_if = "std::ops::Not::not", default="bool::default")]
+    #[serde(skip_serializing_if = "std::ops::Not::not", default = "bool::default")]
     pub disabled: bool,
     // /// Current execution state of request
     // #[serde(default, skip_serializing_if = "ExecutionState::is_empty")]
@@ -450,23 +451,25 @@ impl Request {
     }
 
     pub fn validate_name(&mut self) {
-        let name_ok = ! self.name.trim().is_empty();
+        let name_ok = !self.name.trim().is_empty();
         if name_ok {
             remove_validation_error(&mut self.validation_errors, "name");
         } else {
             add_validation_error(&mut self.validation_errors, "name", "Name is required");
         }
-        self.validation_state.set(ValidationState::ERROR, self.validation_errors.is_some());
+        self.validation_state
+            .set(ValidationState::ERROR, self.validation_errors.is_some());
     }
 
     pub fn validate_url(&mut self) {
-        let url_ok = ! self.url.trim().is_empty();
+        let url_ok = !self.url.trim().is_empty();
         if url_ok {
             remove_validation_error(&mut self.validation_errors, "url");
         } else {
             add_validation_error(&mut self.validation_errors, "url", "URL is required");
         }
-        self.validation_state.set(ValidationState::ERROR, self.validation_errors.is_some());
+        self.validation_state
+            .set(ValidationState::ERROR, self.validation_errors.is_some());
     }
 }
 
@@ -561,13 +564,14 @@ impl RequestGroup {
     }
 
     pub fn validate_name(&mut self) {
-        let name_ok = ! self.name.trim().is_empty();
+        let name_ok = !self.name.trim().is_empty();
         if name_ok {
             remove_validation_error(&mut self.validation_errors, "name");
         } else {
             add_validation_error(&mut self.validation_errors, "name", "Name is required");
         }
-        self.validation_state.set(ValidationState::ERROR, self.validation_errors.is_some());
+        self.validation_state
+            .set(ValidationState::ERROR, self.validation_errors.is_some());
     }
 }
 
@@ -728,7 +732,7 @@ pub struct StoredRequest {
     /// Human-readable name describing the Apicize Request
     pub name: String,
     /// If set to True, group will not be executed unless executed directly
-    #[serde(skip_serializing_if = "std::ops::Not::not", default="bool::default")]
+    #[serde(skip_serializing_if = "std::ops::Not::not", default = "bool::default")]
     pub disabled: bool,
     /// Optional identifier for the Apicize Request
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -769,19 +773,34 @@ pub struct StoredRequest {
     #[serde(default)]
     pub multi_run_execution: ExecutionConcurrency,
     /// Selected scenario, if applicable
-    #[serde(skip_serializing_if = "Selection::is_default", default = "Selection::default")]
+    #[serde(
+        skip_serializing_if = "Selection::is_default",
+        default = "Selection::default"
+    )]
     pub selected_scenario: Selection,
     /// Selected authorization, if applicable
-    #[serde(skip_serializing_if = "Selection::is_default", default = "Selection::default")]
+    #[serde(
+        skip_serializing_if = "Selection::is_default",
+        default = "Selection::default"
+    )]
     pub selected_authorization: Selection,
     /// Selected certificate, if applicable
-    #[serde(skip_serializing_if = "Selection::is_default", default = "Selection::default")]
+    #[serde(
+        skip_serializing_if = "Selection::is_default",
+        default = "Selection::default"
+    )]
     pub selected_certificate: Selection,
     /// Selected proxy, if applicable
-    #[serde(skip_serializing_if = "Selection::is_default", default = "Selection::default")]
+    #[serde(
+        skip_serializing_if = "Selection::is_default",
+        default = "Selection::default"
+    )]
     pub selected_proxy: Selection,
     /// Selected external data, if any
-    #[serde(skip_serializing_if = "Selection::is_default", default = "Selection::default")]
+    #[serde(
+        skip_serializing_if = "Selection::is_default",
+        default = "Selection::default"
+    )]
     pub selected_data: Selection,
 }
 
@@ -795,7 +814,7 @@ pub struct StoredRequestGroup {
     /// Human-readable name of the Apicize Group
     pub name: String,
     /// If set to True, group will not be executed unless executed directly
-    #[serde(skip_serializing_if = "std::ops::Not::not", default="bool::default")]
+    #[serde(skip_serializing_if = "std::ops::Not::not", default = "bool::default")]
     pub disabled: bool,
     /// Optional identifier for the Apicize Group
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -815,19 +834,34 @@ pub struct StoredRequestGroup {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub setup: Option<String>,
     /// Selected scenario, if applicable
-    #[serde(skip_serializing_if = "Selection::is_default", default = "Selection::default")]
+    #[serde(
+        skip_serializing_if = "Selection::is_default",
+        default = "Selection::default"
+    )]
     pub selected_scenario: Selection,
     /// Selected authorization, if applicable
-    #[serde(skip_serializing_if = "Selection::is_default", default = "Selection::default")]
+    #[serde(
+        skip_serializing_if = "Selection::is_default",
+        default = "Selection::default"
+    )]
     pub selected_authorization: Selection,
     /// Selected certificate, if applicable
-    #[serde(skip_serializing_if = "Selection::is_default", default = "Selection::default")]
+    #[serde(
+        skip_serializing_if = "Selection::is_default",
+        default = "Selection::default"
+    )]
     pub selected_certificate: Selection,
     /// Selected proxy, if applicable
-    #[serde(skip_serializing_if = "Selection::is_default", default = "Selection::default")]
+    #[serde(
+        skip_serializing_if = "Selection::is_default",
+        default = "Selection::default"
+    )]
     pub selected_proxy: Selection,
     /// Selected external data, if any
-    #[serde(skip_serializing_if = "Selection::is_default", default = "Selection::default")]
+    #[serde(
+        skip_serializing_if = "Selection::is_default",
+        default = "Selection::default"
+    )]
     pub selected_data: Selection,
 }
 
@@ -898,13 +932,10 @@ impl From<RequestEntry> for StoredRequestEntry {
                 name: group.name,
                 disabled: group.disabled,
                 key: group.key,
-                children: if let Some(children) = group.children && ! children.is_empty() {
-                    Some(
-                        children
-                            .into_iter()
-                            .map(StoredRequestEntry::from)
-                            .collect()
-                    )
+                children: if let Some(children) = group.children
+                    && !children.is_empty()
+                {
+                    Some(children.into_iter().map(StoredRequestEntry::from).collect())
                 } else {
                     None
                 },
@@ -920,7 +951,7 @@ impl From<RequestEntry> for StoredRequestEntry {
             }),
         }
     }
-} 
+}
 
 impl From<StoredRequestEntry> for RequestEntry {
     fn from(stored_entry: StoredRequestEntry) -> Self {
@@ -988,13 +1019,10 @@ impl From<StoredRequestEntry> for RequestEntry {
                 key: stored_group.key,
                 validation_state: Default::default(),
                 // execution_state: Default::default(),
-                children: if let Some(children) = stored_group.children && ! children.is_empty() {
-                    Some(
-                        children
-                            .into_iter()
-                            .map(RequestEntry::from)
-                            .collect()
-                    )
+                children: if let Some(children) = stored_group.children
+                    && !children.is_empty()
+                {
+                    Some(children.into_iter().map(RequestEntry::from).collect())
                 } else {
                     None
                 },

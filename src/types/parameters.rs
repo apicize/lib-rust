@@ -1,5 +1,6 @@
 use std::{
-    env, path::{self, Path, PathBuf}
+    env,
+    path::{self, Path, PathBuf},
 };
 
 use dirs::config_dir;

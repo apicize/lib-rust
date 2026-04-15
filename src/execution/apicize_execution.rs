@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::ApicizeError;
 
-use super::{oauth2_client_tokens::TokenResult, ApicizeBody, ApicizeTestBehavior};
+use super::{ApicizeBody, ApicizeTestBehavior, oauth2_client_tokens::TokenResult};
 
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -34,7 +34,7 @@ pub struct ApicizeExecution {
 
     /// Global logs not part of a behavioral test block
     pub logs: Option<Vec<String>>,
-    
+
     /// Test results (if executed)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tests: Option<Vec<ApicizeTestBehavior>>,

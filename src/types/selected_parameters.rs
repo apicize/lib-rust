@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use crate::{Authorization, Identifiable, Validated, authorization::AuthorizationPlain, selection::SelectionIfInvalid};
+use crate::{
+    Authorization, Identifiable, Validated, authorization::AuthorizationPlain,
+    selection::SelectionIfInvalid,
+};
 
 use super::Selection;
 
@@ -140,14 +143,13 @@ impl SelectableParameters {
                 warnings.push(warning);
             }
 
-            if let Some(warning) =
-                validate_selection(
-                    &entity_label, 
-                    selected_proxy,
-                    "proxy",
-                    &self.proxies,
-                &SelectionIfInvalid::None,)
-            {
+            if let Some(warning) = validate_selection(
+                &entity_label,
+                selected_proxy,
+                "proxy",
+                &self.proxies,
+                &SelectionIfInvalid::None,
+            ) {
                 warnings.push(warning);
             }
 
@@ -193,11 +195,11 @@ pub fn validate_selection(
                     SelectionIfInvalid::Default => {
                         value.id = Selection::DEFAULT_SELECTION_ID.to_string();
                         "Default"
-                    },
+                    }
                     SelectionIfInvalid::None => {
                         value.id = Selection::NO_SELECTION_ID.to_string();
                         "None"
-                    },
+                    }
                 };
 
                 Some(format!(

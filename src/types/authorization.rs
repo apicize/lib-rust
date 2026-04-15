@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use super::{Selection, ValidationState, identifiable::CloneIdentifiable};
 use crate::{
-    ApicizeError, Identifiable, Validated, add_validation_error, decrypt, encrypt, parameters::{EncryptableParameter, ParameterCipher, ParameterEncryption}, remove_validation_error, utility::*
+    ApicizeError, Identifiable, Validated, add_validation_error, decrypt, encrypt,
+    parameters::{EncryptableParameter, ParameterCipher, ParameterEncryption},
+    remove_validation_error,
+    utility::*,
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -333,7 +336,11 @@ impl EncryptableParameter for Authorization {
         matches!(self, Authorization::Cipher(_))
     }
 
-    fn encrypt(&self, password: &str, method: ParameterEncryption) -> Result<Authorization, ApicizeError> {
+    fn encrypt(
+        &self,
+        password: &str,
+        method: ParameterEncryption,
+    ) -> Result<Authorization, ApicizeError> {
         let Authorization::Plain(authorization) = self else {
             return Err(ApicizeError::Encryption {
                 description: "Encrypted authorizations cannot be re-encrypted".to_string(),
@@ -431,7 +438,11 @@ impl EncryptableParameter for Authorization {
         }))
     }
 
-    fn decrypt(&self, password: &str, method: ParameterEncryption) -> Result<Authorization, ApicizeError> {
+    fn decrypt(
+        &self,
+        password: &str,
+        method: ParameterEncryption,
+    ) -> Result<Authorization, ApicizeError> {
         let Authorization::Cipher(authorization) = self else {
             return Err(ApicizeError::Encryption {
                 description: "Authorization is already decrypted".to_string(),
@@ -442,10 +453,9 @@ impl EncryptableParameter for Authorization {
             &authorization.data,
             password,
             method,
-        )?).map_err(|err| {
-            ApicizeError::Encryption {
-                description: err.to_string(),
-            }
+        )?)
+        .map_err(|err| ApicizeError::Encryption {
+            description: err.to_string(),
         })?;
 
         Ok(match data {
