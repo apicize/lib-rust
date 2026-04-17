@@ -905,7 +905,6 @@ async fn run_group_rows(
     if child_ids.is_empty() || active_data.is_empty() {
         Ok(vec![])
     } else {
-        let mut row_number = 1;
         let mut rows = Vec::<ApicizeGroupResultRow>::with_capacity(active_data.len());
 
         let mut row_state = RequestExecutionState {
@@ -913,7 +912,7 @@ async fn run_group_rows(
             output_variables: state.output_variables.clone(),
         };
 
-        for row in active_data {
+        for (row_number, row) in (1..).zip(active_data.iter()) {
             let row_executed_at = context.ellapsed_in_ms();
 
             row_state.row = Some(Arc::new(row.clone()));
@@ -968,8 +967,6 @@ async fn run_group_rows(
                 test_pass_count: tallies.test_pass_count,
                 test_fail_count: tallies.test_fail_count,
             });
-
-            row_number += 1;
         }
 
         Ok(rows)

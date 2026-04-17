@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.40.1
+
+* Update v8
+
 ## 0.40.0
 
 * Add execution counter callback
