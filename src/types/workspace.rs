@@ -283,7 +283,9 @@ impl Workspace {
                         }
                     };
 
+                    let id = "\0".to_string();
                     let default_data = DataSet {
+                        id: id.clone(),
                         source_type,
                         source: seed,
                         ..Default::default()
@@ -299,7 +301,7 @@ impl Workspace {
                     }
 
                     workbook.defaults.as_mut().unwrap().selected_data = Selection {
-                        id: "\0".to_string(),
+                        id,
                         name: "Command line seed".to_string(),
                     };
                 } else {
@@ -1198,6 +1200,7 @@ impl Workspace {
                 test_logs: None,
                 test_error: None,
                 error: summary.error.as_ref().map(|e| e.to_string()),
+                output: None,
             });
         } else if let Some(child_exec_ctrs) = &summary.child_exec_ctrs
             && !child_exec_ctrs.is_empty()
@@ -1235,6 +1238,7 @@ impl Workspace {
                     test_success: Some(test_result.success),
                     test_logs: test_result.logs.as_ref().map(|l| l.join("; ")),
                     test_error: test_result.error.clone(),
+                    output: summary.output.clone(),
                 });
             }
         } else {
@@ -1256,13 +1260,14 @@ impl Workspace {
                 test_success: None,
                 test_logs: None,
                 test_error: None,
+                output: None,
             });
         }
         Ok(())
     }
 
     /// Generate a report from summarized execution results
-    pub fn geneate_report(
+    pub fn generate_report(
         exec_ctr: &usize,
         summaries: &IndexMap<usize, ExecutionResultSummary>,
         format: ExecutionReportFormat,
@@ -1344,22 +1349,132 @@ impl Workspace {
         run_data: Vec<ExecutionReportCsv>,
         multi_run: bool,
     ) -> Result<String, ApicizeError> {
+        let mut output_fields = HashSet::<String>::with_capacity(10);
+        for csv in &run_data {
+            if let Some(output) = &csv.output {
+                for output_var in output.keys() {
+                    output_fields.insert(output_var.to_string());
+                }
+            }
+        }
+
+        let mut fields = Vec::<&str>::with_capacity(20);
+
+        if multi_run {
+            fields.push("Run #");
+        };
+
+        fields.extend_from_slice(&[
+            "Name",
+            "Key",
+            "Executed At",
+            "Duration",
+            "Method",
+            "URL",
+            "Success",
+            "Status",
+            "Status Text",
+            "Test Name",
+            "Test Tag",
+            "Test Success",
+            "Test Logs",
+        ]);
+
+        for output_field in &output_fields {
+            fields.push(output_field.as_str());
+        }
+
+        fields.extend_from_slice(&["Error", "Test Error"]);
+
         let mut writer = WriterBuilder::new().from_writer(Vec::new());
+
+        writer.write_record(&fields)?;
+
+        let mut record = Vec::<String>::with_capacity(fields.len());
         if multi_run {
             for d in run_data {
-                if let Err(err) = writer.serialize(d) {
-                    return Err(ApicizeError::Error {
-                        description: format!("{}", &err),
-                    });
+                record.extend_from_slice(&[
+                    d.run_number.to_string(),
+                    d.name,
+                    d.key.unwrap_or_default(),
+                    d.executed_at.to_string(),
+                    d.duration.to_string(),
+                    d.method.unwrap_or_default(),
+                    d.url.unwrap_or_default(),
+                    d.success.to_string(),
+                    d.status.map_or(String::default(), |s| s.to_string()),
+                    d.status_text.unwrap_or_default(),
+                    d.test_name.unwrap_or_default(),
+                    d.test_tag.unwrap_or_default(),
+                    d.test_success.map_or(String::default(), |s| {
+                        if s {
+                            "true".to_string()
+                        } else {
+                            "false".to_string()
+                        }
+                    }),
+                    d.test_logs.unwrap_or_default(),
+                ]);
+
+                for output_field in &output_fields {
+                    record.push(if let Some(output) = &d.output {
+                        output
+                            .get(output_field)
+                            .map_or(String::default(), |f| f.to_string())
+                    } else {
+                        String::default()
+                    })
                 }
+
+                record.extend_from_slice(&[
+                    d.error.unwrap_or_default(),
+                    d.test_error.unwrap_or_default(),
+                ]);
+
+                writer.serialize(&record)?;
+                record.clear();
             }
         } else {
             for d in run_data.into_iter().map(ExecutionReportCsvSingleRun::from) {
-                if let Err(err) = writer.serialize(d) {
-                    return Err(ApicizeError::Error {
-                        description: format!("{}", &err),
-                    });
+                record.extend_from_slice(&[
+                    d.name,
+                    d.key.unwrap_or_default(),
+                    d.executed_at.to_string(),
+                    d.duration.to_string(),
+                    d.method.unwrap_or_default(),
+                    d.url.unwrap_or_default(),
+                    d.success.to_string(),
+                    d.status.map_or(String::default(), |s| s.to_string()),
+                    d.status_text.unwrap_or_default(),
+                    d.test_name.unwrap_or_default(),
+                    d.test_tag.unwrap_or_default(),
+                    d.test_success.map_or(String::default(), |s| {
+                        if s {
+                            "true".to_string()
+                        } else {
+                            "false".to_string()
+                        }
+                    }),
+                    d.test_logs.unwrap_or_default(),
+                ]);
+
+                for output_field in &output_fields {
+                    record.push(if let Some(output) = &d.output {
+                        output
+                            .get(output_field)
+                            .map_or(String::default(), |f| f.to_string())
+                    } else {
+                        String::default()
+                    })
                 }
+
+                record.extend_from_slice(&[
+                    d.error.unwrap_or_default(),
+                    d.test_error.unwrap_or_default(),
+                ]);
+
+                writer.serialize(&record)?;
+                record.clear();
             }
         }
 
@@ -1384,6 +1499,7 @@ pub struct RequestExecutionParameters {
 #[derive(Default, Clone)]
 pub struct RequestExecutionState {
     pub row: Option<Arc<RequestDataRow>>,
+    pub row_number: Option<usize>,
     pub output_variables: Option<Arc<RequestDataRow>>,
 }
 

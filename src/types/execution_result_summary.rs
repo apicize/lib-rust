@@ -1,4 +1,7 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::{ApicizeError, ApicizeTestBehavior};
 
@@ -105,4 +108,8 @@ pub struct ExecutionResultSummary {
     /// Ordinal row count, if multi-row result
     #[serde(skip_serializing_if = "Option::is_none")]
     pub row_count: Option<usize>,
+
+    /// Output variables if any
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<HashMap<String, Value>>,
 }

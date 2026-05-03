@@ -58,6 +58,9 @@ pub enum ApicizeError {
     FailedTest {
         description: String,
     },
+    Csv {
+        description: String,
+    },
 }
 
 impl Display for ApicizeError {
@@ -130,6 +133,7 @@ impl Display for ApicizeError {
             }
             ApicizeError::InvalidId { description } => write!(f, "Invalid ID - {description}"),
             ApicizeError::FailedTest { description } => write!(f, "Failed test - {description}"),
+            ApicizeError::Csv { description } => write!(f, "CSV Error - {description}"),
         }
     }
 }
@@ -155,6 +159,14 @@ impl
         >,
     ) -> Self {
         Self::from_oauth2(error, None)
+    }
+}
+
+impl From<csv::Error> for ApicizeError {
+    fn from(err: csv::Error) -> Self {
+        Self::Csv {
+            description: format!("{}", &err),
+        }
     }
 }
 
@@ -231,6 +243,7 @@ impl ApicizeError {
             ApicizeError::FileAccess { .. } => "File IO",
             ApicizeError::Serialization { .. } => "Failed Serialization/Deserialization",
             ApicizeError::InvalidId { .. } => "Invalid ID",
+            ApicizeError::Csv { .. } => "CSV Error",
         }
     }
 }

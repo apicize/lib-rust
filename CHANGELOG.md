@@ -1,5 +1,11 @@
 # Change Log
 
+## 0.41.0
+
+* Support insertion of non-string data in JSON body payloads
+* Add row and run number to execution progress callback
+* Add output variables to JSON and CSV reporting
+
 ## 0.40.1
 
 * Update v8

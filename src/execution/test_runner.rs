@@ -72,6 +72,74 @@ fn clone_and_sub(text: &str, subs: &HashMap<String, String>) -> String {
     result
 }
 
+fn clone_and_sub_json(text: &str, subs: &HashMap<String, String>) -> String {
+    if subs.is_empty() || !text.contains("{{") {
+        return text.to_string();
+    }
+
+    // Pass 1: replace handlebars inside quoted strings, escaping double quotes in values
+    let mut result = String::with_capacity(text.len());
+    let mut remaining = text;
+    while let Some(quote_start) = remaining.find('"') {
+        result.push_str(&remaining[..quote_start + 1]);
+        remaining = &remaining[quote_start + 1..];
+        // Scan inside the quoted string
+        loop {
+            match (remaining.find("{{"), remaining.find('"')) {
+                (Some(hb_start), Some(q_end)) if hb_start < q_end => {
+                    if let Some(hb_end) = remaining[hb_start + 2..].find("}}") {
+                        let key = &remaining[hb_start..hb_start + 2 + hb_end + 2];
+                        result.push_str(&remaining[..hb_start]);
+                        if let Some(value) = subs.get(key) {
+                            result.push_str(&value.replace('"', "\\\""));
+                        } else {
+                            result.push_str(key);
+                        }
+                        remaining = &remaining[hb_start + 2 + hb_end + 2..];
+                    } else {
+                        result.push_str(remaining);
+                        return result;
+                    }
+                }
+                _ => {
+                    // No handlebars before the closing quote (or no closing quote)
+                    if let Some(q_end) = remaining.find('"') {
+                        result.push_str(&remaining[..q_end + 1]);
+                        remaining = &remaining[q_end + 1..];
+                    } else {
+                        result.push_str(remaining);
+                        return result;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    result.push_str(remaining);
+
+    // Pass 2: replace remaining handlebars outside quoted strings, no escaping
+    let text2 = result;
+    let mut result2 = String::with_capacity(text2.len());
+    let mut remaining2 = text2.as_str();
+    while let Some(start) = remaining2.find("{{") {
+        result2.push_str(&remaining2[..start]);
+        if let Some(end) = remaining2[start + 2..].find("}}") {
+            let key = &remaining2[start..start + 2 + end + 2];
+            if let Some(value) = subs.get(key) {
+                result2.push_str(value);
+            } else {
+                result2.push_str(key);
+            }
+            remaining2 = &remaining2[start + 2 + end + 2..];
+        } else {
+            result2.push_str(&remaining2[start..]);
+            return result2;
+        }
+    }
+    result2.push_str(remaining2);
+    result2
+}
+
 static PORT_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r".+:(\d{1,5})(?:\?.*)?$").unwrap());
 
@@ -133,7 +201,14 @@ pub struct TestRunnerContext {
     execution_counter_callback: Option<Box<ExecutionCounterCallback>>,
 }
 
-type ExecutionCounterCallback = dyn Fn(&str, i8) + Send + Sync;
+pub struct ExecutionProgress {
+    pub id: String,
+    pub exec_ctr: i8,
+    pub row_number: Option<usize>,
+    pub run_number: Option<usize>,
+}
+
+type ExecutionCounterCallback = dyn Fn(&ExecutionProgress) + Send + Sync;
 
 pub struct TestRunnerContextInit<'a> {
     /// The workspace the test is being run against
@@ -299,8 +374,15 @@ async fn run_request_entry(
             .workspace
             .retrieve_request_parameters(entry, &context.value_cache, &params)?;
 
+    let row_number = state.row_number;
+
     if let Some(execution_counter) = &context.execution_counter_callback {
-        execution_counter(&request_or_group_id, 1);
+        execution_counter(&ExecutionProgress {
+            id: request_or_group_id.clone(),
+            exec_ctr: 1,
+            row_number,
+            run_number: None,
+        });
     }
 
     let result = match entry {
@@ -341,7 +423,12 @@ async fn run_request_entry(
     };
 
     if let Some(execution_counter) = &context.execution_counter_callback {
-        execution_counter(&request_or_group_id, -1);
+        execution_counter(&ExecutionProgress {
+            id: request_or_group_id.clone(),
+            exec_ctr: -1,
+            row_number,
+            run_number: None,
+        });
     }
 
     result
@@ -404,8 +491,14 @@ async fn run_request(
             )
         }
     } else if multi_run {
-        let runs =
-            run_request_runs(context.clone(), request_id, params.clone(), state.clone()).await?;
+        let runs = run_request_runs(
+            context.clone(),
+            request_id,
+            params.clone(),
+            state.clone(),
+            None,
+        )
+        .await?;
         let data_context = runs.generate_data_context();
         let tallies = runs.get_tallies();
         (
@@ -474,10 +567,19 @@ async fn run_request_rows(
 
                 let row_state = Arc::new(RequestExecutionState {
                     row: Some(Arc::new(row.clone())),
+                    row_number: Some(row_number),
                     output_variables: state.output_variables.clone(),
                 });
 
                 if request.runs == 1 {
+                    if let Some(execution_counter) = &context.execution_counter_callback {
+                        execution_counter(&ExecutionProgress {
+                            id: request_id.to_string(),
+                            exec_ctr: 1,
+                            row_number: Some(row_number),
+                            run_number: None,
+                        });
+                    }
                     let execution = dispatch_request_and_test(
                         context.clone(),
                         request_id.to_string(),
@@ -485,6 +587,14 @@ async fn run_request_rows(
                         row_state.clone(),
                     )
                     .await?;
+                    if let Some(execution_counter) = &context.execution_counter_callback {
+                        execution_counter(&ExecutionProgress {
+                            id: request_id.to_string(),
+                            exec_ctr: -1,
+                            row_number: Some(row_number),
+                            run_number: None,
+                        });
+                    }
 
                     let data_context = DataContext {
                         scenario: params.variables.clone(),
@@ -514,6 +624,7 @@ async fn run_request_rows(
                         request_id,
                         params.clone(),
                         state.clone(),
+                        Some(row_number),
                     )
                     .await?;
 
@@ -548,6 +659,7 @@ async fn run_request_runs(
     request_id: &str,
     params: Arc<RequestExecutionParameters>,
     state: Arc<RequestExecutionState>,
+    row_number: Option<usize>,
 ) -> Result<Vec<ApicizeRequestResultRun>, ApicizeError> {
     let mut runs = Vec::<ApicizeRequestResultRun>::new();
     let request = context.get_request(request_id)?;
@@ -560,6 +672,14 @@ async fn run_request_runs(
     match request.multi_run_execution {
         ExecutionConcurrency::Sequential => {
             for run_number in 1..number_of_runs + 1 {
+                if let Some(execution_counter) = &context.execution_counter_callback {
+                    execution_counter(&ExecutionProgress {
+                        id: request_id.to_string(),
+                        exec_ctr: 1,
+                        row_number,
+                        run_number: Some(run_number),
+                    });
+                }
                 let run_executed_at = context.ellapsed_in_ms();
                 let execution = dispatch_request_and_test(
                     context.clone(),
@@ -568,6 +688,14 @@ async fn run_request_runs(
                     state.clone(),
                 )
                 .await?;
+                if let Some(execution_counter) = &context.execution_counter_callback {
+                    execution_counter(&ExecutionProgress {
+                        id: request_id.to_string(),
+                        exec_ctr: -1,
+                        row_number,
+                        run_number: Some(run_number),
+                    });
+                }
 
                 let success = execution.success;
                 let request_failure_count = if execution.test_fail_count > 0 { 1 } else { 0 };
@@ -696,6 +824,7 @@ async fn run_group(
         (
             Arc::new(RequestExecutionState {
                 row: state.row.clone(),
+                row_number: state.row_number,
                 output_variables: Some(Arc::new(setup_response.output.clone())),
             }),
             setup_response.logs,
@@ -817,6 +946,7 @@ async fn run_group_children(
                         if result_output_variables.is_some() {
                             group_state = Arc::new(RequestExecutionState {
                                 row: state.row.clone(),
+                                row_number: state.row_number,
                                 output_variables: result_output_variables.clone(),
                             });
                         }
@@ -909,6 +1039,7 @@ async fn run_group_rows(
 
         let mut row_state = RequestExecutionState {
             row: None,
+            row_number: None,
             output_variables: state.output_variables.clone(),
         };
 
@@ -916,6 +1047,7 @@ async fn run_group_rows(
             let row_executed_at = context.ellapsed_in_ms();
 
             row_state.row = Some(Arc::new(row.clone()));
+            row_state.row_number = Some(row_number);
 
             let (content, tallies, data_context) = if group.runs == 1 {
                 let entries = run_group_children(
@@ -1497,12 +1629,13 @@ async fn dispatch_request(
             request_builder = request_builder.body(Body::from(s.clone()));
         }
         Some(RequestBody::JSON { data, .. }) => {
-            let escaped_subs = subs
-                .iter()
-                .map(|(n, v)| (n.to_string(), v.replace("\"", "\\\"")))
-                .collect::<HashMap<String, String>>();
+            // let escaped_subs = subs
+            //     .iter()
+            //     .map(|(n, v)| (n.to_string(), v.replace("\"", "\\\"")))
+            //     .collect::<HashMap<String, String>>();
 
-            let s = clone_and_sub(data, &escaped_subs);
+            let s = clone_and_sub_json(data, subs);
+
             request_body = match serde_json::from_str::<Value>(&s) {
                 Ok(data) => Some(ApicizeBody::JSON {
                     text: "".to_string(),

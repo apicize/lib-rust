@@ -1,5 +1,6 @@
 use indexmap::{IndexMap, IndexSet};
-use std::collections::HashMap;
+use serde_json::{Map, Value};
+use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     ApicizeBody, ApicizeError, ApicizeExecution, ApicizeGroupResult, ApicizeGroupResultContent,
@@ -86,6 +87,19 @@ impl ExecutionResultBuilder {
     //     }
     //     println!("************************");
     // }
+
+    fn generate_output(output: &Option<Arc<Map<String, Value>>>) -> Option<HashMap<String, Value>> {
+        match &output {
+            Some(output) => {
+                if output.is_empty() {
+                    None
+                } else {
+                    Some(output.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+                }
+            }
+            None => None,
+        }
+    }
 
     fn append_result(
         &mut self,
@@ -186,6 +200,7 @@ impl ExecutionResultBuilder {
             run_count: None,
             row_number: None,
             row_count: None,
+            output: None,
         };
 
         let detail: ExecutionResultDetail;
@@ -200,6 +215,7 @@ impl ExecutionResultBuilder {
                 summary.request_success_count = result.request_success_count;
                 summary.request_failure_count = result.request_failure_count;
                 summary.request_error_count = result.request_error_count;
+                summary.output = Self::generate_output(&result.data_context.output);
                 detail = ExecutionResultDetail::Grouped(Box::new(ExecutionResultDetailGroup {
                     exec_ctr,
                     group_id: identifiers.id.clone(),
@@ -233,6 +249,7 @@ impl ExecutionResultBuilder {
                 summary.request_success_count = result.request_success_count;
                 summary.request_failure_count = result.request_failure_count;
                 summary.request_error_count = result.request_error_count;
+                summary.output = Self::generate_output(&result.data_context.output);
                 detail = ExecutionResultDetail::Grouped(Box::new(ExecutionResultDetailGroup {
                     exec_ctr,
                     group_id: identifiers.id.clone(),
@@ -268,7 +285,7 @@ impl ExecutionResultBuilder {
                 summary.request_success_count = result.request_success_count;
                 summary.request_failure_count = result.request_failure_count;
                 summary.request_error_count = result.request_error_count;
-
+                summary.output = Self::generate_output(&execution.output_variables);
                 detail = ExecutionResultDetail::Request(Box::new(ExecutionResultDetailRequest {
                     exec_ctr,
                     request_id: identifiers.id.to_string(),
@@ -375,6 +392,7 @@ impl ExecutionResultBuilder {
                     run_count: None,
                     row_number: None,
                     row_count: None,
+                    output: Self::generate_output(&result.data_context.output),
                 },
                 ExecutionResultDetail::Grouped(Box::new(ExecutionResultDetailGroup {
                     group_id: identifiers.id.clone(),
@@ -495,6 +513,7 @@ impl ExecutionResultBuilder {
                                 run_count: None,
                                 row_number: Some(row_number),
                                 row_count: Some(row_count),
+                                output: Self::generate_output(&row.data_context.output),
                             },
                             ExecutionResultDetail::Grouped(Box::new(ExecutionResultDetailGroup {
                                 exec_ctr,
@@ -581,6 +600,7 @@ impl ExecutionResultBuilder {
                                 run_count: None,
                                 row_number: Some(row_number),
                                 row_count: Some(row_count),
+                                output: Self::generate_output(&row.data_context.output),
                             },
                             ExecutionResultDetail::Request(Box::new(
                                 ExecutionResultDetailRequest {
@@ -825,6 +845,7 @@ impl ExecutionResultBuilder {
                         run_count: Some(run_count),
                         row_number: None,
                         row_count: None,
+                        output: Self::generate_output(&run.execution.output_variables),
                     },
                     ExecutionResultDetail::Request(Box::new(ExecutionResultDetailRequest {
                         exec_ctr,
@@ -926,6 +947,7 @@ impl ExecutionResultBuilder {
                         run_count: None,
                         row_number: Some(row_number),
                         row_count: Some(row_count),
+                        output: Self::generate_output(&row.data_context.output),
                     },
                     ExecutionResultDetail::Grouped(Box::new(ExecutionResultDetailGroup {
                         exec_ctr,
@@ -1053,6 +1075,7 @@ impl ExecutionResultBuilder {
                         run_count: Some(run_count),
                         row_number: None,
                         row_count: None,
+                        output: Self::generate_output(&run.data_context.output),
                     },
                     ExecutionResultDetail::Grouped(Box::new(ExecutionResultDetailGroup {
                         exec_ctr,

@@ -1,6 +1,7 @@
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display};
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::{ApicizeTestBehavior, ExecutionResultSuccess, ExecutionResultSummary};
 
@@ -84,6 +85,9 @@ pub struct ExecutionReportJson {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub test_results: Option<Vec<ApicizeTestBehavior>>,
 
+    /// Output variables generated during tests
+    pub output: Option<HashMap<String, Value>>,
+
     /// Child groups and requests
     #[serde(skip_serializing_if = "Option::is_none")]
     pub children: Option<Vec<ExecutionReportJson>>,
@@ -153,6 +157,9 @@ pub struct ExecutionReportCsv {
     /// Error generated during the test
     #[serde(rename = "Test Error")]
     pub test_error: Option<String>,
+
+    /// Output variables generated during tests
+    pub output: Option<HashMap<String, Value>>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -215,6 +222,9 @@ pub struct ExecutionReportCsvSingleRun {
     /// Error generated during the test
     #[serde(rename = "Test Error")]
     pub test_error: Option<String>,
+
+    /// Output variables generated during tests
+    pub output: Option<HashMap<String, Value>>,
 }
 
 impl ExecutionReportCsvSingleRun {
@@ -235,6 +245,7 @@ impl ExecutionReportCsvSingleRun {
             test_logs: csv.test_logs,
             error: csv.error,
             test_error: csv.test_error,
+            output: csv.output,
         }
     }
 }
@@ -263,6 +274,7 @@ impl ExecutionReportJson {
             run_count: summary.run_count,
             row_number: summary.row_number,
             row_count: summary.row_count,
+            output: summary.output.clone(),
             children,
         }
     }
