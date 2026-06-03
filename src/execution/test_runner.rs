@@ -1272,7 +1272,7 @@ async fn dispatch_request_and_test(
 
     let mut curl: Option<String> = None;
 
-    match dispatch_request(context.clone(), &request_id, &params, &subs).await {
+    match dispatch_request(context.clone(), &request_id, &params, &subs, &merged).await {
         Ok((name_with_subs, url_called, http_request, http_response, _, curl_command)) => {
             curl = curl_command;
             name = name_with_subs;
@@ -1377,6 +1377,7 @@ async fn dispatch_request(
     request_id: &str,
     params: &RequestExecutionParameters,
     subs: &HashMap<String, String>,
+    variables: &Option<Arc<Map<String, Value>>>,
 ) -> Result<
     (
         String,
@@ -1629,13 +1630,7 @@ async fn dispatch_request(
             request_builder = request_builder.body(Body::from(s.clone()));
         }
         Some(RequestBody::JSON { data, .. }) => {
-            // let escaped_subs = subs
-            //     .iter()
-            //     .map(|(n, v)| (n.to_string(), v.replace("\"", "\\\"")))
-            //     .collect::<HashMap<String, String>>();
-
             let s = clone_and_sub_json(data, subs);
-
             request_body = match serde_json::from_str::<Value>(&s) {
                 Ok(data) => Some(ApicizeBody::JSON {
                     text: "".to_string(),
@@ -1654,6 +1649,61 @@ async fn dispatch_request(
                 }),
                 Err(_) => Some(ApicizeBody::Text { text: s.clone() }),
             };
+            request_builder = request_builder.body(Body::from(s));
+        }
+        Some(RequestBody::GraphQL { data }) => {
+            let query = clone_and_sub(&data.query, subs);
+            let extensions: Option<Value> = if let Some(ext) = &data.extensions
+                && !ext.is_empty()
+            {
+                let ext_with_subs = clone_and_sub_json(ext, subs);
+                let result = serde_json::from_str::<Value>(&ext_with_subs).map_err(|err| {
+                    ApicizeError::from_serde(
+                        err,
+                        "Unable to convert GraphQL extensions".to_string(),
+                    )
+                })?;
+                Some(result)
+            } else {
+                None
+            };
+
+            let mut map = serde_json::Map::with_capacity(2);
+            map.insert("query".to_string(), serde_json::json!(query));
+            if let Some(v) = variables
+                && !v.is_empty()
+            {
+                map.insert(
+                    "variables".to_string(),
+                    serde_json::json!(
+                        v.iter()
+                            .map(|(n, v)| (n.replace("-", "_"), v.clone()))
+                            .collect::<Map<String, Value>>()
+                    ),
+                );
+            }
+            if let Some(v) = extensions
+                && !v.is_null()
+            {
+                map.insert("extensions".to_string(), v);
+            }
+            let graph_ql = Value::Object(map);
+
+            let s = match serde_json::to_string(&graph_ql) {
+                Ok(s) => s,
+                Err(err) => {
+                    return Err(ApicizeError::Serialization {
+                        description: err.to_string(),
+                        name: "GraphQL".to_string(),
+                    });
+                }
+            };
+
+            request_body = Some(ApicizeBody::JSON {
+                text: "".to_string(),
+                data: graph_ql,
+            });
+
             request_builder = request_builder.body(Body::from(s));
         }
         Some(RequestBody::Form { data }) => {
@@ -1858,7 +1908,16 @@ async fn dispatch_request(
 /// Shell-escape a string for use in a double-quoted curl argument (Windows-compatible)
 fn shell_escape(s: &str) -> String {
     // Escape backslashes first, then double quotes
-    s.replace('\\', "\\\\").replace('"', "\\\"")
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('$', "\\$")
+        .replace('!', "\\!")
+}
+
+/// Shell-escape a string for use in a $'...' ANSI-C quoted curl argument.
+/// This avoids history expansion (!), variable expansion ($), and brace expansion.
+fn shell_escape_ansi_c(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('\'', "\\'")
 }
 
 /// Generate a curl command that recreates the given HTTP request
@@ -1899,7 +1958,7 @@ fn generate_curl_command(
             | ApicizeBody::XML { text, .. } => {
                 if !text.is_empty() {
                     parts.push("-d".to_string());
-                    parts.push(format!("\"{}\"", shell_escape(text)));
+                    parts.push(format!("$'{}'", shell_escape_ansi_c(text)));
                 }
             }
             ApicizeBody::Form { data, .. } => {

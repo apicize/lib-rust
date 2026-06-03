@@ -9,7 +9,7 @@ use crate::{
     remove_validation_error, utility::*,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use serde_with::base64::{Base64, Standard};
 use serde_with::formats::Unpadded;
 use serde_with::serde_as;
@@ -64,6 +64,12 @@ pub enum RequestBody {
     XML {
         /// Text
         data: String,
+    },
+    /// GraphQL request
+    #[serde(rename = "GraphQL")]
+    GraphQL {
+        /// GraphQL data
+        data: GraphQLData,
     },
     /// Form (not multipart) body data
     Form {
@@ -697,17 +703,21 @@ pub enum StoredRequestBody {
     },
     /// JSON body data
     #[serde(rename = "JSON")]
-    JSON {
-        /// Parsed data (if formatted is valid)
-        data: Option<Value>,
-        /// Formatted text
-        formatted: Option<String>,
-    },
+    JSON(StoredJsonData),
     /// XML body data
     #[serde(rename = "XML")]
     XML {
         /// Formatted text
         formatted: Option<String>,
+    },
+    /// GraphQL body data
+    #[serde(rename = "GraphQL")]
+    GraphQL {
+        /// GraphQL query
+        query: String,
+        /// Extensions
+        #[serde(skip_serializing_if = "Option::is_none")]
+        extensions: Option<StoredJsonData>,
     },
     /// Form (not multipart) body data
     Form {
@@ -871,63 +881,78 @@ pub struct StoredRequestGroup {
 #[serde(untagged)]
 pub enum StoredRequestEntry {
     /// Request to run
-    Request(StoredRequest),
+    Request(Box<StoredRequest>),
     /// Group of Apicize Requests
-    Group(StoredRequestGroup),
+    Group(Box<StoredRequestGroup>),
 }
 
 impl From<RequestEntry> for StoredRequestEntry {
     fn from(entry: RequestEntry) -> Self {
         match entry {
-            RequestEntry::Request(request) => StoredRequestEntry::Request(StoredRequest {
-                id: request.id,
-                name: request.name,
-                disabled: request.disabled,
-                key: request.key,
-                test: request.test,
-                url: request.url,
-                method: request.method,
-                timeout: request.timeout,
-                headers: request.headers,
-                query_string_params: request.query_string_params,
-                body: match request.body {
-                    Some(body) => match body {
-                        RequestBody::Text { data } => Some(StoredRequestBody::Text { data }),
-                        RequestBody::JSON { data } => {
-                            // If the data from the workspace is serializable, then store the serialized version,
-                            // as well as writing the raw data
-                            let data_to_save = Value::from_str(&data).ok();
-                            Some(StoredRequestBody::JSON {
-                                data: data_to_save,
-                                formatted: Some(data),
-                            })
-                        }
-                        RequestBody::XML { data } => {
-                            // If the data from the workspace is serializable, then store the serialized version,
-                            // as well as writing the raw data
-                            let data_to_save = to_json(&data).ok();
-                            Some(StoredRequestBody::JSON {
-                                data: data_to_save,
-                                formatted: Some(data),
-                            })
-                        }
-                        RequestBody::Form { data } => Some(StoredRequestBody::Form { data }),
-                        RequestBody::Raw { data } => Some(StoredRequestBody::Raw { data }),
+            RequestEntry::Request(request) => {
+                StoredRequestEntry::Request(Box::new(StoredRequest {
+                    id: request.id,
+                    name: request.name,
+                    disabled: request.disabled,
+                    key: request.key,
+                    test: request.test,
+                    url: request.url,
+                    method: request.method,
+                    timeout: request.timeout,
+                    headers: request.headers,
+                    query_string_params: request.query_string_params,
+                    body: match request.body {
+                        Some(body) => match body {
+                            RequestBody::Text { data } => Some(StoredRequestBody::Text { data }),
+                            RequestBody::JSON { data } => {
+                                // If the data from the workspace is serializable, then store the serialized version,
+                                // as well as writing the raw data
+                                let data_to_save = Value::from_str(&data).ok();
+                                Some(StoredRequestBody::JSON(StoredJsonData {
+                                    data: data_to_save,
+                                    formatted: Some(data),
+                                }))
+                            }
+                            RequestBody::XML { data } => {
+                                // If the data from the workspace is serializable, then store the serialized version,
+                                // as well as writing the raw data
+                                let data_to_save = to_json(&data).ok();
+                                Some(StoredRequestBody::JSON(StoredJsonData {
+                                    data: data_to_save,
+                                    formatted: Some(data),
+                                }))
+                            }
+                            RequestBody::GraphQL { data } => Some(StoredRequestBody::GraphQL {
+                                query: data.query,
+                                extensions: if let Some(ext) = data.extensions
+                                    && !ext.is_empty()
+                                {
+                                    Some(StoredJsonData {
+                                        data: Value::from_str(&ext).ok(),
+                                        formatted: Some(ext),
+                                    })
+                                } else {
+                                    None
+                                },
+                            }),
+                            RequestBody::Form { data } => Some(StoredRequestBody::Form { data }),
+                            RequestBody::Raw { data } => Some(StoredRequestBody::Raw { data }),
+                        },
+                        None => None,
                     },
-                    None => None,
-                },
-                keep_alive: request.keep_alive,
-                accept_invalid_certs: request.accept_invalid_certs,
-                number_of_redirects: request.number_of_redirects,
-                runs: request.runs,
-                multi_run_execution: request.multi_run_execution,
-                selected_scenario: request.selected_scenario,
-                selected_authorization: request.selected_authorization,
-                selected_certificate: request.selected_certificate,
-                selected_proxy: request.selected_proxy,
-                selected_data: request.selected_data,
-            }),
-            RequestEntry::Group(group) => StoredRequestEntry::Group(StoredRequestGroup {
+                    keep_alive: request.keep_alive,
+                    accept_invalid_certs: request.accept_invalid_certs,
+                    number_of_redirects: request.number_of_redirects,
+                    runs: request.runs,
+                    multi_run_execution: request.multi_run_execution,
+                    selected_scenario: request.selected_scenario,
+                    selected_authorization: request.selected_authorization,
+                    selected_certificate: request.selected_certificate,
+                    selected_proxy: request.selected_proxy,
+                    selected_data: request.selected_data,
+                }))
+            }
+            RequestEntry::Group(group) => StoredRequestEntry::Group(Box::new(StoredRequestGroup {
                 id: group.id,
                 name: group.name,
                 disabled: group.disabled,
@@ -948,7 +973,7 @@ impl From<RequestEntry> for StoredRequestEntry {
                 selected_certificate: group.selected_certificate,
                 selected_proxy: group.selected_proxy,
                 selected_data: group.selected_data,
-            }),
+            })),
         }
     }
 }
@@ -972,11 +997,11 @@ impl From<StoredRequestEntry> for RequestEntry {
                 body: match stored_request.body {
                     Some(body) => match body {
                         StoredRequestBody::Text { data } => Some(RequestBody::Text { data }),
-                        StoredRequestBody::JSON { formatted, data } => {
+                        StoredRequestBody::JSON(json) => {
                             let result_data: Option<String>;
-                            if let Some(s) = formatted {
+                            if let Some(s) = json.formatted {
                                 result_data = Some(s);
-                            } else if let Some(v) = data {
+                            } else if let Some(v) = json.data {
                                 if let Ok(s) = serde_json::to_string_pretty(&v) {
                                     result_data = Some(s);
                                 } else {
@@ -994,6 +1019,17 @@ impl From<StoredRequestEntry> for RequestEntry {
                                 None => "".to_string(),
                             },
                         }),
+                        StoredRequestBody::GraphQL { query, extensions } => {
+                            Some(RequestBody::GraphQL {
+                                data: GraphQLData {
+                                    query,
+                                    extensions: extensions.and_then(|json| {
+                                        json.formatted
+                                            .or_else(|| json.data.map(|data| data.to_string()))
+                                    }),
+                                },
+                            })
+                        }
                         StoredRequestBody::Form { data } => Some(RequestBody::Form { data }),
                         StoredRequestBody::Raw { data } => Some(RequestBody::Raw { data }),
                     },
@@ -1039,5 +1075,38 @@ impl From<StoredRequestEntry> for RequestEntry {
                 validation_errors: None,
             }),
         }
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+pub struct StoredJsonData {
+    /// Parsed data (if formatted is valid)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Value>,
+    /// Formatted text
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub formatted: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphQLData {
+    /// GraphQL query
+    pub query: String,
+    /// GraphQL request extensions
+    pub extensions: Option<String>,
+}
+
+impl GraphQLData {
+    /// Convert GraphQL data to JSON value
+    pub fn to_json(&self) -> Value {
+        let mut map = serde_json::Map::with_capacity(2);
+        map.insert("query".to_string(), serde_json::json!(self.query));
+        if let Some(ext) = &self.extensions
+            && !ext.is_empty()
+        {
+            map.insert("extensions".to_string(), serde_json::json!(ext));
+        }
+        json!(map)
     }
 }

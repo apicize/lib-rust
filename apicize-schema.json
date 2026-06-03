@@ -260,7 +260,8 @@
         { "$ref": "#/$defs/JSONBody" },
         { "$ref": "#/$defs/XMLBody" },
         { "$ref": "#/$defs/FormBody" },
-        { "$ref": "#/$defs/RawBody" }
+        { "$ref": "#/$defs/RawBody" },
+        { "$ref": "#/$defs/GraphQLBody" }
       ],
       "discriminator": {
         "propertyName": "type"
@@ -345,6 +346,24 @@
           "type": "string",
           "description": "Base64-encoded binary data (standard alphabet, unpadded)",
           "contentEncoding": "base64"
+        }
+      }
+    },
+    "GraphQLBody": {
+      "type": "object",
+      "description": "GraphQL request body",
+      "required": ["type", "query"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "GraphQL"
+        },
+        "query": {
+          "type": "string",
+          "description": "GraphQL query or mutation string"
+        },
+        "extensions": {
+          "description": "GraphQL extensions (any valid JSON value)"
         }
       }
     },

@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.42.0
+
+* Add GraphQL support
+
 ## 0.41.0
 
 * Support insertion of non-string data in JSON body payloads
