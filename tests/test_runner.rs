@@ -76,7 +76,6 @@ fn build_context(
         single_run_no_timeout: false,
         allowed_data_path: &None,
         enable_trace: false,
-        generate_curl: false,
         execution_counter_callback: None,
     }))
 }
@@ -1096,7 +1095,7 @@ async fn test_post_request() {
         "POST Request",
         &format!("{}/api/create", server.url()),
     );
-    req.method = Some(apicize_lib::RequestMethod::Post);
+    req.method = Some("POST".to_string());
 
     let ws = build_workspace(vec![RequestEntry::Request(req)]);
     let ctx = build_context(ws, None);

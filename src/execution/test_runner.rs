@@ -32,10 +32,10 @@ use crate::types::workspace::RequestExecutionParameters;
 use crate::workspace::RequestExecutionState;
 use crate::{
     ApicizeError, ApicizeGroupResultRowContent, ApicizeRequestResultContent,
-    ApicizeRequestResultRow, ApicizeRequestResultRowContent, Authorization, Certificate,
-    ExecutionConcurrency, Identifiable, OAuth2ClientCredentialParameters, Proxy, Request,
-    RequestBody, RequestEntry, RequestGroup, RequestMethod, VariableCache, Workspace,
-    get_oauth2_client_credentials, retrieve_oauth2_token_from_cache,
+    ApicizeRequestResultRow, ApicizeRequestResultRowContent, Authorization, ExecutionConcurrency,
+    Identifiable, OAuth2ClientCredentialParameters, Request, RequestBody, RequestEntry,
+    RequestGroup, VariableCache, Workspace, get_oauth2_client_credentials,
+    retrieve_oauth2_token_from_cache,
 };
 
 // #[cfg(test)]
@@ -195,8 +195,6 @@ pub struct TestRunnerContext {
     single_run_no_timeout: bool,
     /// If true, reqwest trace will be enabled (for I/O logging)
     enable_trace: bool,
-    /// If true, generate curl commands for each execution
-    generate_curl: bool,
     /// Optional callback mechanism to track executions
     execution_counter_callback: Option<Box<ExecutionCounterCallback>>,
 }
@@ -223,8 +221,6 @@ pub struct TestRunnerContextInit<'a> {
     pub allowed_data_path: &'a Option<PathBuf>,
     /// If true, reqwest trace will be enabled (for I/O logging)
     pub enable_trace: bool,
-    /// If true, generate curl commands for each execution
-    pub generate_curl: bool,
     /// Optional callback mechanism to track executions
     pub execution_counter_callback: Option<Box<ExecutionCounterCallback>>,
 }
@@ -246,7 +242,6 @@ impl TestRunnerContext {
             tests_started: Instant::now(),
             single_run_no_timeout: init.single_run_no_timeout,
             enable_trace: init.enable_trace,
-            generate_curl: init.generate_curl,
             execution_counter_callback: init.execution_counter_callback,
         }
     }
@@ -1270,11 +1265,8 @@ async fn dispatch_request_and_test(
     let mut method: Option<String> = None;
     let url: Option<String>;
 
-    let mut curl: Option<String> = None;
-
     match dispatch_request(context.clone(), &request_id, &params, &subs, &merged).await {
-        Ok((name_with_subs, url_called, http_request, http_response, _, curl_command)) => {
-            curl = curl_command;
+        Ok((name_with_subs, url_called, http_request, http_response, _)) => {
             name = name_with_subs;
             url = Some(url_called);
             method = Some(http_request.method.clone());
@@ -1352,7 +1344,6 @@ async fn dispatch_request_and_test(
         key,
         method,
         url,
-        curl,
         test_context: ApicizeExecutionTestContext {
             merged,
             scenario: params.variables.clone(),
@@ -1385,20 +1376,17 @@ async fn dispatch_request(
         ApicizeHttpRequest,
         ApicizeHttpResponse,
         Option<Map<String, Value>>,
-        Option<String>,
     ),
     ApicizeError,
 > {
     let request = context.get_request(request_id)?;
 
     let method = match &request.method {
-        Some(RequestMethod::Get) => reqwest::Method::GET,
-        Some(RequestMethod::Post) => reqwest::Method::POST,
-        Some(RequestMethod::Patch) => reqwest::Method::PATCH,
-        Some(RequestMethod::Put) => reqwest::Method::PUT,
-        Some(RequestMethod::Delete) => reqwest::Method::DELETE,
-        Some(RequestMethod::Head) => reqwest::Method::HEAD,
-        Some(RequestMethod::Options) => reqwest::Method::OPTIONS,
+        Some(m) => reqwest::Method::from_bytes(m.as_bytes()).map_err(|_| ApicizeError::Http {
+            context: None,
+            description: format!("Invalid HTTP method: {m}"),
+            url: None,
+        })?,
         None => reqwest::Method::GET,
     };
 
@@ -1770,23 +1758,6 @@ async fn dispatch_request(
         }
     }
 
-    // Generate curl command if requested
-    let curl_command = if context.generate_curl {
-        Some(generate_curl_command(
-            request.method.as_ref().unwrap_or(&RequestMethod::Get),
-            &request_url,
-            &request_headers,
-            &request_body,
-            context
-                .workspace
-                .certificates
-                .get_optional(&params.certificate_id),
-            context.workspace.proxies.get_optional(&params.proxy_id),
-        ))
-    } else {
-        None
-    };
-
     let client_response: Result<Response, ApicizeError> = select! {
         _ = context.cancellation.cancelled() => Err(ApicizeError::Cancelled),
         result = client.execute(web_request) => {
@@ -1877,12 +1848,7 @@ async fn dispatch_request(
                         url,
                         ApicizeHttpRequest {
                             url: request_url,
-                            method: request
-                                .method
-                                .as_ref()
-                                .unwrap_or(&RequestMethod::Get)
-                                .as_str()
-                                .to_string(),
+                            method: request.method.clone().unwrap_or_else(|| "GET".to_string()),
                             headers: request_headers,
                             body: request_body,
                         },
@@ -1894,7 +1860,6 @@ async fn dispatch_request(
                             oauth2_token,
                         },
                         output_variables,
-                        curl_command,
                     );
 
                     Ok(response)
@@ -1903,123 +1868,6 @@ async fn dispatch_request(
             }
         }
     }
-}
-
-/// Shell-escape a string for use in a double-quoted curl argument (Windows-compatible)
-fn shell_escape(s: &str) -> String {
-    // Escape backslashes first, then double quotes
-    s.replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('$', "\\$")
-        .replace('!', "\\!")
-}
-
-/// Shell-escape a string for use in a $'...' ANSI-C quoted curl argument.
-/// This avoids history expansion (!), variable expansion ($), and brace expansion.
-fn shell_escape_ansi_c(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('\'', "\\'")
-}
-
-/// Generate a curl command that recreates the given HTTP request
-fn generate_curl_command(
-    method: &RequestMethod,
-    url: &str,
-    headers: &HashMap<String, String>,
-    body: &Option<ApicizeBody>,
-    certificate: Option<&Certificate>,
-    proxy: Option<&Proxy>,
-) -> String {
-    let mut parts = vec!["curl".to_string()];
-
-    // Method
-    let method_str = method.as_str();
-    if method_str != "GET" {
-        parts.push("-X".to_string());
-        parts.push(method_str.to_string());
-    }
-
-    // Headers
-    let mut sorted_headers: Vec<_> = headers.iter().collect();
-    sorted_headers.sort_by_key(|(k, _)| k.to_lowercase());
-    for (name, value) in sorted_headers {
-        parts.push("-H".to_string());
-        parts.push(format!(
-            "\"{}: {}\"",
-            shell_escape(name),
-            shell_escape(value)
-        ));
-    }
-
-    // Body
-    if let Some(body) = body {
-        match body {
-            ApicizeBody::Text { text, .. }
-            | ApicizeBody::JSON { text, .. }
-            | ApicizeBody::XML { text, .. } => {
-                if !text.is_empty() {
-                    parts.push("-d".to_string());
-                    parts.push(format!("$'{}'", shell_escape_ansi_c(text)));
-                }
-            }
-            ApicizeBody::Form { data, .. } => {
-                for (key, value) in data {
-                    parts.push("--data-urlencode".to_string());
-                    parts.push(format!("\"{}={}\"", shell_escape(key), shell_escape(value)));
-                }
-            }
-            ApicizeBody::Binary { .. } => {
-                parts.push("--data-binary".to_string());
-                parts.push("\"<BINARY_DATA>\"".to_string());
-            }
-        }
-    }
-
-    // Certificate
-    if let Some(cert) = certificate {
-        match cert {
-            Certificate::Plain(plain) => match plain.as_ref() {
-                crate::types::certificate::CertificatePlain::PKCS12 { name, .. } => {
-                    parts.push("--cert".to_string());
-                    parts.push(format!("\"{}.p12\"", shell_escape(name)));
-                    parts.push("--cert-type".to_string());
-                    parts.push("P12".to_string());
-                }
-                crate::types::certificate::CertificatePlain::PKCS8PEM { name, .. } => {
-                    parts.push("--cert".to_string());
-                    parts.push(format!("\"{}.pem\"", shell_escape(name)));
-                    parts.push("--key".to_string());
-                    parts.push(format!("\"{}.key\"", shell_escape(name)));
-                }
-                crate::types::certificate::CertificatePlain::PEM { name, .. } => {
-                    parts.push("--cert".to_string());
-                    parts.push(format!("\"{}.pem\"", shell_escape(name)));
-                }
-            },
-            Certificate::Cipher(_) => {
-                parts.push("--cert".to_string());
-                parts.push("\"<ENCRYPTED_CERTIFICATE>\"".to_string());
-            }
-        }
-    }
-
-    // Proxy
-    if let Some(proxy) = proxy {
-        match proxy {
-            Proxy::Plain(plain) => {
-                parts.push("--proxy".to_string());
-                parts.push(format!("\"{}\"", shell_escape(&plain.url)));
-            }
-            Proxy::Cipher(_) => {
-                parts.push("--proxy".to_string());
-                parts.push("\"<ENCRYPTED_PROXY>\"".to_string());
-            }
-        }
-    }
-
-    // URL (always last)
-    parts.push(format!("\"{}\"", shell_escape(url)));
-
-    parts.join(" ")
 }
 
 /// Set a JSON string as a named global variable on a V8 context
@@ -2074,7 +1922,7 @@ fn execute_request_test(
 
     // Small init script that parses the globals and invokes runTestSuite
     let init_code = format!(
-        "runTestSuite(JSON.parse(__request), JSON.parse(__response), JSON.parse(__variables), JSON.parse(__data), JSON.parse(__output), {}, () => {{{}}})",
+        "runTestSuite(JSON.parse(__request), JSON.parse(__response), JSON.parse(__variables), JSON.parse(__data), JSON.parse(__output), {}, () => {{{}\n}})",
         test_offset, test,
     );
 

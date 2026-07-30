@@ -28,6 +28,12 @@ impl fmt::Display for ExecutionState {
         }
 
         let mut flags = Vec::new();
+        if self.contains(ExecutionState::TEST_STARTED) {
+            flags.push("Test Started");
+        }
+        if self.contains(ExecutionState::TEST_ENDED) {
+            flags.push("Test Ended");
+        }
         if self.contains(ExecutionState::RUNNING) {
             flags.push("Running");
         }

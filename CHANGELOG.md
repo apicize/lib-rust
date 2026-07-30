@@ -1,5 +1,10 @@
 # Change Log
 
+## 0.43.0
+
+* Remove CURL generation support
+* Fix issue with test scripts lacking ending CR
+
 ## 0.42.0
 
 * Add GraphQL support

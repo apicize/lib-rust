@@ -23,26 +23,6 @@ fn default_redirects() -> usize {
     10
 }
 
-/// Enumeration of HTTP methods
-#[derive(Serialize, Deserialize, PartialEq, Clone)]
-#[serde(rename_all = "UPPERCASE")]
-pub enum RequestMethod {
-    /// HTTP GET
-    Get,
-    /// HTTP POST
-    Post,
-    /// HTTP PUT
-    Put,
-    /// HTTP DELETE
-    Delete,
-    /// HTTP PATCH
-    Patch,
-    /// HTTP HEAD
-    Head,
-    /// HTTP OPTIONS
-    Options,
-}
-
 /// Apicize Request body
 #[serde_as]
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
@@ -117,7 +97,7 @@ pub struct Request {
     pub url: String,
     /// HTTP method
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub method: Option<RequestMethod>,
+    pub method: Option<String>,
     /// Timeout, in milliseconds, to wait for a response
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout: Option<u32>,
@@ -319,22 +299,6 @@ impl CloneIdentifiable for RequestEntry {
         match self {
             RequestEntry::Request(request) => RequestEntry::Request(request.clone_as_new(new_name)),
             RequestEntry::Group(group) => RequestEntry::Group(group.clone_as_new(new_name)),
-        }
-    }
-}
-
-/// HTTP methods for Apicize Requests
-impl RequestMethod {
-    /// Returns Apicize Request method as string
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            RequestMethod::Get => "GET",
-            RequestMethod::Post => "POST",
-            RequestMethod::Put => "PUT",
-            RequestMethod::Delete => "DELETE",
-            RequestMethod::Patch => "PATCH",
-            RequestMethod::Head => "HEAD",
-            RequestMethod::Options => "OPTIONS",
         }
     }
 }
@@ -754,7 +718,7 @@ pub struct StoredRequest {
     pub url: String,
     /// HTTP method
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub method: Option<RequestMethod>,
+    pub method: Option<String>,
     /// Timeout, in milliseconds, to wait for a response
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout: Option<u32>,

@@ -98,7 +98,8 @@
           "description": "Request URL (supports {{variable}} substitution)"
         },
         "method": {
-          "$ref": "#/$defs/RequestMethod"
+          "type": "string",
+          "description": "HTTP request method"
         },
         "timeout": {
           "type": "integer",
@@ -242,11 +243,6 @@
           "description": "Selected data set for this group"
         }
       }
-    },
-    "RequestMethod": {
-      "type": "string",
-      "description": "HTTP request method",
-      "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
     },
     "ExecutionConcurrency": {
       "type": "string",
