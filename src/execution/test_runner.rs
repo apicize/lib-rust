@@ -534,9 +534,10 @@ async fn run_request(
 
     let duration = match &content {
         ApicizeRequestResultContent::Execution { execution } => execution.response_duration(),
-        ApicizeRequestResultContent::Runs { runs } => {
-            aggregate_duration(runs.iter().map(|r| r.duration), &request.multi_run_execution)
-        }
+        ApicizeRequestResultContent::Runs { runs } => aggregate_duration(
+            runs.iter().map(|r| r.duration),
+            &request.multi_run_execution,
+        ),
         ApicizeRequestResultContent::Rows { rows } => rows.iter().map(|r| r.duration).sum(),
     };
 

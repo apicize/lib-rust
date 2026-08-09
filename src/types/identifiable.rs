@@ -8,6 +8,12 @@ pub trait Identifiable {
 
     /// Return a title to display in a list
     fn get_title(&self) -> String;
+
+    /// Whether this entity can contain child entities (i.e. accept an "Under" placement).
+    /// Defaults to false; container types (e.g. request groups) override to true.
+    fn can_have_children(&self) -> bool {
+        false
+    }
 }
 
 pub trait CloneIdentifiable {

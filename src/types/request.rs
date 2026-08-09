@@ -245,6 +245,10 @@ impl Identifiable for RequestEntry {
             RequestEntry::Group(group) => group.get_title(),
         }
     }
+
+    fn can_have_children(&self) -> bool {
+        matches!(self, RequestEntry::Group(_))
+    }
 }
 
 impl Disabled for RequestEntry {

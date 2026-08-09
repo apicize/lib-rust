@@ -87,7 +87,16 @@ impl<T: Identifiable> IndexedEntities<T> {
                 }
             };
 
-            if relative_position == Some(IndexedEntityPosition::Under) {
+            // Only nest "Under" a target that can actually contain children. Nesting under a
+            // non-container (e.g. a request) would leave the entity unreachable from any list
+            // that walks the tree, silently orphaning it; fall back to a sibling placement.
+            let nest_under = relative_position == Some(IndexedEntityPosition::Under)
+                && self
+                    .entities
+                    .get(relative_to_id)
+                    .is_some_and(|entity| entity.can_have_children());
+
+            if nest_under {
                 if let Some(children) = self.child_ids.get_mut(relative_to_id) {
                     children.push(entity_id.to_string());
                 } else {
