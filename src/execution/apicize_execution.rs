@@ -53,6 +53,18 @@ pub struct ApicizeExecution {
     pub test_fail_count: usize,
 }
 
+impl ApicizeExecution {
+    /// Duration of the HTTP response for this execution (milliseconds).
+    /// This reflects only the time to receive the response, excluding test
+    /// execution and other overhead.  Returns 0 if no response was received.
+    pub fn response_duration(&self) -> u128 {
+        self.test_context
+            .response
+            .as_ref()
+            .map_or(0, |response| response.duration)
+    }
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ApicizeExecutionTestContext {
@@ -100,6 +112,8 @@ pub struct ApicizeHttpRequest {
 #[derive(Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ApicizeHttpResponse {
+    /// Duration of execution (milliseconds)
+    pub duration: u128,
     /// HTTP status code
     pub status: u16,
     /// HTTP status text

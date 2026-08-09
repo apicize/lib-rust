@@ -186,7 +186,7 @@ pub fn validate_selection(
                 value.id = use_id;
                 Some(format!(
                     "{} selected {} \"{}\" was found with a different ID, using entry with ID {}",
-                    entity_label, value_label, selected_name, &value.id
+                    entity_label, value_label, selected_name, value.id
                 ))
             }
             None => {
@@ -204,7 +204,7 @@ pub fn validate_selection(
 
                 Some(format!(
                     "{} selected {} \"{}\" (ID {}) does not exist, switching to {}",
-                    entity_label, value_label, selected_name, &old_id, desc,
+                    entity_label, value_label, selected_name, old_id, desc,
                 ))
             }
         }

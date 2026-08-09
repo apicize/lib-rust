@@ -2,10 +2,13 @@ name: 'publish'
 
 on:
   push:
+    branches:
+      - '**'
     tags:
       - '*'
 
 jobs:
+
   # init:
   #   name: Initialize project and build environment
   #   runs-on: ubuntu-latest
@@ -68,12 +71,39 @@ jobs:
       - name: Run unit test
         run: cargo test
 
+
+  verify-version:
+    name: Verify tag matches version and changelog
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+      - name: Verify tag matches Cargo.toml version and CHANGELOG entry
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          CRATE_VERSION="$(grep -m1 '^version' Cargo.toml | sed -E 's/version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')"
+          echo "Tag:            ${TAG}"
+          echo "Cargo version:  ${CRATE_VERSION}"
+          if [ "${TAG}" != "${CRATE_VERSION}" ]; then
+            echo "::error::Tag '${TAG}' does not match Cargo.toml version '${CRATE_VERSION}'"
+            exit 1
+          fi
+          ESCAPED_VERSION="$(printf '%s' "${CRATE_VERSION}" | sed 's/\./\\./g')"
+          if ! grep -qE "^##[[:space:]]+${ESCAPED_VERSION}([[:space:]]|\$)" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md is missing an entry for version '${CRATE_VERSION}'"
+            exit 1
+          fi
+          echo "Tag, Cargo.toml version, and CHANGELOG entry all match."
+
   publish-crate:
     name: Publish Crate
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
-    needs: 
+    needs:
+      - 'verify-version'
       - 'lint'
       - 'test'
     steps:

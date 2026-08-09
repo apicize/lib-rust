@@ -1,5 +1,10 @@
 # Change Log
 
+## 0.44.0
+
+* Change duration detection to only take into account HTTP resopnse times (do not include tests)
+* Add duration to response payload to allow performance testing
+
 ## 0.43.0
 
 * Remove CURL generation support

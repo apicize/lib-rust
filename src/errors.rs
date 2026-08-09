@@ -165,7 +165,7 @@ impl
 impl From<csv::Error> for ApicizeError {
     fn from(err: csv::Error) -> Self {
         Self::Csv {
-            description: format!("{}", &err),
+            description: format!("{}", err),
         }
     }
 }

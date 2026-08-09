@@ -1211,8 +1211,10 @@ mod tests {
         method: Option<&str>,
         url: Option<&str>,
         status: Option<u16>,
+        duration: u128,
     ) -> ApicizeExecution {
         let response = status.map(|s| ApicizeHttpResponse {
+            duration,
             status: s,
             status_text: "OK".to_string(),
             headers: Some(HashMap::new()),
@@ -1357,7 +1359,7 @@ mod tests {
             run_number,
             executed_at: 100 + (run_number as u128 * 10),
             duration: 10,
-            execution: make_execution("Test", Some("GET"), Some("http://test.com"), Some(200)),
+            execution: make_execution("Test", Some("GET"), Some("http://test.com"), Some(200), 100),
             success,
             request_success_count: if success { 1 } else { 0 },
             request_failure_count: if success { 0 } else { 1 },
@@ -1378,6 +1380,7 @@ mod tests {
                 Some("GET"),
                 Some("http://test.com"),
                 Some(200),
+                100,
             ))),
             success: true,
             request_success_count: 1,
@@ -1526,7 +1529,8 @@ mod tests {
 
     #[test]
     fn test_get_response_info_with_response() {
-        let execution = make_execution("Test", Some("GET"), Some("http://test.com"), Some(200));
+        let execution =
+            make_execution("Test", Some("GET"), Some("http://test.com"), Some(200), 100);
         let (status, status_text, has_headers, body_length) = get_response_info(&execution);
         assert_eq!(status, Some(200));
         assert_eq!(status_text, Some("OK".to_string()));
@@ -1536,7 +1540,8 @@ mod tests {
 
     #[test]
     fn test_get_response_info_without_response() {
-        let mut execution = make_execution("Test", Some("GET"), Some("http://test.com"), Some(200));
+        let mut execution =
+            make_execution("Test", Some("GET"), Some("http://test.com"), Some(200), 100);
         execution.test_context.response = None;
         let (status, status_text, has_headers, body_length) = get_response_info(&execution);
         assert_eq!(status, None);
@@ -1547,7 +1552,8 @@ mod tests {
 
     #[test]
     fn test_get_response_info_with_json_body() {
-        let mut execution = make_execution("Test", Some("GET"), Some("http://test.com"), Some(200));
+        let mut execution =
+            make_execution("Test", Some("GET"), Some("http://test.com"), Some(200), 100);
         if let Some(ref mut response) = execution.test_context.response {
             response.body = Some(ApicizeBody::JSON {
                 text: r#"{"key":"value"}"#.to_string(),
@@ -1560,7 +1566,8 @@ mod tests {
 
     #[test]
     fn test_get_response_info_with_binary_body() {
-        let mut execution = make_execution("Test", Some("GET"), Some("http://test.com"), Some(200));
+        let mut execution =
+            make_execution("Test", Some("GET"), Some("http://test.com"), Some(200), 100);
         if let Some(ref mut response) = execution.test_context.response {
             response.body = Some(ApicizeBody::Binary {
                 data: vec![1, 2, 3, 4, 5],
@@ -1583,6 +1590,7 @@ mod tests {
             Some("GET"),
             Some("http://test.com"),
             Some(200),
+            100,
         );
         let request = make_request_result_execution("req-1", "Test Request", execution);
 
@@ -1678,7 +1686,8 @@ mod tests {
     fn test_append_request_result_tracks_updated_request_ids() {
         let mut builder = ExecutionResultBuilder::default();
         let context = make_test_context();
-        let execution = make_execution("Test", Some("GET"), Some("http://test.com"), Some(200));
+        let execution =
+            make_execution("Test", Some("GET"), Some("http://test.com"), Some(200), 100);
         let request = make_request_result_execution("req-1", "Test", execution);
 
         let mut updated_request_ids = IndexSet::new();
@@ -1709,6 +1718,7 @@ mod tests {
             Some("GET"),
             Some("http://test.com"),
             Some(200),
+            100,
         );
         let child_request = make_request_result_execution("req-1", "Child Request", execution);
         let group = make_group_result_with_results(
@@ -1745,7 +1755,13 @@ mod tests {
         let context = make_test_context();
 
         // Create nested structure: group -> child group -> request
-        let execution = make_execution("Request", Some("GET"), Some("http://test.com"), Some(200));
+        let execution = make_execution(
+            "Request",
+            Some("GET"),
+            Some("http://test.com"),
+            Some(200),
+            100,
+        );
         let request = make_request_result_execution("req-1", "Request", execution);
         let child_group = make_group_result_with_results(
             "group-2",
@@ -1876,7 +1892,8 @@ mod tests {
         let mut builder = ExecutionResultBuilder::default();
         let context = make_test_context();
 
-        let execution = make_execution("Test", Some("GET"), Some("http://test.com"), Some(200));
+        let execution =
+            make_execution("Test", Some("GET"), Some("http://test.com"), Some(200), 100);
         let request = make_request_result_execution("req-1", "Test", execution);
         builder.process_result(&context, ApicizeResult::Request(Box::new(request)));
 
@@ -1891,7 +1908,8 @@ mod tests {
         let mut builder = ExecutionResultBuilder::default();
         let context = make_test_context();
 
-        let execution = make_execution("Test", Some("GET"), Some("http://test.com"), Some(200));
+        let execution =
+            make_execution("Test", Some("GET"), Some("http://test.com"), Some(200), 100);
         let request = make_request_result_execution("req-1", "Test", execution);
         builder.process_result(&context, ApicizeResult::Request(Box::new(request)));
 
@@ -1921,7 +1939,8 @@ mod tests {
         let mut builder = ExecutionResultBuilder::default();
         let context = make_test_context();
 
-        let execution = make_execution("Test", Some("GET"), Some("http://test.com"), Some(200));
+        let execution =
+            make_execution("Test", Some("GET"), Some("http://test.com"), Some(200), 100);
         let request = make_request_result_execution("req-1", "Test", execution);
         builder.process_result(&context, ApicizeResult::Request(Box::new(request)));
 
@@ -1967,12 +1986,24 @@ mod tests {
         let context = make_test_context();
 
         // First execution
-        let execution1 = make_execution("Test 1", Some("GET"), Some("http://test.com"), Some(200));
+        let execution1 = make_execution(
+            "Test 1",
+            Some("GET"),
+            Some("http://test.com"),
+            Some(200),
+            100,
+        );
         let request1 = make_request_result_execution("req-1", "Test 1", execution1);
         builder.process_result(&context, ApicizeResult::Request(Box::new(request1)));
 
         // Second execution (should replace first)
-        let execution2 = make_execution("Test 2", Some("GET"), Some("http://test.com"), Some(200));
+        let execution2 = make_execution(
+            "Test 2",
+            Some("GET"),
+            Some("http://test.com"),
+            Some(200),
+            100,
+        );
         let request2 = make_request_result_execution("req-1", "Test 2", execution2);
         builder.process_result(&context, ApicizeResult::Request(Box::new(request2)));
 
@@ -1988,7 +2019,8 @@ mod tests {
         let mut builder = ExecutionResultBuilder::default();
         let context = make_test_context();
 
-        let execution = make_execution("Test", Some("GET"), Some("http://test.com"), Some(200));
+        let execution =
+            make_execution("Test", Some("GET"), Some("http://test.com"), Some(200), 100);
         let request = make_request_result_execution("req-1", "Test", execution);
         let updated = builder.process_result(&context, ApicizeResult::Request(Box::new(request)));
 
@@ -2001,7 +2033,13 @@ mod tests {
         let mut builder = ExecutionResultBuilder::default();
         let context = make_test_context();
 
-        let execution = make_execution("Request", Some("GET"), Some("http://test.com"), Some(200));
+        let execution = make_execution(
+            "Request",
+            Some("GET"),
+            Some("http://test.com"),
+            Some(200),
+            100,
+        );
         let request = make_request_result_execution("req-1", "Request", execution);
         let group = make_group_result_with_results(
             "group-1",
@@ -2066,7 +2104,13 @@ mod tests {
         let context = make_test_context();
 
         // Create 5 levels of nesting
-        let execution = make_execution("Request", Some("GET"), Some("http://test.com"), Some(200));
+        let execution = make_execution(
+            "Request",
+            Some("GET"),
+            Some("http://test.com"),
+            Some(200),
+            100,
+        );
         let request = make_request_result_execution("req-1", "Request", execution);
         let mut current: ApicizeResult = ApicizeResult::Request(Box::new(request));
 

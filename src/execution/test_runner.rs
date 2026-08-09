@@ -72,6 +72,19 @@ fn clone_and_sub(text: &str, subs: &HashMap<String, String>) -> String {
     result
 }
 
+/// Aggregate child durations (milliseconds) according to execution concurrency:
+/// sequential executions accumulate (sum), concurrent executions overlap so the
+/// longest child (max) determines the elapsed duration.
+fn aggregate_duration(
+    durations: impl IntoIterator<Item = u128>,
+    concurrency: &ExecutionConcurrency,
+) -> u128 {
+    match concurrency {
+        ExecutionConcurrency::Sequential => durations.into_iter().sum(),
+        ExecutionConcurrency::Concurrent => durations.into_iter().max().unwrap_or(0),
+    }
+}
+
 fn clone_and_sub_json(text: &str, subs: &HashMap<String, String>) -> String {
     if subs.is_empty() || !text.contains("{{") {
         return text.to_string();
@@ -519,6 +532,14 @@ async fn run_request(
         )
     };
 
+    let duration = match &content {
+        ApicizeRequestResultContent::Execution { execution } => execution.response_duration(),
+        ApicizeRequestResultContent::Runs { runs } => {
+            aggregate_duration(runs.iter().map(|r| r.duration), &request.multi_run_execution)
+        }
+        ApicizeRequestResultContent::Rows { rows } => rows.iter().map(|r| r.duration).sum(),
+    };
+
     Ok(Some(Box::new(ApicizeRequestResult {
         id: request.id.clone(),
         name: request.get_title(),
@@ -526,7 +547,7 @@ async fn run_request(
         tag: None,
         url: None,
         executed_at,
-        duration: context.ellapsed_in_ms() - executed_at,
+        duration,
         data_context,
         content,
         logs,
@@ -603,7 +624,7 @@ async fn run_request_rows(
                     rows.push(ApicizeRequestResultRow {
                         row_number,
                         executed_at: row_executed_at,
-                        duration: context.ellapsed_in_ms() - row_executed_at,
+                        duration: execution.response_duration(),
                         data_context,
                         results: ApicizeRequestResultRowContent::Execution(Box::new(execution)),
                         success: taliles.success,
@@ -628,7 +649,10 @@ async fn run_request_rows(
                     rows.push(ApicizeRequestResultRow {
                         row_number,
                         executed_at: row_executed_at,
-                        duration: context.ellapsed_in_ms() - row_executed_at,
+                        duration: aggregate_duration(
+                            runs.iter().map(|r| r.duration),
+                            &request.multi_run_execution,
+                        ),
                         data_context: runs.generate_data_context(),
                         results: ApicizeRequestResultRowContent::Runs(runs),
                         success: row_tallies.success,
@@ -707,7 +731,7 @@ async fn run_request_runs(
                 let run = ApicizeRequestResultRun {
                     run_number,
                     executed_at: run_executed_at,
-                    duration: context.ellapsed_in_ms() - run_executed_at,
+                    duration: execution.response_duration(),
                     execution,
                     success,
                     request_success_count,
@@ -752,7 +776,7 @@ async fn run_request_runs(
                                     Ok(ApicizeRequestResultRun {
                                         run_number,
                                         executed_at: runs_executed_at,
-                                        duration: context.ellapsed_in_ms() - runs_executed_at,
+                                        duration: execution.response_duration(),
                                         execution,
                                         success,
                                         request_success_count,
@@ -891,13 +915,23 @@ async fn run_group(
         )
     };
 
+    let duration = match &content {
+        ApicizeGroupResultContent::Results { results } => {
+            aggregate_duration(results.iter().map(|r| r.duration()), &group.execution)
+        }
+        ApicizeGroupResultContent::Runs { runs } => {
+            aggregate_duration(runs.iter().map(|r| r.duration), &group.multi_run_execution)
+        }
+        ApicizeGroupResultContent::Rows { rows } => rows.iter().map(|r| r.duration).sum(),
+    };
+
     Ok(Some(Box::new(ApicizeGroupResult {
         id: group.id.clone(),
         name: group.get_title(),
         key,
         tag: None,
         executed_at,
-        duration: context.ellapsed_in_ms() - executed_at,
+        duration,
         data_context,
         content,
         logs,
@@ -1081,10 +1115,19 @@ async fn run_group_rows(
                 row_state.output_variables = data_context.output_result.clone();
             }
 
+            let duration = match &content {
+                ApicizeGroupResultRowContent::Results { results } => {
+                    aggregate_duration(results.iter().map(|r| r.duration()), &group.execution)
+                }
+                ApicizeGroupResultRowContent::Runs { runs } => {
+                    aggregate_duration(runs.iter().map(|r| r.duration), &group.multi_run_execution)
+                }
+            };
+
             rows.push(ApicizeGroupResultRow {
                 row_number,
                 executed_at: row_executed_at,
-                duration: context.ellapsed_in_ms() - row_executed_at,
+                duration,
                 data_context,
                 content,
                 success: tallies.success,
@@ -1136,7 +1179,10 @@ async fn run_group_runs(
                 runs.push(ApicizeGroupResultRun {
                     run_number,
                     executed_at: run_executed_at,
-                    duration: context.ellapsed_in_ms() - run_executed_at,
+                    duration: aggregate_duration(
+                        results.iter().map(|r| r.duration()),
+                        &group.execution,
+                    ),
                     data_context,
                     results,
                     success: tallies.success,
@@ -1177,7 +1223,10 @@ async fn run_group_runs(
                                     Ok(ApicizeGroupResultRun {
                                         run_number,
                                         executed_at: run_executed_at,
-                                        duration: context.ellapsed_in_ms() - run_executed_at,
+                                        duration: aggregate_duration(
+                                            results.iter().map(|r| r.duration()),
+                                            &execution,
+                                        ),
                                         data_context: results.generate_data_context(),
                                         results,
                                         success: tallies.success,
@@ -1758,6 +1807,9 @@ async fn dispatch_request(
         }
     }
 
+    // Execute the request
+    let executed_at = context.ellapsed_in_ms();
+
     let client_response: Result<Response, ApicizeError> = select! {
         _ = context.cancellation.cancelled() => Err(ApicizeError::Cancelled),
         result = client.execute(web_request) => {
@@ -1768,7 +1820,7 @@ async fn dispatch_request(
         }
     };
 
-    // Execute the request
+    // Process the response
     match client_response {
         Err(error) => Err(error),
         Ok(response) => {
@@ -1853,6 +1905,7 @@ async fn dispatch_request(
                             body: request_body,
                         },
                         ApicizeHttpResponse {
+                            duration: context.ellapsed_in_ms() - executed_at,
                             status: status.as_u16(),
                             status_text,
                             headers,

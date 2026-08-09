@@ -94,7 +94,7 @@ impl<T: Identifiable + Clone> IndexedEntities<T> {
                     Ok(Some(found_by_name.get_id().to_string()))
                 } else {
                     Err(ApicizeError::Error {
-                        description: format!("Invalid ID {}", &id_to_find),
+                        description: format!("Invalid ID {}", id_to_find),
                     })
                 }
             }

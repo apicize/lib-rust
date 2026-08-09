@@ -369,6 +369,17 @@ pub struct ApicizeTestBehavior {
     pub logs: Option<Vec<String>>,
 }
 
+impl ApicizeResult {
+    /// Duration of the result (milliseconds), as aggregated for the underlying
+    /// request or group.
+    pub fn duration(&self) -> u128 {
+        match self {
+            ApicizeResult::Request(request) => request.duration,
+            ApicizeResult::Group(group) => group.duration,
+        }
+    }
+}
+
 impl Identifiable for ApicizeResult {
     fn get_id(&self) -> &str {
         match self {

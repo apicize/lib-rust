@@ -819,9 +819,9 @@ impl Workspace {
                     defaults: stored_defaults,
                 };
 
-                match save_data_file(workbook_path, &workbook) {
-                    Ok(success) => successes.push(success),
-                    Err(error) => return Err(error),
+                {
+                    let success = save_data_file(workbook_path, &workbook)?;
+                    successes.push(success)
                 }
             }
 
@@ -833,13 +833,13 @@ impl Workspace {
                     self.proxies.get_private(),
                 );
 
-                match private_parameters.save(
-                    &Parameters::get_workbook_private_filename(workbook_path),
-                    "Private store",
-                    &self.private_password,
-                ) {
-                    Ok(success) => successes.push(success),
-                    Err(error) => return Err(error),
+                {
+                    let success = private_parameters.save(
+                        &Parameters::get_workbook_private_filename(workbook_path),
+                        "Private store",
+                        &self.private_password,
+                    )?;
+                    successes.push(success)
                 }
             }
         }
@@ -851,13 +851,13 @@ impl Workspace {
                 self.proxies.get_vault(),
             );
 
-            match global_parameters.save(
-                &Parameters::get_globals_filename(),
-                "Vault",
-                &self.vault_password,
-            ) {
-                Ok(success) => successes.push(success),
-                Err(error) => return Err(error),
+            {
+                let success = global_parameters.save(
+                    &Parameters::get_globals_filename(),
+                    "Vault",
+                    &self.vault_password,
+                )?;
+                successes.push(success)
             }
         }
 
