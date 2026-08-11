@@ -2,7 +2,9 @@ use std::vec;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{ApicizeError, Identifiable, IndexedEntities};
+use crate::{
+    ApicizeError, Identifiable, IndexedEntities, PERSIST_PRIVATE, PERSIST_VAULT, PERSIST_WORKBOOK,
+};
 
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub enum IndexedEntityPosition {
@@ -90,11 +92,18 @@ impl<T: Identifiable> IndexedEntities<T> {
             // Only nest "Under" a target that can actually contain children. Nesting under a
             // non-container (e.g. a request) would leave the entity unreachable from any list
             // that walks the tree, silently orphaning it; fall back to a sibling placement.
+            // Persistence buckets ("W"/"P"/"V") are valid containers for parameter entities
+            // (scenarios, authorizations, certificates, proxies) even though they are not entities.
+            let is_persistence_bucket = matches!(
+                relative_to_id,
+                PERSIST_WORKBOOK | PERSIST_PRIVATE | PERSIST_VAULT
+            );
             let nest_under = relative_position == Some(IndexedEntityPosition::Under)
-                && self
-                    .entities
-                    .get(relative_to_id)
-                    .is_some_and(|entity| entity.can_have_children());
+                && (is_persistence_bucket
+                    || self
+                        .entities
+                        .get(relative_to_id)
+                        .is_some_and(|entity| entity.can_have_children()));
 
             if nest_under {
                 if let Some(children) = self.child_ids.get_mut(relative_to_id) {
@@ -175,5 +184,59 @@ impl<T: Identifiable> IndexedEntities<T> {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{IndexedEntities, Scenario};
+    use std::collections::HashMap;
+
+    fn empty_parameter_index() -> IndexedEntities<Scenario> {
+        let mut child_ids = HashMap::new();
+        child_ids.insert(PERSIST_WORKBOOK.to_string(), Vec::new());
+        child_ids.insert(PERSIST_PRIVATE.to_string(), Vec::new());
+        child_ids.insert(PERSIST_VAULT.to_string(), Vec::new());
+        IndexedEntities {
+            top_level_ids: Vec::new(),
+            child_ids,
+            entities: HashMap::new(),
+            parent_ids: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn add_under_persistence_bucket_places_entity_in_that_bucket() {
+        let mut index = empty_parameter_index();
+        let id = index
+            .add_entity(
+                Scenario::default(),
+                Some(PERSIST_WORKBOOK),
+                Some(IndexedEntityPosition::Under),
+            )
+            .unwrap();
+
+        assert_eq!(
+            index.child_ids.get(PERSIST_WORKBOOK),
+            Some(&vec![id.clone()])
+        );
+        assert!(index.top_level_ids.is_empty());
+        assert_eq!(index.parent_ids.get(&id).map(String::as_str), Some("W"));
+    }
+
+    #[test]
+    fn add_under_missing_persistence_bucket_creates_it() {
+        let mut index: IndexedEntities<Scenario> = IndexedEntities::default();
+        let id = index
+            .add_entity(
+                Scenario::default(),
+                Some(PERSIST_PRIVATE),
+                Some(IndexedEntityPosition::Under),
+            )
+            .unwrap();
+
+        assert_eq!(index.child_ids.get(PERSIST_PRIVATE), Some(&vec![id]));
+        assert!(index.top_level_ids.is_empty());
     }
 }

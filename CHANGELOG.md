@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.44.1
+
+* Fix regression in adding parameters
+
 ## 0.44.0
 
 * Change duration detection to only take into account HTTP resopnse times (do not include tests)
