@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.44.2
+
+* Resolve handlebars replacement issue with escaped quotes
+
 ## 0.44.1
 
 * Fix regression in adding parameters
