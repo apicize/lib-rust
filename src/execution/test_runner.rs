@@ -85,6 +85,27 @@ fn aggregate_duration(
     }
 }
 
+/// Find the byte index of the next unescaped double-quote in `s`, if any.
+/// A quote is a JSON string delimiter only when preceded by an even number
+/// of backslashes (zero counts as even); a `\"` inside a string is skipped.
+fn find_unescaped_quote(s: &str) -> Option<usize> {
+    let bytes = s.as_bytes();
+    for i in 0..bytes.len() {
+        if bytes[i] == b'"' {
+            let mut backslashes = 0;
+            let mut j = i;
+            while j > 0 && bytes[j - 1] == b'\\' {
+                backslashes += 1;
+                j -= 1;
+            }
+            if backslashes % 2 == 0 {
+                return Some(i);
+            }
+        }
+    }
+    None
+}
+
 fn clone_and_sub_json(text: &str, subs: &HashMap<String, String>) -> String {
     if subs.is_empty() || !text.contains("{{") {
         return text.to_string();
@@ -93,12 +114,12 @@ fn clone_and_sub_json(text: &str, subs: &HashMap<String, String>) -> String {
     // Pass 1: replace handlebars inside quoted strings, escaping double quotes in values
     let mut result = String::with_capacity(text.len());
     let mut remaining = text;
-    while let Some(quote_start) = remaining.find('"') {
+    while let Some(quote_start) = find_unescaped_quote(remaining) {
         result.push_str(&remaining[..quote_start + 1]);
         remaining = &remaining[quote_start + 1..];
         // Scan inside the quoted string
         loop {
-            match (remaining.find("{{"), remaining.find('"')) {
+            match (remaining.find("{{"), find_unescaped_quote(remaining)) {
                 (Some(hb_start), Some(q_end)) if hb_start < q_end => {
                     if let Some(hb_end) = remaining[hb_start + 2..].find("}}") {
                         let key = &remaining[hb_start..hb_start + 2 + hb_end + 2];
@@ -116,7 +137,7 @@ fn clone_and_sub_json(text: &str, subs: &HashMap<String, String>) -> String {
                 }
                 _ => {
                     // No handlebars before the closing quote (or no closing quote)
-                    if let Some(q_end) = remaining.find('"') {
+                    if let Some(q_end) = find_unescaped_quote(remaining) {
                         result.push_str(&remaining[..q_end + 1]);
                         remaining = &remaining[q_end + 1..];
                     } else {
@@ -2044,4 +2065,84 @@ pub fn cleanup_v8() {
         v8::V8::dispose();
     }
     v8::V8::dispose_platform();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{clone_and_sub_json, find_unescaped_quote};
+    use std::collections::HashMap;
+
+    fn subs(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (format!("{{{{{k}}}}}"), (*v).to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn find_unescaped_quote_ignores_escaped_quotes() {
+        // Scanning the inside of a string value: every `\"` is skipped and the
+        // real closing quote (the trailing one) is returned.
+        let s = r#"\"8.5\" x 11\"""#;
+        assert_eq!(find_unescaped_quote(s), Some(s.len() - 1));
+    }
+
+    #[test]
+    fn find_unescaped_quote_none_when_only_escaped() {
+        let s = r#"\"8.5\""#;
+        assert_eq!(find_unescaped_quote(s), None);
+    }
+
+    #[test]
+    fn find_unescaped_quote_finds_first_real_quote() {
+        assert_eq!(find_unescaped_quote(r#"abc"def"#), Some(3));
+        assert_eq!(find_unescaped_quote("no quotes here"), None);
+    }
+
+    #[test]
+    fn find_unescaped_quote_treats_double_backslash_as_unescaped() {
+        // `\\"` -> the backslash is itself escaped, so the quote is a delimiter.
+        let s = r#"\\""#;
+        assert_eq!(find_unescaped_quote(s), Some(2));
+    }
+
+    #[test]
+    fn substitutes_token_after_value_with_escaped_quotes() {
+        // Regression: an odd number of escaped quotes earlier in the body used
+        // to flip the in/out-of-string parity and skip this substitution.
+        let body = r#"{
+    "size": "\"8.5\" x 11\"",
+    "postalCode": "{{zip}}"
+}"#;
+        let out = clone_and_sub_json(body, &subs(&[("zip", "92101")]));
+        assert!(out.contains(r#""postalCode": "92101""#), "got: {out}");
+        // The escaped-quote value must be left intact.
+        assert!(out.contains(r#""size": "\"8.5\" x 11\"""#), "got: {out}");
+        // Result must still parse as JSON.
+        serde_json::from_str::<serde_json::Value>(&out).expect("valid JSON");
+    }
+
+    #[test]
+    fn substitutes_token_inside_string_and_escapes_quotes_in_value() {
+        let body = r#"{"greeting": "hello {{name}}"}"#;
+        let out = clone_and_sub_json(body, &subs(&[("name", r#"a"b"#)]));
+        // A double-quote in the value is escaped so the JSON stays valid.
+        assert_eq!(out, r#"{"greeting": "hello a\"b"}"#);
+        serde_json::from_str::<serde_json::Value>(&out).expect("valid JSON");
+    }
+
+    #[test]
+    fn substitutes_token_outside_string_without_escaping() {
+        // A numeric substitution used bare (no surrounding quotes).
+        let body = r#"{"productId": {{id}}}"#;
+        let out = clone_and_sub_json(body, &subs(&[("id", "50")]));
+        assert_eq!(out, r#"{"productId": 50}"#);
+    }
+
+    #[test]
+    fn leaves_unknown_tokens_untouched() {
+        let body = r#"{"postalCode": "{{missing}}"}"#;
+        let out = clone_and_sub_json(body, &subs(&[("zip", "92101")]));
+        assert_eq!(out, body);
+    }
 }
