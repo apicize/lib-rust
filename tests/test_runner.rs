@@ -1,10 +1,14 @@
 use std::sync::Arc;
 
 use apicize_lib::{
-    ApicizeError, ApicizeResult, ApicizeRunner, ExecutionConcurrency, Identifiable,
-    IndexedEntities, Request, RequestEntry, RequestGroup, TestRunnerContext, TestRunnerContextInit,
+    ApicizeError, ApicizeExecution, ApicizeRequestResultContent, ApicizeResult, ApicizeRunner,
+    ExecutionConcurrency, Identifiable, IndexedEntities, NameValuePair, PersistedIndex, Request,
+    RequestBody, RequestEntry, RequestGroup, Scenario, ScenarioPlain, Selection,
+    StoredRequestEntry, TestRunnerContext, TestRunnerContextInit, Variable, VariableSourceType,
     WorkbookDefaultParameters, Workspace, workspace::ParameterLockStatus,
 };
+use mockito::Matcher;
+use serde_json::json;
 use serial_test::serial;
 use tokio_util::sync::CancellationToken;
 
@@ -1420,4 +1424,647 @@ async fn test_script_can_access_json_response_body() {
         _ => panic!("Expected Request result"),
     }
     mock.assert_async().await;
+}
+
+// =============================================================================
+// Setup script tests
+// =============================================================================
+
+/// Helper to create a request with setup and (optional) test scripts
+fn make_request_with_setup(
+    id: &str,
+    name: &str,
+    url: &str,
+    setup: &str,
+    test: Option<&str>,
+) -> Request {
+    Request {
+        id: id.to_string(),
+        name: name.to_string(),
+        url: url.to_string(),
+        setup: Some(setup.to_string()),
+        test: test.map(|t| t.to_string()),
+        ..Default::default()
+    }
+}
+
+/// Helper to extract the single execution from a request result
+fn get_execution(result: ApicizeResult) -> Box<ApicizeExecution> {
+    match result {
+        ApicizeResult::Request(req_result) => match req_result.content {
+            ApicizeRequestResultContent::Execution { execution } => execution,
+            _ => panic!("Expected Execution content"),
+        },
+        _ => panic!("Expected Request result"),
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn test_setup_modifies_request() {
+    let mut server = mockito::Server::new_async().await;
+    let mock = server
+        .mock("POST", "/api/modified")
+        .match_header("x-setup", "added")
+        .match_header("accept", "text/plain")
+        .match_query(Matcher::UrlEncoded("b".into(), "2".into()))
+        .match_body(Matcher::Json(json!({"value": 2, "extra": true})))
+        .with_status(200)
+        .create_async()
+        .await;
+
+    let mut req = make_request_with_setup(
+        "req-1",
+        "Setup Request",
+        &format!("{}/api/original", server.url()),
+        r#"
+        request.url = request.url.replace('/original', '/modified')
+        request.method = 'POST'
+        request.setHeader('X-Setup', 'added')
+        request.setHeader('ACCEPT', 'text/plain')
+        request.removeQueryParam('a')
+        request.setQueryParam('b', 2)
+        const body = JSON.parse(request.body.data)
+        body.value += 1
+        body.extra = true
+        request.body.data = body
+        "#,
+        None,
+    );
+    req.headers = Some(vec![NameValuePair {
+        name: "Accept".to_string(),
+        value: "application/json".to_string(),
+        disabled: None,
+    }]);
+    req.query_string_params = Some(vec![NameValuePair {
+        name: "a".to_string(),
+        value: "1".to_string(),
+        disabled: None,
+    }]);
+    req.body = Some(RequestBody::JSON {
+        data: r#"{"value": 1}"#.to_string(),
+    });
+
+    let ws = build_workspace(vec![RequestEntry::Request(req)]);
+    let ctx = build_context(ws, None);
+
+    let results = ctx.run(vec!["req-1".to_string()]).await;
+    let execution = get_execution(results.into_iter().next().unwrap().unwrap());
+    assert!(execution.error.is_none());
+    assert!(execution.success);
+    assert_eq!(execution.method.as_deref(), Some("POST"));
+    let sent = execution.test_context.request.as_ref().unwrap();
+    assert_eq!(sent.url, format!("{}/api/modified?b=2", server.url()));
+    assert_eq!(
+        sent.headers.get("x-setup").map(|s| s.as_str()),
+        Some("added")
+    );
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+#[serial]
+async fn test_setup_sets_headers_by_name() {
+    let mut server = mockito::Server::new_async().await;
+    let mock = server
+        .mock("GET", "/api/named")
+        .match_header("foo", "888")
+        .match_query(Matcher::UrlEncoded("q".into(), "x".into()))
+        .with_status(200)
+        .create_async()
+        .await;
+
+    let req = make_request_with_setup(
+        "req-1",
+        "Setup Request",
+        &format!("{}/api/named", server.url()),
+        r#"
+        request.headers['foo'] = '888'
+        request.queryStringParams['q'] = 'x'
+        "#,
+        None,
+    );
+
+    let ws = build_workspace(vec![RequestEntry::Request(req)]);
+    let ctx = build_context(ws, None);
+
+    let results = ctx.run(vec!["req-1".to_string()]).await;
+    let execution = get_execution(results.into_iter().next().unwrap().unwrap());
+    assert!(execution.error.is_none());
+    let sent = execution.test_context.request.as_ref().unwrap();
+    assert_eq!(sent.headers.get("foo").map(|s| s.as_str()), Some("888"));
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+#[serial]
+async fn test_setup_output_used_for_substitution_and_test() {
+    let mut server = mockito::Server::new_async().await;
+    let mock = server
+        .mock("GET", "/api/abc")
+        .match_header("x-sig", "sig-123")
+        .with_status(200)
+        .create_async()
+        .await;
+
+    let mut req = make_request_with_setup(
+        "req-1",
+        "Setup Output",
+        &format!("{}/api/{{{{path}}}}", server.url()),
+        r#"
+        console.log('setting output')
+        output('path', 'abc')
+        output('sig', `sig-${123}`)
+        "#,
+        Some(
+            r#"
+            console.log('testing')
+            describe('output', () => {
+                it('is available to test', () => {
+                    expect($.sig).to.equal('sig-123')
+                })
+            })
+            "#,
+        ),
+    );
+    req.headers = Some(vec![NameValuePair {
+        name: "X-Sig".to_string(),
+        value: "{{sig}}".to_string(),
+        disabled: None,
+    }]);
+
+    let ws = build_workspace(vec![RequestEntry::Request(req)]);
+    let ctx = build_context(ws, None);
+
+    let results = ctx.run(vec!["req-1".to_string()]).await;
+    let execution = get_execution(results.into_iter().next().unwrap().unwrap());
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    assert!(execution.success);
+    assert_eq!(execution.test_pass_count, 1);
+
+    let output = execution.output_variables.as_ref().unwrap();
+    assert_eq!(output.get("path"), Some(&json!("abc")));
+    assert_eq!(output.get("sig"), Some(&json!("sig-123")));
+
+    // Setup logs come before test logs
+    let logs = execution.logs.as_ref().unwrap();
+    assert_eq!(logs.len(), 2);
+    assert!(logs[0].ends_with("[log] setting output"));
+    assert!(logs[1].ends_with("[log] testing"));
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+#[serial]
+async fn test_setup_error_skips_dispatch() {
+    let mut server = mockito::Server::new_async().await;
+    let mock = server
+        .mock("GET", "/api/test")
+        .expect(0)
+        .create_async()
+        .await;
+
+    let req = make_request_with_setup(
+        "req-1",
+        "Failing Setup",
+        &format!("{}/api/test", server.url()),
+        r#"
+        console.log('before')
+        throw new Error('boom')
+        "#,
+        Some("describe('x', () => { it('runs', () => {}) })"),
+    );
+    let ws = build_workspace(vec![RequestEntry::Request(req)]);
+    let ctx = build_context(ws, None);
+
+    let results = ctx.run(vec!["req-1".to_string()]).await;
+    let execution = get_execution(results.into_iter().next().unwrap().unwrap());
+    assert!(!execution.success);
+    assert!(execution.tests.is_none());
+    assert_eq!(
+        execution.error,
+        Some(ApicizeError::FailedSetup {
+            description: "boom".to_string()
+        })
+    );
+    let logs = execution.logs.as_ref().unwrap();
+    assert_eq!(logs.len(), 1);
+    assert!(logs[0].ends_with("[log] before"));
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+#[serial]
+async fn test_setup_syntax_error() {
+    let req = make_request_with_setup(
+        "req-1",
+        "Bad Setup",
+        "http://localhost:1/api/test",
+        "this is not javascript (",
+        None,
+    );
+    let ws = build_workspace(vec![RequestEntry::Request(req)]);
+    let ctx = build_context(ws, None);
+
+    let results = ctx.run(vec!["req-1".to_string()]).await;
+    let execution = get_execution(results.into_iter().next().unwrap().unwrap());
+    assert!(!execution.success);
+    assert!(matches!(
+        execution.error,
+        Some(ApicizeError::FailedSetup { .. })
+    ));
+}
+
+#[tokio::test]
+#[serial]
+async fn test_setup_does_not_expose_test_functions() {
+    let mut server = mockito::Server::new_async().await;
+    let mock = server
+        .mock("GET", "/api/test")
+        .with_status(200)
+        .create_async()
+        .await;
+
+    let req = make_request_with_setup(
+        "req-1",
+        "Setup Globals",
+        &format!("{}/api/test", server.url()),
+        r#"
+        for (const name of ['describe', 'it', 'tag', 'expect', 'assert', 'should']) {
+            if (typeof globalThis[name] !== 'undefined') {
+                throw new Error(`${name} should not be available`)
+            }
+        }
+        for (const name of ['output', 'jsonpath', 'console', 'BodyType']) {
+            if (typeof globalThis[name] === 'undefined') {
+                throw new Error(`${name} should be available`)
+            }
+        }
+        "#,
+        None,
+    );
+    let ws = build_workspace(vec![RequestEntry::Request(req)]);
+    let ctx = build_context(ws, None);
+
+    let results = ctx.run(vec!["req-1".to_string()]).await;
+    let execution = get_execution(results.into_iter().next().unwrap().unwrap());
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+#[serial]
+async fn test_setup_invalid_header_returns_error() {
+    let req = make_request_with_setup(
+        "req-1",
+        "Invalid Header",
+        "http://localhost:1/api/test",
+        "request.setHeader('bad header', 'x')",
+        None,
+    );
+    let ws = build_workspace(vec![RequestEntry::Request(req)]);
+    let ctx = build_context(ws, None);
+
+    let results = ctx.run(vec!["req-1".to_string()]).await;
+    let execution = get_execution(results.into_iter().next().unwrap().unwrap());
+    assert!(!execution.success);
+    match &execution.error {
+        Some(ApicizeError::Http { description, .. }) => {
+            assert_eq!(description, "Invalid header name: bad header")
+        }
+        _ => panic!("Expected HTTP error"),
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn test_group_setup_output_used_by_children() {
+    let mut server = mockito::Server::new_async().await;
+    let mock = server
+        .mock("GET", "/api/from-group")
+        .with_status(200)
+        .create_async()
+        .await;
+
+    let req = make_request_with_test(
+        "req-1",
+        "Child",
+        &format!("{}/api/{{{{path}}}}", server.url()),
+        r#"
+        describe('group output', () => {
+            it('is available', () => {
+                expect($.path).to.equal('from-group')
+            })
+        })
+        "#,
+    );
+    let mut group = make_group(
+        "grp-1",
+        "Group",
+        vec![RequestEntry::Request(req)],
+        ExecutionConcurrency::Sequential,
+    );
+    group.setup = Some("output('path', 'from-group')".to_string());
+
+    let ws = build_workspace(vec![RequestEntry::Group(group)]);
+    let ctx = build_context(ws, None);
+
+    let results = ctx.run(vec!["grp-1".to_string()]).await;
+    match results.into_iter().next().unwrap().unwrap() {
+        ApicizeResult::Group(group_result) => {
+            assert!(group_result.success);
+            assert_eq!(group_result.test_pass_count, 1);
+        }
+        _ => panic!("Expected Group result"),
+    }
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+#[serial]
+async fn test_group_setup_error() {
+    let mut group = make_group(
+        "grp-1",
+        "Group",
+        vec![RequestEntry::Request(make_request(
+            "req-1",
+            "Child",
+            "http://localhost:1/",
+        ))],
+        ExecutionConcurrency::Sequential,
+    );
+    group.setup = Some("throw new Error('group boom')".to_string());
+
+    let ws = build_workspace(vec![RequestEntry::Group(group)]);
+    let ctx = build_context(ws, None);
+
+    let results = ctx.run(vec!["grp-1".to_string()]).await;
+    let result = results.into_iter().next().unwrap();
+    assert!(matches!(
+        result,
+        Err(ApicizeError::FailedSetup { description }) if description == "group boom"
+    ));
+}
+
+#[test]
+fn test_stored_request_setup_round_trip() {
+    let req = make_request_with_setup("req-1", "Stored", "http://x", "output('a', 1)", None);
+    let stored = StoredRequestEntry::from(RequestEntry::Request(req));
+    let json = serde_json::to_string(&stored).unwrap();
+    assert!(json.contains(r#""setup":"output('a', 1)""#));
+    let restored = RequestEntry::from(serde_json::from_str::<StoredRequestEntry>(&json).unwrap());
+    match restored {
+        RequestEntry::Request(r) => assert_eq!(r.setup.as_deref(), Some("output('a', 1)")),
+        _ => panic!("Expected request"),
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn test_setup_script_is_not_substituted() {
+    let mut server = mockito::Server::new_async().await;
+    let mock = server
+        .mock("GET", "/api/modified")
+        .with_status(200)
+        .create_async()
+        .await;
+
+    // Group output "path" is available before the request's setup runs; the setup script's
+    // literal "{{path}}" strings should not be substituted
+    let req = make_request_with_setup(
+        "req-1",
+        "Child",
+        &format!("{}/api/{{{{path}}}}", server.url()),
+        r#"
+        output('literal', '{{path}}')
+        request.url = request.url.replace('{{path}}', 'modified')
+        "#,
+        Some(
+            r#"
+            describe('setup', () => {
+                it('was not substituted', () => {
+                    expect($.literal).to.equal('{{' + 'path}}')
+                    expect($.path).to.equal('from-group')
+                })
+            })
+            "#,
+        ),
+    );
+    let mut group = make_group(
+        "grp-1",
+        "Group",
+        vec![RequestEntry::Request(req)],
+        ExecutionConcurrency::Sequential,
+    );
+    group.setup = Some("output('path', 'from-group')".to_string());
+
+    let ws = build_workspace(vec![RequestEntry::Group(group)]);
+    let ctx = build_context(ws, None);
+
+    let results = ctx.run(vec!["grp-1".to_string()]).await;
+    match results.into_iter().next().unwrap().unwrap() {
+        ApicizeResult::Group(group_result) => {
+            assert!(group_result.success);
+            assert_eq!(group_result.test_pass_count, 1);
+        }
+        _ => panic!("Expected Group result"),
+    }
+    mock.assert_async().await;
+}
+
+/// Helper to build a single-variable plain scenario index
+fn make_scenarios(id: &str, var_name: &str, var_value: &str) -> IndexedEntities<Scenario> {
+    <IndexedEntities<Scenario> as PersistedIndex<Scenario>>::new(
+        Some(vec![Scenario::Plain(Box::new(ScenarioPlain {
+            id: id.to_string(),
+            name: "Scenario".to_string(),
+            variables: Some(vec![Variable {
+                name: var_name.to_string(),
+                source_type: VariableSourceType::Text,
+                value: var_value.to_string(),
+                disabled: None,
+            }]),
+            validation_state: Default::default(),
+            validation_warnings: None,
+            validation_errors: None,
+        }))]),
+        None,
+        None,
+    )
+}
+
+#[tokio::test]
+#[serial]
+async fn test_setup_output_overrides_scenario() {
+    let mut server = mockito::Server::new_async().await;
+    let mock = server
+        .mock("GET", "/api/from-output")
+        .with_status(200)
+        .create_async()
+        .await;
+
+    let mut req = make_request_with_setup(
+        "req-1",
+        "Precedence",
+        &format!("{}/api/{{{{x}}}}", server.url()),
+        r#"
+        if ($.x !== 'from-scenario') throw new Error(`expected scenario value, got ${$.x}`)
+        output('x', 'from-output')
+        "#,
+        Some(
+            r#"
+            describe('precedence', () => {
+                it('output overrides scenario', () => {
+                    expect($.x).to.equal('from-output')
+                    expect(scenario.x).to.equal('from-scenario')
+                })
+            })
+            "#,
+        ),
+    );
+    req.selected_scenario = Selection {
+        id: "scn-1".to_string(),
+        name: "Scenario".to_string(),
+    };
+
+    let mut ws = build_workspace(vec![RequestEntry::Request(req)]);
+    ws.scenarios = make_scenarios("scn-1", "x", "from-scenario");
+    let ctx = build_context(ws, None);
+
+    let results = ctx.run(vec!["req-1".to_string()]).await;
+    let execution = get_execution(results.into_iter().next().unwrap().unwrap());
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    assert!(execution.success);
+    assert_eq!(execution.test_pass_count, 1);
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+#[serial]
+async fn test_output_overrides_scenario_for_subsequent_requests() {
+    let mut server = mockito::Server::new_async().await;
+    let mock_scenario = server
+        .mock("GET", "/api/from-scenario")
+        .with_status(200)
+        .expect(1)
+        .create_async()
+        .await;
+    let mock_output = server
+        .mock("GET", "/api/from-output")
+        .with_status(200)
+        .expect(2)
+        .create_async()
+        .await;
+
+    let url = format!("{}/api/{{{{x}}}}", server.url());
+    // First request receives the scenario value, then overrides it via output
+    let req1 = make_request_with_test(
+        "req-1",
+        "First",
+        &url,
+        r#"
+        describe('first', () => {
+            it('receives scenario value', () => {
+                expect($.x).to.equal('from-scenario')
+            })
+        })
+        output('x', 'from-output')
+        "#,
+    );
+    // Second and third requests receive the overridden value
+    let subsequent_test = r#"
+        describe('subsequent', () => {
+            it('receives overridden value', () => {
+                expect($.x).to.equal('from-output')
+            })
+        })
+        "#;
+    let req2 = make_request_with_test("req-2", "Second", &url, subsequent_test);
+    let req3 = make_request_with_test("req-3", "Third", &url, subsequent_test);
+
+    let mut group = make_group(
+        "grp-1",
+        "Group",
+        vec![
+            RequestEntry::Request(req1),
+            RequestEntry::Request(req2),
+            RequestEntry::Request(req3),
+        ],
+        ExecutionConcurrency::Sequential,
+    );
+    group.selected_scenario = Selection {
+        id: "scn-1".to_string(),
+        name: "Scenario".to_string(),
+    };
+
+    let mut ws = build_workspace(vec![RequestEntry::Group(group)]);
+    ws.scenarios = make_scenarios("scn-1", "x", "from-scenario");
+    let ctx = build_context(ws, None);
+
+    let results = ctx.run(vec!["grp-1".to_string()]).await;
+    match results.into_iter().next().unwrap().unwrap() {
+        ApicizeResult::Group(group_result) => {
+            assert!(group_result.success);
+            assert_eq!(group_result.test_pass_count, 3);
+            assert_eq!(group_result.test_fail_count, 0);
+        }
+        _ => panic!("Expected Group result"),
+    }
+    mock_scenario.assert_async().await;
+    mock_output.assert_async().await;
+}
+
+#[tokio::test]
+#[serial]
+async fn test_setup_raw_body_and_base64() {
+    let mut server = mockito::Server::new_async().await;
+    let mock = server
+        .mock("POST", "/api/raw")
+        .match_header("authorization", "Basic dXNlcjpwYXNz")
+        .match_body(vec![0u8, 1, 254, 255])
+        .with_status(200)
+        .create_async()
+        .await;
+
+    let req = make_request_with_setup(
+        "req-1",
+        "Raw",
+        &format!("{}/api/raw", server.url()),
+        r#"
+        request.method = 'POST'
+        request.setHeader('Authorization', `Basic ${btoa('user:pass')}`)
+        request.body = { type: BodyType.Raw, data: new Uint8Array([0, 1, 254, 255]) }
+        "#,
+        None,
+    );
+    let ws = build_workspace(vec![RequestEntry::Request(req)]);
+    let ctx = build_context(ws, None);
+
+    let results = ctx.run(vec!["req-1".to_string()]).await;
+    let execution = get_execution(results.into_iter().next().unwrap().unwrap());
+    assert!(execution.error.is_none(), "{:?}", execution.error);
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+#[serial]
+async fn test_setup_null_request_fails() {
+    let req = make_request_with_setup(
+        "req-1",
+        "Null Request",
+        "http://localhost:1/",
+        "request = null",
+        None,
+    );
+    let ws = build_workspace(vec![RequestEntry::Request(req)]);
+    let ctx = build_context(ws, None);
+
+    let results = ctx.run(vec!["req-1".to_string()]).await;
+    let execution = get_execution(results.into_iter().next().unwrap().unwrap());
+    assert_eq!(
+        execution.error,
+        Some(ApicizeError::FailedSetup {
+            description: "request must be an object".to_string()
+        })
+    );
 }

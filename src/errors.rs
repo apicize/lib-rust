@@ -58,6 +58,9 @@ pub enum ApicizeError {
     FailedTest {
         description: String,
     },
+    FailedSetup {
+        description: String,
+    },
     Csv {
         description: String,
     },
@@ -133,6 +136,9 @@ impl Display for ApicizeError {
             }
             ApicizeError::InvalidId { description } => write!(f, "Invalid ID - {description}"),
             ApicizeError::FailedTest { description } => write!(f, "Failed test - {description}"),
+            ApicizeError::FailedSetup { description } => {
+                write!(f, "Failed setup - {description}")
+            }
             ApicizeError::Csv { description } => write!(f, "CSV Error - {description}"),
         }
     }
@@ -230,6 +236,10 @@ impl ApicizeError {
         ApicizeError::FailedTest { description }
     }
 
+    pub fn from_failed_setup(description: String) -> ApicizeError {
+        ApicizeError::FailedSetup { description }
+    }
+
     pub fn get_label(&self) -> &str {
         match &self {
             ApicizeError::Error { .. } => "Error",
@@ -240,6 +250,7 @@ impl ApicizeError {
             ApicizeError::OAuth2Client { .. } => "OAuth2 Token Error",
             ApicizeError::Async { .. } => "Task Error",
             ApicizeError::FailedTest { .. } => "Failed Test",
+            ApicizeError::FailedSetup { .. } => "Failed Setup",
             ApicizeError::FileAccess { .. } => "File IO",
             ApicizeError::Serialization { .. } => "Failed Serialization/Deserialization",
             ApicizeError::InvalidId { .. } => "Invalid ID",

@@ -125,6 +125,9 @@ pub struct Request {
     /// Execution of multiple runs
     #[serde(default)]
     pub multi_run_execution: ExecutionConcurrency,
+    /// Setup script to execute before dispatching request (can modify request)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub setup: Option<String>,
     /// Test to execute after dispatching request and receiving response
     #[serde(skip_serializing_if = "Option::is_none")]
     pub test: Option<String>,
@@ -328,6 +331,7 @@ impl Default for Request {
             key: Default::default(),
             validation_state: Default::default(),
             // execution_state: Default::default(),
+            setup: None,
             test: Some(
                 r#"describe('status', () => {
     it('equals 200', () => {
@@ -715,6 +719,9 @@ pub struct StoredRequest {
     /// Optional identifier for the Apicize Request
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
+    /// Setup script to execute before dispatching request (can modify request)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub setup: Option<String>,
     /// Test to execute after dispatching request and receiving response
     #[serde(skip_serializing_if = "Option::is_none")]
     pub test: Option<String>,
@@ -863,6 +870,7 @@ impl From<RequestEntry> for StoredRequestEntry {
                     name: request.name,
                     disabled: request.disabled,
                     key: request.key,
+                    setup: request.setup,
                     test: request.test,
                     url: request.url,
                     method: request.method,
@@ -956,6 +964,7 @@ impl From<StoredRequestEntry> for RequestEntry {
                 key: stored_request.key,
                 validation_state: Default::default(),
                 // execution_state: Default::default(),
+                setup: stored_request.setup,
                 test: stored_request.test,
                 url: stored_request.url,
                 method: stored_request.method,

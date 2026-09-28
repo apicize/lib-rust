@@ -88,10 +88,13 @@ pub async fn get_oauth2_client_credentials<'a>(
     }
 
     // Retrieve an access token
+    let token_uri =
+        TokenUrl::new(String::from(token_url)).map_err(|err| ApicizeError::OAuth2Client {
+            description: err.to_string(),
+            context: Some(format!("Unable to parse OAuth token URL \"{token_url}\"")),
+        })?;
     let mut client = BasicClient::new(ClientId::new(String::from(client_id)))
-        .set_token_uri(
-            TokenUrl::new(String::from(token_url)).expect("Unable to parse OAuth token URL"),
-        )
+        .set_token_uri(token_uri)
         .set_auth_type(if send_credentials_in_body {
             AuthType::RequestBody
         } else {

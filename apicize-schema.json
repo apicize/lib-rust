@@ -89,6 +89,10 @@
           "type": "string",
           "description": "Optional key identifier"
         },
+        "setup": {
+          "type": "string",
+          "description": "JavaScript setup code to run before dispatching the request (can modify url, method, headers, query string parameters and body)"
+        },
         "test": {
           "type": "string",
           "description": "JavaScript test code to run against the response"

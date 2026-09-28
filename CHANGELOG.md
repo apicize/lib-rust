@@ -1,5 +1,17 @@
 # Change Log
 
+## 0.45.0
+
+* Add optional request `setup` script, executed in a new setup sandbox (no Chai), which can modify the request's URL, method, headers, query string parameters and body;  `output()` values are available for `{{variable}}` substitution, the request's test and subsequent requests
+* Add `btoa`, `atob` and `base64` helpers to the setup sandbox
+* Setup script `request.headers` and `request.queryStringParams` can be read, set and deleted by name (e.g. `request.headers['X-Id'] = '1'`) in addition to array operations
+* **Breaking:** Group `setup` scripts now execute in the setup sandbox, so `describe`, `it`, `tag` and Chai functions are no longer available
+* **Breaking:** Add `ApicizeError::FailedSetup` variant
+* **Breaking:** Output values now take precedence over scenario variables for `$` in test scripts (scenario < output < data), matching `{{variable}}` substitution
+* Fix panic for invalid OAuth URL
+* Fix panic for invalid header names or values (request, setup and API key headers)
+* Move `test-framework` to `script-frameworks/test` and add `script-frameworks/setup`
+
 ## 0.44.2
 
 * Resolve handlebars replacement issue with escaped quotes

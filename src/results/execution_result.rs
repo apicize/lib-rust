@@ -202,9 +202,7 @@ impl ExecutionResultBuilder {
             output: None,
         };
 
-        let detail: ExecutionResultDetail;
-
-        match result.content {
+        let detail = match result.content {
             ApicizeRequestResultContent::Rows { rows } => {
                 let child_exec_ctrs =
                     self.append_request_result_rows(&result.id, context, rows, &mut result_context);
@@ -215,7 +213,7 @@ impl ExecutionResultBuilder {
                 summary.request_failure_count = result.request_failure_count;
                 summary.request_error_count = result.request_error_count;
                 summary.output = Self::generate_output(&result.data_context.output);
-                detail = ExecutionResultDetail::Grouped(Box::new(ExecutionResultDetailGroup {
+                ExecutionResultDetail::Grouped(Box::new(ExecutionResultDetailGroup {
                     exec_ctr,
                     group_id: identifiers.id.clone(),
                     name: identifiers.title.clone(),
@@ -232,7 +230,7 @@ impl ExecutionResultBuilder {
                     request_error_count: result.request_error_count,
                     test_pass_count: result.test_pass_count,
                     test_fail_count: result.test_fail_count,
-                }));
+                }))
             }
             ApicizeRequestResultContent::Runs { runs } => {
                 let child_exec_ctrs = self.append_request_result_runs(
@@ -249,7 +247,7 @@ impl ExecutionResultBuilder {
                 summary.request_failure_count = result.request_failure_count;
                 summary.request_error_count = result.request_error_count;
                 summary.output = Self::generate_output(&result.data_context.output);
-                detail = ExecutionResultDetail::Grouped(Box::new(ExecutionResultDetailGroup {
+                ExecutionResultDetail::Grouped(Box::new(ExecutionResultDetailGroup {
                     exec_ctr,
                     group_id: identifiers.id.clone(),
                     name: identifiers.title.clone(),
@@ -266,7 +264,7 @@ impl ExecutionResultBuilder {
                     request_error_count: result.request_error_count,
                     test_pass_count: result.test_pass_count,
                     test_fail_count: result.test_fail_count,
-                }));
+                }))
             }
             ApicizeRequestResultContent::Execution { execution } => {
                 let (status, status_text, has_response_headers, response_body_length) =
@@ -284,7 +282,7 @@ impl ExecutionResultBuilder {
                 summary.request_failure_count = result.request_failure_count;
                 summary.request_error_count = result.request_error_count;
                 summary.output = Self::generate_output(&execution.output_variables);
-                detail = ExecutionResultDetail::Request(Box::new(ExecutionResultDetailRequest {
+                ExecutionResultDetail::Request(Box::new(ExecutionResultDetailRequest {
                     exec_ctr,
                     request_id: identifiers.id.to_string(),
                     name: identifiers.title.clone(),
@@ -309,9 +307,9 @@ impl ExecutionResultBuilder {
                     request_error_count: result.request_error_count,
                     test_pass_count: result.test_pass_count,
                     test_fail_count: result.test_fail_count,
-                }));
+                }))
             }
-        }
+        };
 
         self.results.insert(exec_ctr, (summary, detail));
         exec_ctr

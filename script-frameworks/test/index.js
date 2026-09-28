@@ -275,7 +275,7 @@ runTestSuite = (request1, response1, variables1, data1, output1, testOffset1, te
     data = data1 ?? {}
     outputVars = output1 ?? {}
 
-    $ = { ...outputVars, ...scenario, ...data }
+    $ = { ...scenario, ...outputVars, ...data } // output overrides scenario, data overrides both
     variables = $ // retain variables for some level of backward compatibility
 
     testOffset = testOffset1

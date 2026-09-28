@@ -17,3 +17,16 @@ test('processes tag substitution', () => {
     expect(testOk.success).to.equal(true)
 })
 
+
+test('$ precedence is scenario < output < data', () => {
+    const response = runTestSuite({}, {}, { a: 'scenario', b: 'scenario', c: 'scenario' },
+        { c: 'data' }, { b: 'output', c: 'output' }, 0, () => {
+            output('a2', $.a)
+            output('b2', $.b)
+            output('c2', $.c)
+        })
+    const result = JSON.parse(response).output
+    expect(result.a2).to.equal('scenario')
+    expect(result.b2).to.equal('output')
+    expect(result.c2).to.equal('data')
+})
