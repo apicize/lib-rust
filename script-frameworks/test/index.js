@@ -41,6 +41,9 @@ jsonpath = jpp.JSONPath;
 // xpath = require('xpath');
 // dom = xmldom.DOMParser;
 
+// Base64 helpers (btoa, atob, base64)
+require('../shared/base64');
+
 // Helper function to jsonpath-plus
 function jpath(param) {
     if (typeof param === 'object') {

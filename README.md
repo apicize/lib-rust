@@ -38,6 +38,8 @@ The following variables and functions are available in the testing sandbox:
 * **expect** / **should**:  Exported functions of [Chai's BDD assertion style](https://www.chaijs.com/api/bdd/)
 * **jsonpath**:  An exported function of [JSONPath Plus](https://www.npmjs.com/package/jsonpath-plus); also added as a `jp` function to JavaScript types
 * **output**: Call to output a value and make available to the next request in a group (ex. `output('id', 12345)`)
+* **btoa** / **atob**:  Browser-style base64 encoding/decoding of binary (Latin-1) strings
+* **base64**:  `base64.encode(value)` encodes a string (as UTF-8), array, typed array or `ArrayBuffer`;  `base64.decode(value)` returns a `Uint8Array`;  `base64.decodeText(value)` returns a UTF-8 string
 
 ### Setup Scripts
 
@@ -55,8 +57,7 @@ The following variables and functions are available in the setup sandbox:
 * **jsonpath**:  Same as in tests
 * **output**:  Call to output a value, making it available for `{{variable}}` substitution in the request, to the request's test and to the next request in a group
 * **console**:  Log functions, logs are included with request execution logs
-* **btoa** / **atob**:  Browser-style base64 encoding/decoding of binary (Latin-1) strings
-* **base64**:  `base64.encode(value)` encodes a string (as UTF-8), array, typed array or `ArrayBuffer`;  `base64.decode(value)` returns a `Uint8Array`;  `base64.decodeText(value)` returns a UTF-8 string
+* **btoa** / **atob** / **base64**:  Same as in tests
 
 ### Variable Precedence
 

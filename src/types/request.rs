@@ -954,77 +954,116 @@ impl From<RequestEntry> for StoredRequestEntry {
     }
 }
 
+/// Move any query string parameters included in a URL to the list of query string parameters,
+/// ahead of any existing parameters (matching the order they would be dispatched in).
+/// Names and values are URL-decoded, since they are encoded when dispatched
+fn move_url_query_to_params(
+    url: String,
+    query_string_params: Option<Vec<NameValuePair>>,
+) -> (String, Option<Vec<NameValuePair>>) {
+    let (without_fragment, fragment) = match url.find('#') {
+        Some(i) => url.split_at(i),
+        None => (url.as_str(), ""),
+    };
+    let Some((base, query)) = without_fragment.split_once('?') else {
+        return (url, query_string_params);
+    };
+
+    let mut params: Vec<NameValuePair> = form_urlencoded::parse(query.as_bytes())
+        .map(|(name, value)| NameValuePair {
+            name: name.into_owned(),
+            value: value.into_owned(),
+            disabled: None,
+        })
+        .collect();
+
+    let new_url = format!("{base}{fragment}");
+    if params.is_empty() {
+        return (new_url, query_string_params);
+    }
+    if let Some(existing) = query_string_params {
+        params.extend(existing);
+    }
+    (new_url, Some(params))
+}
+
 impl From<StoredRequestEntry> for RequestEntry {
     fn from(stored_entry: StoredRequestEntry) -> Self {
         match stored_entry {
-            StoredRequestEntry::Request(stored_request) => RequestEntry::Request(Request {
-                id: stored_request.id,
-                name: stored_request.name,
-                disabled: stored_request.disabled,
-                key: stored_request.key,
-                validation_state: Default::default(),
-                // execution_state: Default::default(),
-                setup: stored_request.setup,
-                test: stored_request.test,
-                url: stored_request.url,
-                method: stored_request.method,
-                timeout: stored_request.timeout,
-                headers: stored_request.headers,
-                query_string_params: stored_request.query_string_params,
-                body: match stored_request.body {
-                    Some(body) => match body {
-                        StoredRequestBody::Text { data } => Some(RequestBody::Text { data }),
-                        StoredRequestBody::JSON(json) => {
-                            let result_data: Option<String>;
-                            if let Some(s) = json.formatted {
-                                result_data = Some(s);
-                            } else if let Some(v) = json.data {
-                                if let Ok(s) = serde_json::to_string_pretty(&v) {
+            StoredRequestEntry::Request(stored_request) => {
+                let (url, query_string_params) = move_url_query_to_params(
+                    stored_request.url,
+                    stored_request.query_string_params,
+                );
+                RequestEntry::Request(Request {
+                    id: stored_request.id,
+                    name: stored_request.name,
+                    disabled: stored_request.disabled,
+                    key: stored_request.key,
+                    validation_state: Default::default(),
+                    // execution_state: Default::default(),
+                    setup: stored_request.setup,
+                    test: stored_request.test,
+                    url,
+                    method: stored_request.method,
+                    timeout: stored_request.timeout,
+                    headers: stored_request.headers,
+                    query_string_params,
+                    body: match stored_request.body {
+                        Some(body) => match body {
+                            StoredRequestBody::Text { data } => Some(RequestBody::Text { data }),
+                            StoredRequestBody::JSON(json) => {
+                                let result_data: Option<String>;
+                                if let Some(s) = json.formatted {
                                     result_data = Some(s);
+                                } else if let Some(v) = json.data {
+                                    if let Ok(s) = serde_json::to_string_pretty(&v) {
+                                        result_data = Some(s);
+                                    } else {
+                                        result_data = None;
+                                    }
                                 } else {
                                     result_data = None;
                                 }
-                            } else {
-                                result_data = None;
-                            }
 
-                            result_data.map(|d| RequestBody::JSON { data: d })
-                        }
-                        StoredRequestBody::XML { formatted } => Some(RequestBody::XML {
-                            data: match formatted {
-                                Some(text) => text,
-                                None => "".to_string(),
-                            },
-                        }),
-                        StoredRequestBody::GraphQL { query, extensions } => {
-                            Some(RequestBody::GraphQL {
-                                data: GraphQLData {
-                                    query,
-                                    extensions: extensions.and_then(|json| {
-                                        json.formatted
-                                            .or_else(|| json.data.map(|data| data.to_string()))
-                                    }),
+                                result_data.map(|d| RequestBody::JSON { data: d })
+                            }
+                            StoredRequestBody::XML { formatted } => Some(RequestBody::XML {
+                                data: match formatted {
+                                    Some(text) => text,
+                                    None => "".to_string(),
                                 },
-                            })
-                        }
-                        StoredRequestBody::Form { data } => Some(RequestBody::Form { data }),
-                        StoredRequestBody::Raw { data } => Some(RequestBody::Raw { data }),
+                            }),
+                            StoredRequestBody::GraphQL { query, extensions } => {
+                                Some(RequestBody::GraphQL {
+                                    data: GraphQLData {
+                                        query,
+                                        extensions: extensions.and_then(|json| {
+                                            json.formatted
+                                                .or_else(|| json.data.map(|data| data.to_string()))
+                                        }),
+                                    },
+                                })
+                            }
+                            StoredRequestBody::Form { data } => Some(RequestBody::Form { data }),
+                            StoredRequestBody::Raw { data } => Some(RequestBody::Raw { data }),
+                        },
+                        None => None,
                     },
-                    None => None,
-                },
-                keep_alive: stored_request.keep_alive,
-                accept_invalid_certs: stored_request.accept_invalid_certs,
-                number_of_redirects: stored_request.number_of_redirects,
-                runs: stored_request.runs,
-                multi_run_execution: stored_request.multi_run_execution,
-                selected_scenario: stored_request.selected_scenario,
-                selected_authorization: stored_request.selected_authorization,
-                selected_certificate: stored_request.selected_certificate,
-                selected_proxy: stored_request.selected_proxy,
-                selected_data: stored_request.selected_data,
-                validation_warnings: None,
-                validation_errors: None,
-            }),
+                    keep_alive: stored_request.keep_alive,
+                    accept_invalid_certs: stored_request.accept_invalid_certs,
+                    number_of_redirects: stored_request.number_of_redirects,
+                    runs: stored_request.runs,
+                    multi_run_execution: stored_request.multi_run_execution,
+                    selected_scenario: stored_request.selected_scenario,
+                    selected_authorization: stored_request.selected_authorization,
+                    selected_certificate: stored_request.selected_certificate,
+                    selected_proxy: stored_request.selected_proxy,
+                    selected_data: stored_request.selected_data,
+                    validation_warnings: None,
+                    validation_errors: None,
+                })
+            }
             StoredRequestEntry::Group(stored_group) => RequestEntry::Group(RequestGroup {
                 id: stored_group.id,
                 name: stored_group.name,
@@ -1085,5 +1124,99 @@ impl GraphQLData {
             map.insert("extensions".to_string(), serde_json::json!(ext));
         }
         json!(map)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn open_request(url: &str, query_string_params: Option<Value>) -> Request {
+        let mut stored = json!({ "id": "r1", "name": "Test", "url": url });
+        if let Some(q) = query_string_params {
+            stored["queryStringParams"] = q;
+        }
+        let stored: StoredRequestEntry = serde_json::from_value(stored).unwrap();
+        match RequestEntry::from(stored) {
+            RequestEntry::Request(request) => request,
+            RequestEntry::Group(_) => panic!("Expected request"),
+        }
+    }
+
+    fn pairs(params: &Option<Vec<NameValuePair>>) -> Vec<(&str, &str, Option<bool>)> {
+        params
+            .iter()
+            .flatten()
+            .map(|p| (p.name.as_str(), p.value.as_str(), p.disabled))
+            .collect()
+    }
+
+    #[test]
+    fn test_open_moves_url_query_to_params() {
+        let request = open_request("https://example.com/api?a=1&b=two", None);
+        assert_eq!(request.url, "https://example.com/api");
+        assert_eq!(
+            pairs(&request.query_string_params),
+            vec![("a", "1", None), ("b", "two", None)]
+        );
+    }
+
+    #[test]
+    fn test_open_places_url_query_before_existing_params() {
+        let request = open_request(
+            "https://example.com/?a=1",
+            Some(json!([{ "name": "b", "value": "2", "disabled": true }])),
+        );
+        assert_eq!(request.url, "https://example.com/");
+        assert_eq!(
+            pairs(&request.query_string_params),
+            vec![("a", "1", None), ("b", "2", Some(true))]
+        );
+    }
+
+    #[test]
+    fn test_open_decodes_url_query_and_keeps_substitutions() {
+        let request = open_request(
+            "https://{{host}}/search?q=hello%20world&x=a+b&token={{token}}&flag",
+            None,
+        );
+        assert_eq!(request.url, "https://{{host}}/search");
+        assert_eq!(
+            pairs(&request.query_string_params),
+            vec![
+                ("q", "hello world", None),
+                ("x", "a b", None),
+                ("token", "{{token}}", None),
+                ("flag", "", None)
+            ]
+        );
+    }
+
+    #[test]
+    fn test_open_keeps_url_fragment() {
+        let request = open_request("https://example.com/page?a=1#section", None);
+        assert_eq!(request.url, "https://example.com/page#section");
+        assert_eq!(pairs(&request.query_string_params), vec![("a", "1", None)]);
+
+        let request = open_request("https://example.com/page#section?a=1", None);
+        assert_eq!(request.url, "https://example.com/page#section?a=1");
+        assert!(request.query_string_params.is_none());
+    }
+
+    #[test]
+    fn test_open_removes_empty_url_query() {
+        let request = open_request("https://example.com/?", None);
+        assert_eq!(request.url, "https://example.com/");
+        assert!(request.query_string_params.is_none());
+    }
+
+    #[test]
+    fn test_open_leaves_url_without_query_unchanged() {
+        let request = open_request(
+            "https://example.com/api",
+            Some(json!([{ "name": "a", "value": "1" }])),
+        );
+        assert_eq!(request.url, "https://example.com/api");
+        assert_eq!(pairs(&request.query_string_params), vec![("a", "1", None)]);
     }
 }

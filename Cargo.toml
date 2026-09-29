@@ -1,6 +1,6 @@
 [package]
 name = "apicize_lib"
-version = "0.45.0"
+version = "0.46.0"
 edition = "2024"
 rust-version = "1.94"
 description = "Library supporting Apicize request dispatch, testing and serialization"
@@ -42,6 +42,7 @@ rand = "0.10.0"
 base64 = "^0.22.1"
 serde_repr = "0.1"
 tempfile = "3"
+form_urlencoded = "1.2"
 
 [dev-dependencies]
 mockall = "^0.14.0"

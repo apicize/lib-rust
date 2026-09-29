@@ -1,5 +1,10 @@
 # Change Log
 
+## 0.46.0
+
+* Add `btoa`, `atob` and `base64` helpers to the test sandbox (shared with the setup sandbox via `script-frameworks/shared`)
+* When opening a workbook, query string parameters included in a request's URL are moved to the request's query string parameters
+
 ## 0.45.0
 
 * Add optional request `setup` script, executed in a new setup sandbox (no Chai), which can modify the request's URL, method, headers, query string parameters and body;  `output()` values are available for `{{variable}}` substitution, the request's test and subsequent requests
