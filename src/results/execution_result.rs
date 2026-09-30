@@ -1,6 +1,9 @@
 use indexmap::{IndexMap, IndexSet};
 use serde_json::{Map, Value};
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use crate::{
     ApicizeBody, ApicizeError, ApicizeExecution, ApicizeGroupResult, ApicizeGroupResultContent,
@@ -726,7 +729,40 @@ impl ExecutionResultBuilder {
                 results.push(id.to_string())
             }
         }
+        if !results.is_empty() {
+            self.prune_unreferenced_results();
+        }
         results
+    }
+
+    /// Drop stored results that are no longer reachable from the index (directly or
+    /// via parent/child links), so that re-executions do not accumulate stale results
+    fn prune_unreferenced_results(&mut self) {
+        let mut reachable = HashSet::<usize>::with_capacity(self.results.len());
+        let mut pending = self
+            .executing_request_index
+            .values()
+            .flat_map(|executions| executions.values())
+            .flatten()
+            .copied()
+            .collect::<Vec<usize>>();
+
+        while let Some(exec_ctr) = pending.pop() {
+            if !reachable.insert(exec_ctr) {
+                continue;
+            }
+            if let Some((summary, _)) = self.results.get(&exec_ctr) {
+                if let Some(parent_exec_ctr) = summary.parent_exec_ctr {
+                    pending.push(parent_exec_ctr);
+                }
+                if let Some(child_exec_ctrs) = &summary.child_exec_ctrs {
+                    pending.extend(child_exec_ctrs.iter().copied());
+                }
+            }
+        }
+
+        self.results
+            .retain(|exec_ctr, _| reachable.contains(exec_ctr));
     }
 
     /// Add request index entry, storing which request the execution was returned from
@@ -1173,6 +1209,10 @@ mod tests {
     // ========================================================================
 
     fn make_test_context() -> TestRunnerContext {
+        make_test_context_for("test-exec")
+    }
+
+    fn make_test_context_for(executing_request_or_group_id: &str) -> TestRunnerContext {
         let workspace = Workspace {
             private_lock_status: ParameterLockStatus::UnlockedNoPassword,
             vault_lock_status: ParameterLockStatus::UnlockedNoPassword,
@@ -1196,7 +1236,7 @@ mod tests {
         TestRunnerContext::new(TestRunnerContextInit {
             workspace,
             cancellation: None,
-            executing_request_or_group_id: "test-exec",
+            executing_request_or_group_id,
             single_run_no_timeout: false,
             allowed_data_path: &None,
             enable_trace: false,
@@ -2010,6 +2050,96 @@ mod tests {
         let test_exec_summaries = summaries.get("test-exec").unwrap();
         assert_eq!(test_exec_summaries.len(), 1);
         assert_eq!(test_exec_summaries[0].name, "Test 2");
+    }
+
+    #[test]
+    fn test_process_result_prunes_replaced_results() {
+        let mut builder = ExecutionResultBuilder::default();
+        let context = make_test_context();
+
+        for _ in 0..5 {
+            let execution =
+                make_execution("Test", Some("GET"), Some("http://test.com"), Some(200), 100);
+            let request = make_request_result_execution("req-1", "Test", execution);
+            builder.process_result(&context, ApicizeResult::Request(Box::new(request)));
+        }
+
+        assert_eq!(builder.results.len(), 1);
+        let summaries = builder.get_summaries("req-1", true);
+        let exec_ctr = summaries.get("test-exec").unwrap()[0].exec_ctr;
+        assert!(builder.get_detail(&exec_ctr).is_ok());
+    }
+
+    #[test]
+    fn test_process_result_prunes_across_group_and_child_executions() {
+        let mut builder = ExecutionResultBuilder::default();
+        let group_context = make_test_context_for("group-1");
+        let child_context = make_test_context_for("req-1");
+
+        let make_group = || {
+            let execution = make_execution(
+                "Request",
+                Some("GET"),
+                Some("http://test.com"),
+                Some(200),
+                100,
+            );
+            let request = make_request_result_execution("req-1", "Request", execution);
+            make_group_result_with_results(
+                "group-1",
+                "Group",
+                vec![ApicizeResult::Request(Box::new(request))],
+            )
+        };
+        let make_child = || {
+            let execution = make_execution(
+                "Request",
+                Some("GET"),
+                Some("http://test.com"),
+                Some(200),
+                100,
+            );
+            make_request_result_execution("req-1", "Request", execution)
+        };
+
+        builder.process_result(&group_context, ApicizeResult::Group(Box::new(make_group())));
+        let group_result_count = builder.results.len();
+
+        builder.process_result(
+            &child_context,
+            ApicizeResult::Request(Box::new(make_child())),
+        );
+        let with_child_count = builder.results.len();
+        assert!(with_child_count > group_result_count);
+
+        // Re-running the group and child replaces, but does not remove, each other's results
+        for _ in 0..3 {
+            builder.process_result(&group_context, ApicizeResult::Group(Box::new(make_group())));
+            builder.process_result(
+                &child_context,
+                ApicizeResult::Request(Box::new(make_child())),
+            );
+        }
+        assert_eq!(builder.results.len(), with_child_count);
+
+        // Every indexed result (and its parent/child links) must still resolve
+        for executions in builder.executing_request_index.values() {
+            for exec_ctr in executions.values().flatten() {
+                let (summary, _) = builder.get_result(exec_ctr).unwrap();
+                if let Some(parent_exec_ctr) = summary.parent_exec_ctr {
+                    assert!(builder.get_result(&parent_exec_ctr).is_ok());
+                }
+                for child_exec_ctr in summary.child_exec_ctrs.iter().flatten() {
+                    assert!(builder.get_result(child_exec_ctr).is_ok());
+                }
+            }
+        }
+
+        // Clearing the child's own execution leaves the group's results intact
+        builder.delete_indexed_request_results("req-1");
+        assert_eq!(builder.results.len(), group_result_count);
+        let group_summaries = builder.get_summaries("req-1", true);
+        assert!(group_summaries.contains_key("group-1"));
     }
 
     #[test]
