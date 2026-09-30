@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.46.1
+
+* Fix `ExecutionResultBuilder` retaining results of replaced executions; results no longer referenced after re-running or clearing a request/group are released
+
 ## 0.46.0
 
 * Add `btoa`, `atob` and `base64` helpers to the test sandbox (shared with the setup sandbox via `script-frameworks/shared`)
