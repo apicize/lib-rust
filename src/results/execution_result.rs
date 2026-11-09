@@ -5,10 +5,10 @@ use std::{collections::HashMap, sync::Arc};
 use crate::{
     ApicizeBody, ApicizeError, ApicizeExecution, ApicizeGroupResult, ApicizeGroupResultContent,
     ApicizeGroupResultRow, ApicizeGroupResultRowContent, ApicizeGroupResultRun,
-    ApicizeRequestResult, ApicizeRequestResultContent, ApicizeRequestResultRow,
-    ApicizeRequestResultRowContent, ApicizeRequestResultRun, ApicizeResult, ExecutionResultDetail,
-    ExecutionResultDetailGroup, ExecutionResultDetailRequest, ExecutionResultSuccess,
-    ExecutionResultSummary, Identifiable, Tally, TestRunnerContext,
+    ApicizeMultipartValue, ApicizeRequestResult, ApicizeRequestResultContent,
+    ApicizeRequestResultRow, ApicizeRequestResultRowContent, ApicizeRequestResultRun,
+    ApicizeResult, ExecutionResultDetail, ExecutionResultDetailGroup, ExecutionResultDetailRequest,
+    ExecutionResultSuccess, ExecutionResultSummary, Identifiable, Tally, TestRunnerContext,
 };
 
 pub type ExecutionResult = (ExecutionResultSummary, ExecutionResultDetail);
@@ -1139,6 +1139,13 @@ fn get_response_info(
                     ApicizeBody::JSON { text, .. } => text.len(),
                     ApicizeBody::XML { text, .. } => text.len(),
                     ApicizeBody::Form { text, .. } => text.len(),
+                    ApicizeBody::Multipart { data } => data
+                        .values()
+                        .map(|v| match v {
+                            ApicizeMultipartValue::Text(text) => text.len(),
+                            ApicizeMultipartValue::File { size, .. } => *size,
+                        })
+                        .sum(),
                     ApicizeBody::Binary { data } => data.len(),
                 },
                 None => 0,

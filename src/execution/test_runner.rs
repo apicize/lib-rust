@@ -12,6 +12,7 @@ use xmltojson::to_json;
 use async_recursion::async_recursion;
 use encoding_rs::{Encoding, UTF_8};
 use mime::Mime;
+use reqwest::multipart::{Form, Part};
 use reqwest::{Body, Client, Response};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -22,9 +23,9 @@ use tokio_util::sync::CancellationToken;
 use super::{
     ApicizeBody, ApicizeExecution, ApicizeExecutionTestContext, ApicizeGroupResult,
     ApicizeGroupResultContent, ApicizeGroupResultRow, ApicizeGroupResultRun, ApicizeHttpRequest,
-    ApicizeHttpResponse, ApicizeRequestResult, ApicizeRequestResultRun, ApicizeResult,
-    ApicizeTestBehavior, ApicizeTestResponse, ApicizeTestResult, DataContext, DataContextGenerator,
-    GetDataContext, Tally,
+    ApicizeHttpResponse, ApicizeMultipartValue, ApicizeRequestResult, ApicizeRequestResultRun,
+    ApicizeResult, ApicizeTestBehavior, ApicizeTestResponse, ApicizeTestResult, DataContext,
+    DataContextGenerator, GetDataContext, Tally,
 };
 use crate::authorization::AuthorizationPlain;
 use crate::oauth2_client_tokens::TokenResult;
@@ -34,9 +35,9 @@ use crate::workspace::RequestExecutionState;
 use crate::{
     ApicizeError, ApicizeGroupResultRowContent, ApicizeRequestResultContent,
     ApicizeRequestResultRow, ApicizeRequestResultRowContent, Authorization, ExecutionConcurrency,
-    Identifiable, NameValuePair, OAuth2ClientCredentialParameters, Request, RequestBody,
-    RequestEntry, RequestGroup, VariableCache, Workspace, get_oauth2_client_credentials,
-    retrieve_oauth2_token_from_cache,
+    Identifiable, MultipartItemType, NameValuePair, OAuth2ClientCredentialParameters, Request,
+    RequestBody, RequestEntry, RequestGroup, VariableCache, Workspace,
+    get_oauth2_client_credentials, retrieve_oauth2_token_from_cache,
 };
 
 // #[cfg(test)]
@@ -1930,6 +1931,44 @@ async fn dispatch_request(
             });
             request_builder = request_builder.form(&form_data);
         }
+        Some(RequestBody::Multipart { data }) => {
+            let mut form = Form::new();
+            let mut form_data = HashMap::<String, ApicizeMultipartValue>::new();
+            for item in data.iter().filter(|item| item.disabled != Some(true)) {
+                let name = clone_and_sub(&item.name, subs);
+                match item.item_type {
+                    MultipartItemType::Text => {
+                        let value = clone_and_sub(&item.value, subs);
+                        form = form.text(name.clone(), value.clone());
+                        form_data.insert(name, ApicizeMultipartValue::Text(value));
+                    }
+                    MultipartItemType::File => {
+                        let file_name =
+                            clone_and_sub(item.file_name.as_deref().unwrap_or_default(), subs);
+                        let contents = item.data.clone().unwrap_or_default();
+                        let content_type = mime_guess::from_path(&file_name)
+                            .first_or_octet_stream()
+                            .to_string();
+                        let size = contents.len();
+                        let part = Part::bytes(contents)
+                            .file_name(file_name.clone())
+                            .mime_str(&content_type)
+                            .map_err(|err| ApicizeError::from_reqwest(err, None))?;
+                        form = form.part(name.clone(), part);
+                        form_data.insert(
+                            name,
+                            ApicizeMultipartValue::File {
+                                file_name,
+                                content_type,
+                                size,
+                            },
+                        );
+                    }
+                }
+            }
+            request_body = Some(ApicizeBody::Multipart { data: form_data });
+            request_builder = request_builder.multipart(form);
+        }
         Some(RequestBody::Raw { data }) => {
             request_body = Some(ApicizeBody::Binary { data: data.clone() });
             request_builder = request_builder.body(Body::from(data.clone()));
@@ -1955,24 +1994,24 @@ async fn dispatch_request(
         })
         .collect::<HashMap<String, String>>();
     let ref_body = web_request.body_mut();
-    if let Some(data) = ref_body {
-        let bytes = data.as_bytes().unwrap();
-        if !bytes.is_empty() {
-            let request_encoding = UTF_8;
-            let data = bytes.to_vec();
-            match request_body.as_mut() {
-                None => {}
-                Some(ApicizeBody::Binary { .. }) => {}
-                Some(ApicizeBody::Form { text, .. })
-                | Some(ApicizeBody::JSON { text, .. })
-                | Some(ApicizeBody::XML { text, .. })
-                | Some(ApicizeBody::Text { text, .. }) => {
-                    let (decoded, _, malformed) = request_encoding.decode(&data);
-                    *text = if malformed {
-                        "Malformed UTF8".to_string()
-                    } else {
-                        decoded.to_string()
-                    }
+    // Multipart bodies are streamed and will not have bytes available
+    if let Some(bytes) = ref_body.as_ref().and_then(|data| data.as_bytes())
+        && !bytes.is_empty()
+    {
+        let request_encoding = UTF_8;
+        let data = bytes.to_vec();
+        match request_body.as_mut() {
+            None => {}
+            Some(ApicizeBody::Binary { .. }) | Some(ApicizeBody::Multipart { .. }) => {}
+            Some(ApicizeBody::Form { text, .. })
+            | Some(ApicizeBody::JSON { text, .. })
+            | Some(ApicizeBody::XML { text, .. })
+            | Some(ApicizeBody::Text { text, .. }) => {
+                let (decoded, _, malformed) = request_encoding.decode(&data);
+                *text = if malformed {
+                    "Malformed UTF8".to_string()
+                } else {
+                    decoded.to_string()
                 }
             }
         }

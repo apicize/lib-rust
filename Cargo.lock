@@ -89,6 +89,7 @@ dependencies = [
  "hmac",
  "indexmap 2.14.0",
  "mime",
+ "mime_guess",
  "mockall",
  "mockito",
  "npm_rs",

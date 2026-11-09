@@ -19,6 +19,7 @@ futures = "^0.3.29"
 serde_json = { version = "^1.0.108", features = ["preserve_order"] }
 serde = { version = "^1.0.193", features = ["derive"] }
 mime = "^0.3.17"
+mime_guess = "^2.0.5"
 encoding_rs = "^0.8.33"
 serde_with = { version = "^3.16.1", features = ["base64"] }
 async-recursion = "^1.0.5"
