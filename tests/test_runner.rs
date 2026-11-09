@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
 use apicize_lib::{
-    ApicizeError, ApicizeExecution, ApicizeRequestResultContent, ApicizeResult, ApicizeRunner,
-    ExecutionConcurrency, Identifiable, IndexedEntities, NameValuePair, PersistedIndex, Request,
-    RequestBody, RequestEntry, RequestGroup, Scenario, ScenarioPlain, Selection,
+    ApicizeBody, ApicizeError, ApicizeExecution, ApicizeMultipartFormValue,
+    ApicizeRequestResultContent, ApicizeResult, ApicizeRunner, ExecutionConcurrency, Identifiable,
+    IndexedEntities, MultipartFormItem, MultipartFormItemType, NameValuePair, PersistedIndex,
+    Request, RequestBody, RequestEntry, RequestGroup, Scenario, ScenarioPlain, Selection,
     StoredRequestEntry, TestRunnerContext, TestRunnerContextInit, Variable, VariableSourceType,
     WorkbookDefaultParameters, Workspace, workspace::ParameterLockStatus,
 };
@@ -2067,4 +2068,87 @@ async fn test_setup_null_request_fails() {
             description: "request must be an object".to_string()
         })
     );
+}
+
+#[tokio::test]
+#[serial]
+async fn test_multipart_body_sends_text_and_file_items() {
+    let mut server = mockito::Server::new_async().await;
+    let mock = server
+        .mock("POST", "/api/upload")
+        .match_header(
+            "content-type",
+            Matcher::Regex("^multipart/form-data; boundary=".to_string()),
+        )
+        .match_body(Matcher::AllOf(vec![
+            Matcher::Regex(r#"name="title"\r\n\r\nhello\r\n"#.to_string()),
+            Matcher::Regex(
+                r#"name="upload"; filename="notes.txt"\r\nContent-Type: text/plain\r\n\r\nfile contents\r\n"#
+                    .to_string(),
+            ),
+        ]))
+        .with_status(200)
+        .create_async()
+        .await;
+
+    let mut req = make_request(
+        "req-1",
+        "Multipart Request",
+        &format!("{}/api/upload", server.url()),
+    );
+    req.method = Some("POST".to_string());
+    req.body = Some(RequestBody::MultipartForm {
+        data: vec![
+            MultipartFormItem {
+                name: "title".to_string(),
+                item_type: MultipartFormItemType::Text,
+                value: "hello".to_string(),
+                file_name: None,
+                data: None,
+                disabled: None,
+            },
+            MultipartFormItem {
+                name: "upload".to_string(),
+                item_type: MultipartFormItemType::File,
+                value: String::new(),
+                file_name: Some("notes.txt".to_string()),
+                data: Some(b"file contents".to_vec()),
+                disabled: None,
+            },
+            MultipartFormItem {
+                name: "skipped".to_string(),
+                item_type: MultipartFormItemType::Text,
+                value: "ignored".to_string(),
+                file_name: None,
+                data: None,
+                disabled: Some(true),
+            },
+        ],
+    });
+
+    let ws = build_workspace(vec![RequestEntry::Request(req)]);
+    let ctx = build_context(ws, None);
+
+    let results = ctx.run(vec!["req-1".to_string()]).await;
+    let execution = get_execution(results.into_iter().next().unwrap().unwrap());
+    assert!(execution.error.is_none());
+    let sent = execution.test_context.request.as_ref().unwrap();
+    match sent.body.as_ref() {
+        Some(ApicizeBody::MultipartForm { data }) => {
+            assert_eq!(data.len(), 2);
+            assert!(
+                data.get("title") == Some(&ApicizeMultipartFormValue::Text("hello".to_string()))
+            );
+            assert!(
+                data.get("upload")
+                    == Some(&ApicizeMultipartFormValue::File {
+                        file_name: "notes.txt".to_string(),
+                        content_type: "text/plain".to_string(),
+                        size: 13,
+                    })
+            );
+        }
+        _ => panic!("Expected multipart body"),
+    }
+    mock.assert_async().await;
 }

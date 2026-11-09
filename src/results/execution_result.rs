@@ -8,10 +8,10 @@ use std::{
 use crate::{
     ApicizeBody, ApicizeError, ApicizeExecution, ApicizeGroupResult, ApicizeGroupResultContent,
     ApicizeGroupResultRow, ApicizeGroupResultRowContent, ApicizeGroupResultRun,
-    ApicizeRequestResult, ApicizeRequestResultContent, ApicizeRequestResultRow,
-    ApicizeRequestResultRowContent, ApicizeRequestResultRun, ApicizeResult, ExecutionResultDetail,
-    ExecutionResultDetailGroup, ExecutionResultDetailRequest, ExecutionResultSuccess,
-    ExecutionResultSummary, Identifiable, Tally, TestRunnerContext,
+    ApicizeMultipartFormValue, ApicizeRequestResult, ApicizeRequestResultContent,
+    ApicizeRequestResultRow, ApicizeRequestResultRowContent, ApicizeRequestResultRun,
+    ApicizeResult, ExecutionResultDetail, ExecutionResultDetailGroup, ExecutionResultDetailRequest,
+    ExecutionResultSuccess, ExecutionResultSummary, Identifiable, Tally, TestRunnerContext,
 };
 
 pub type ExecutionResult = (ExecutionResultSummary, ExecutionResultDetail);
@@ -1175,6 +1175,13 @@ fn get_response_info(
                     ApicizeBody::JSON { text, .. } => text.len(),
                     ApicizeBody::XML { text, .. } => text.len(),
                     ApicizeBody::Form { text, .. } => text.len(),
+                    ApicizeBody::MultipartForm { data } => data
+                        .values()
+                        .map(|v| match v {
+                            ApicizeMultipartFormValue::Text(text) => text.len(),
+                            ApicizeMultipartFormValue::File { size, .. } => *size,
+                        })
+                        .sum(),
                     ApicizeBody::Binary { data } => data.len(),
                 },
                 None => 0,

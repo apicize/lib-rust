@@ -301,9 +301,27 @@ pub enum ApicizeBody {
         text: String,
         data: HashMap<String, String>,
     },
+    MultipartForm {
+        data: HashMap<String, ApicizeMultipartFormValue>,
+    },
     Binary {
         #[serde_as(as = "Base64<Standard, Unpadded>")]
         data: Vec<u8>,
+    },
+}
+
+/// Value of a multipart item sent when dispatching an Apicize Request
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[serde(untagged)]
+pub enum ApicizeMultipartFormValue {
+    /// Text value
+    Text(String),
+    /// File information (contents are not included)
+    #[serde(rename_all = "camelCase")]
+    File {
+        file_name: String,
+        content_type: String,
+        size: usize,
     },
 }
 

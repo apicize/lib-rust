@@ -3,7 +3,7 @@ use std::fmt::Display;
 use std::str::FromStr;
 
 use super::identifiable::CloneIdentifiable;
-use super::{NameValuePair, Selection};
+use super::{MultipartFormItem, NameValuePair, Selection};
 use crate::{
     Disabled, Identifiable, SelectedParameters, Validated, ValidationState, add_validation_error,
     remove_validation_error, utility::*,
@@ -55,6 +55,11 @@ pub enum RequestBody {
     Form {
         /// Name/value pairs of form data
         data: Vec<NameValuePair>,
+    },
+    /// Multipart form body data (text values and/or files)
+    MultipartForm {
+        /// Multipart form items
+        data: Vec<MultipartFormItem>,
     },
     /// Binary body data serialized as Base64
     Raw {
@@ -696,6 +701,11 @@ pub enum StoredRequestBody {
         /// Name/value pairs of form data
         data: Vec<NameValuePair>,
     },
+    /// Multipart form body data (text values and/or files)
+    MultipartForm {
+        /// Multipart form items
+        data: Vec<MultipartFormItem>,
+    },
     /// Binary body data serialized as Base64
     Raw {
         /// Base-64 encoded binary data
@@ -912,6 +922,9 @@ impl From<RequestEntry> for StoredRequestEntry {
                                 },
                             }),
                             RequestBody::Form { data } => Some(StoredRequestBody::Form { data }),
+                            RequestBody::MultipartForm { data } => {
+                                Some(StoredRequestBody::MultipartForm { data })
+                            }
                             RequestBody::Raw { data } => Some(StoredRequestBody::Raw { data }),
                         },
                         None => None,
@@ -1046,6 +1059,9 @@ impl From<StoredRequestEntry> for RequestEntry {
                                 })
                             }
                             StoredRequestBody::Form { data } => Some(RequestBody::Form { data }),
+                            StoredRequestBody::MultipartForm { data } => {
+                                Some(RequestBody::MultipartForm { data })
+                            }
                             StoredRequestBody::Raw { data } => Some(RequestBody::Raw { data }),
                         },
                         None => None,
