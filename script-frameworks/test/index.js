@@ -74,6 +74,7 @@ BodyType = {
     XML: 'XML',
     Text: 'Text',
     Form: 'Form',
+    MultipartForm: 'MultipartForm',
     Binary: 'Binary'
 }
 

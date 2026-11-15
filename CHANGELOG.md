@@ -1,5 +1,10 @@
 # Change Log
 
+## 0.47.0
+
+* Add support for multipart form with files
+* Fix disabled form body fields being sent with requests
+
 ## 0.46.1
 
 * Fix `ExecutionResultBuilder` retaining results of replaced executions; results no longer referenced after re-running or clearing a request/group are released

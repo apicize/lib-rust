@@ -2152,3 +2152,211 @@ async fn test_multipart_body_sends_text_and_file_items() {
     }
     mock.assert_async().await;
 }
+
+#[tokio::test]
+#[serial]
+async fn test_setup_modifies_multipart_body() {
+    let mut server = mockito::Server::new_async().await;
+    let mock = server
+        .mock("POST", "/api/upload")
+        .match_body(Matcher::AllOf(vec![
+            Matcher::Regex(r#"name="added"\r\n\r\nby setup\r\n"#.to_string()),
+            Matcher::Regex(
+                r#"name="upload"; filename="notes.txt"\r\nContent-Type: text/plain\r\n\r\nfile contents\r\n"#
+                    .to_string(),
+            ),
+        ]))
+        .with_status(200)
+        .create_async()
+        .await;
+
+    let mut req = make_request_with_setup(
+        "req-1",
+        "Multipart Setup Request",
+        &format!("{}/api/upload", server.url()),
+        r#"
+        request.body.data.push({ name: 'added', value: 'by setup' })
+        "#,
+        Some(
+            r#"
+            describe('multipart', () => {
+                it('reports multipart body type', () => {
+                    expect(request.body.type).to.equal(BodyType.MultipartForm)
+                })
+            })
+            "#,
+        ),
+    );
+    req.method = Some("POST".to_string());
+    req.body = Some(RequestBody::MultipartForm {
+        data: vec![MultipartFormItem {
+            name: "upload".to_string(),
+            item_type: MultipartFormItemType::File,
+            value: String::new(),
+            file_name: Some("notes.txt".to_string()),
+            data: Some(b"file contents".to_vec()),
+            disabled: None,
+        }],
+    });
+
+    let ws = build_workspace(vec![RequestEntry::Request(req)]);
+    let ctx = build_context(ws, None);
+
+    let results = ctx.run(vec!["req-1".to_string()]).await;
+    let execution = get_execution(results.into_iter().next().unwrap().unwrap());
+    assert!(execution.error.is_none());
+    assert!(execution.success);
+    mock.assert_async().await;
+}
+
+// =============================================================================
+// Disabled name/value pair tests
+// =============================================================================
+
+/// Helper to create a name/value pair
+fn make_pair(name: &str, value: &str, disabled: Option<bool>) -> NameValuePair {
+    NameValuePair {
+        name: name.to_string(),
+        value: value.to_string(),
+        disabled,
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn test_disabled_headers_not_sent() {
+    let mut server = mockito::Server::new_async().await;
+    let mock = server
+        .mock("GET", "/api/headers")
+        .match_header("x-enabled", "yes")
+        .match_header("x-disabled", Matcher::Missing)
+        .with_status(200)
+        .create_async()
+        .await;
+
+    let mut req = make_request(
+        "req-1",
+        "Headers Request",
+        &format!("{}/api/headers", server.url()),
+    );
+    req.headers = Some(vec![
+        make_pair("X-Enabled", "yes", Some(false)),
+        make_pair("X-Disabled", "no", Some(true)),
+    ]);
+
+    let ws = build_workspace(vec![RequestEntry::Request(req)]);
+    let ctx = build_context(ws, None);
+
+    let results = ctx.run(vec!["req-1".to_string()]).await;
+    let execution = get_execution(results.into_iter().next().unwrap().unwrap());
+    assert!(execution.error.is_none());
+    let sent = execution.test_context.request.as_ref().unwrap();
+    assert_eq!(
+        sent.headers.get("x-enabled").map(|s| s.as_str()),
+        Some("yes")
+    );
+    assert!(sent.headers.get("x-disabled").is_none());
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+#[serial]
+async fn test_disabled_query_string_params_not_sent() {
+    let mut server = mockito::Server::new_async().await;
+    let mock = server
+        .mock("GET", "/api/query")
+        .match_query(Matcher::Exact("a=1".to_string()))
+        .with_status(200)
+        .create_async()
+        .await;
+
+    let mut req = make_request(
+        "req-1",
+        "Query Request",
+        &format!("{}/api/query", server.url()),
+    );
+    req.query_string_params = Some(vec![
+        make_pair("a", "1", None),
+        make_pair("b", "2", Some(true)),
+    ]);
+
+    let ws = build_workspace(vec![RequestEntry::Request(req)]);
+    let ctx = build_context(ws, None);
+
+    let results = ctx.run(vec!["req-1".to_string()]).await;
+    let execution = get_execution(results.into_iter().next().unwrap().unwrap());
+    assert!(execution.error.is_none());
+    let sent = execution.test_context.request.as_ref().unwrap();
+    assert_eq!(sent.url, format!("{}/api/query?a=1", server.url()));
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+#[serial]
+async fn test_disabled_form_fields_not_sent() {
+    let mut server = mockito::Server::new_async().await;
+    let mock = server
+        .mock("POST", "/api/form")
+        .match_header("content-type", "application/x-www-form-urlencoded")
+        .match_body(Matcher::Exact("a=1".to_string()))
+        .with_status(200)
+        .create_async()
+        .await;
+
+    let mut req = make_request(
+        "req-1",
+        "Form Request",
+        &format!("{}/api/form", server.url()),
+    );
+    req.method = Some("POST".to_string());
+    req.body = Some(RequestBody::Form {
+        data: vec![make_pair("a", "1", None), make_pair("b", "2", Some(true))],
+    });
+
+    let ws = build_workspace(vec![RequestEntry::Request(req)]);
+    let ctx = build_context(ws, None);
+
+    let results = ctx.run(vec!["req-1".to_string()]).await;
+    let execution = get_execution(results.into_iter().next().unwrap().unwrap());
+    assert!(execution.error.is_none());
+    let sent = execution.test_context.request.as_ref().unwrap();
+    match sent.body.as_ref() {
+        Some(ApicizeBody::Form { data, .. }) => {
+            assert_eq!(data.len(), 1);
+            assert_eq!(data.get("a").map(|s| s.as_str()), Some("1"));
+        }
+        _ => panic!("Expected form body"),
+    }
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+#[serial]
+async fn test_setup_set_header_replaces_disabled_header() {
+    let mut server = mockito::Server::new_async().await;
+    let mock = server
+        .mock("GET", "/api/setup-header")
+        .match_header("x-test", "on")
+        .with_status(200)
+        .create_async()
+        .await;
+
+    let mut req = make_request_with_setup(
+        "req-1",
+        "Setup Header Request",
+        &format!("{}/api/setup-header", server.url()),
+        "request.setHeader('X-Test', 'on')",
+        None,
+    );
+    req.headers = Some(vec![make_pair("X-Test", "off", Some(true))]);
+
+    let ws = build_workspace(vec![RequestEntry::Request(req)]);
+    let ctx = build_context(ws, None);
+
+    let results = ctx.run(vec!["req-1".to_string()]).await;
+    let execution = get_execution(results.into_iter().next().unwrap().unwrap());
+    assert!(execution.error.is_none());
+    let sent = execution.test_context.request.as_ref().unwrap();
+    assert_eq!(sent.headers.get("x-test").map(|s| s.as_str()), Some("on"));
+    mock.assert_async().await;
+}

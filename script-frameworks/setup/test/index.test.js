@@ -41,6 +41,16 @@ test('sets and removes headers case-insensitively', () => {
     ])
 })
 
+test('setHeader replaces a disabled header with an enabled one', () => {
+    const result = JSON.parse(runSetup(baseRequest(), {}, {}, {}, 0, () => {
+        request.setHeader('x-old', 'new')
+    }))
+    expect(result.request.headers).toEqual([
+        { name: 'Accept', value: 'application/json' },
+        { name: 'x-old', value: 'new' },
+    ])
+})
+
 test('sets and removes query string parameters', () => {
     const result = JSON.parse(runSetup(baseRequest(), {}, {}, {}, 0, () => {
         request.setQueryParam('b', 2)
@@ -85,6 +95,51 @@ test('supports switching body types', () => {
         type: 'Form',
         data: [{ name: 'a', value: '1' }, { name: 'b', value: 'two' }]
     })
+})
+
+test('passes multipart form body through', () => {
+    const body = {
+        type: 'MultipartForm',
+        data: [
+            { name: 'note', value: 'hello' },
+            { name: 'upload', type: 'File', fileName: 'hello.txt', data: 'aGVsbG8', disabled: true },
+        ]
+    }
+    const result = JSON.parse(runSetup({ ...baseRequest(), body }, {}, {}, {}, 0, () => { }))
+    expect(result.request.body).toEqual(body)
+})
+
+test('normalizes multipart form items', () => {
+    const result = JSON.parse(runSetup(baseRequest(), {}, {}, {}, 0, () => {
+        request.body = {
+            type: BodyType.MultipartForm,
+            data: [
+                { name: 'count', value: 1 },
+                { name: 'upload', type: MultipartFormItemType.File, fileName: 'a.bin', data: new Uint8Array([1, 2, 3]) },
+            ]
+        }
+    }))
+    expect(result.request.body).toEqual({
+        type: 'MultipartForm',
+        data: [
+            { name: 'count', value: '1' },
+            { name: 'upload', type: 'File', fileName: 'a.bin', data: 'AQID' },
+        ]
+    })
+})
+
+test('accepts multipart form shorthand object', () => {
+    const result = JSON.parse(runSetup(baseRequest(), {}, {}, {}, 0, () => {
+        request.body = { type: BodyType.MultipartForm, data: { a: 1 } }
+    }))
+    expect(result.request.body).toEqual({ type: 'MultipartForm', data: [{ name: 'a', value: '1' }] })
+})
+
+test('rejects invalid multipart form item type', () => {
+    const result = JSON.parse(runSetup(baseRequest(), {}, {}, {}, 0, () => {
+        request.body = { type: BodyType.MultipartForm, data: [{ name: 'a', type: 'Bogus' }] }
+    }))
+    expect(result.error).toEqual('Invalid multipart form item type "Bogus"')
 })
 
 test('serializes GraphQL extensions', () => {

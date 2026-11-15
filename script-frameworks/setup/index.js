@@ -71,7 +71,14 @@ BodyType = {
     XML: 'XML',
     GraphQL: 'GraphQL',
     Form: 'Form',
+    MultipartForm: 'MultipartForm',
     Raw: 'Raw'
+}
+
+// Multipart form item types (matches the "type" of multipart form body items)
+MultipartFormItemType = {
+    Text: 'Text',
+    File: 'File'
 }
 
 // Base64 helpers (btoa, atob, base64)
@@ -215,6 +222,41 @@ function normalizePairs(pairs, label) {
     })
 }
 
+// Normalize multipart form items; { name: value } objects are accepted as shorthand for Text items
+function normalizeMultipartItems(items) {
+    if (items === undefined || items === null) {
+        return []
+    }
+    if (!Array.isArray(items)) {
+        if (typeof items === 'object') {
+            return Object.entries(items).map(([name, value]) => ({ name, value: toStr(value) }))
+        }
+        throw new Error('request.body.data must be an array of multipart form items')
+    }
+    return items.map(item => {
+        const result = { name: toStr(item.name) }
+        if (item.type === MultipartFormItemType.File) {
+            result.type = MultipartFormItemType.File
+            result.fileName = toStr(item.fileName)
+            if (isBinary(item.data)) {
+                result.data = base64.encode(item.data)
+            } else if (typeof item.data === 'string') {
+                result.data = item.data
+            } else if (item.data !== undefined && item.data !== null) {
+                throw new Error('Multipart file data must be a base64 encoded string, array, typed array or ArrayBuffer')
+            }
+        } else if (item.type === undefined || item.type === null || item.type === MultipartFormItemType.Text) {
+            result.value = toStr(item.value)
+        } else {
+            throw new Error(`Invalid multipart form item type "${item.type}"`)
+        }
+        if (item.disabled === true) {
+            result.disabled = true
+        }
+        return result
+    })
+}
+
 function normalizeBody(body) {
     if (body === undefined || body === null) {
         return undefined
@@ -230,6 +272,8 @@ function normalizeBody(body) {
             return { type: body.type, data: toStr(body.data) }
         case BodyType.Form:
             return { type: body.type, data: normalizePairs(body.data, 'body.data') ?? [] }
+        case BodyType.MultipartForm:
+            return { type: body.type, data: normalizeMultipartItems(body.data) }
         case BodyType.GraphQL: {
             const extensions = body.data?.extensions
             return {

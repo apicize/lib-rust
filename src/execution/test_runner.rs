@@ -1918,6 +1918,7 @@ async fn dispatch_request(
         Some(RequestBody::Form { data }) => {
             let form_data = data
                 .iter()
+                .filter(|pair| pair.disabled != Some(true))
                 .map(|pair| {
                     (
                         clone_and_sub(&pair.name, subs),
